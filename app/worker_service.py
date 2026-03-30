@@ -3,9 +3,9 @@ import signal
 import socket
 import threading
 
-from .backfill_requests import backfill_request_loop
+from .backfill_requests import backfill_request_loop, requeue_interrupted_backfill_requests
 from .config import get_settings
-from .db import init_db
+from .db import init_db, managed_session
 from .discord_ingest import discord_runtime_state, get_discord_client, run_discord_bot, seed_channels_from_env
 from .runtime_monitor import runtime_heartbeat_loop
 from .worker import parser_loop
@@ -29,6 +29,9 @@ async def run_worker_service() -> None:
 
     init_db()
     seed_channels_from_env()
+
+    with managed_session() as session:
+        requeue_interrupted_backfill_requests(session)
 
     stop_event = asyncio.Event()
     heartbeat_stop_event = threading.Event()

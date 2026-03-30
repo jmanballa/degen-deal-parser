@@ -1383,7 +1383,7 @@ def queue_backfill_request(
     target = f"channel+{channel_id}" if channel_id else "all+backfill-enabled+watched+channels"
     return (
         f"Queued+backfill+request+{queued.id}+for+{target}."
-        "+The+worker+will+run+it+when+Discord+is+ready."
+        "+The+worker+will+run+it+when+Discord+is+ready+and+will+requeue+it+if+a+deploy+restart+interrupts+the+run."
     )
 
 

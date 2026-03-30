@@ -108,6 +108,39 @@ def recover_stale_backfill_requests(session: Session) -> int:
     return recovered
 
 
+def requeue_interrupted_backfill_requests(session: Session) -> int:
+    rows = session.exec(
+        select(BackfillRequest)
+        .where(BackfillRequest.status == "processing")
+        .order_by(BackfillRequest.started_at, BackfillRequest.id)
+    ).all()
+
+    requeued = 0
+    for row in rows:
+        previous_started_at = row.started_at
+        row.status = "queued"
+        row.started_at = None
+        row.finished_at = None
+        row.error_message = "Requeued after worker restart interrupted the previous run."
+        session.add(row)
+        session.commit()
+        write_operations_log(
+            session,
+            event_type="backfill_requeued_interrupted",
+            level="warning",
+            source="worker",
+            message=f"Requeued interrupted backfill request {row.id}",
+            details={
+                "request_id": row.id,
+                "channel_id": row.channel_id,
+                "previous_started_at": previous_started_at.isoformat() if previous_started_at else None,
+            },
+        )
+        requeued += 1
+
+    return requeued
+
+
 def claim_next_backfill_request(session: Session) -> Optional[dict]:
     request = session.exec(
         select(BackfillRequest)
