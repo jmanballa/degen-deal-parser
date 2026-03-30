@@ -10,6 +10,7 @@ from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel, Session, create_engine
 
 from .config import get_settings
+from . import models as _models  # noqa: F401
 
 settings = get_settings()
 _db_failure_state_lock = threading.Lock()
@@ -142,7 +143,7 @@ def postgres_schema_ready() -> bool:
     if not is_postgres_database_url(database_url):
         return False
 
-    required_tables = {"discordmessage", "transaction", "user"}
+    required_tables = set(SQLModel.metadata.tables.keys())
     try:
         with psycopg.connect(settings.database_url, connect_timeout=15) as conn:
             with conn.cursor() as cur:

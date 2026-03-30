@@ -35,6 +35,19 @@ class WatchedChannel(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+class AvailableDiscordChannel(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    channel_id: str = Field(index=True, unique=True)
+    channel_name: str = Field(index=True)
+    guild_id: Optional[str] = Field(default=None, index=True)
+    guild_name: Optional[str] = Field(default=None, index=True)
+    category_name: Optional[str] = Field(default=None, index=True)
+    label: str = Field(index=True)
+    created_at_discord: Optional[datetime] = Field(default=None, index=True)
+    last_message_at: Optional[datetime] = Field(default=None, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
 class DiscordMessage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 

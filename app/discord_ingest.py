@@ -7,12 +7,13 @@ from typing import Optional
 
 import discord
 import httpx
+from sqlalchemy.exc import ProgrammingError
 from sqlmodel import select
 
 from .bookkeeping import auto_import_public_google_sheet, extract_google_sheet_url
 from .config import get_settings
 from .db import engine, managed_session
-from .models import AttachmentAsset, DiscordMessage, WatchedChannel
+from .models import AttachmentAsset, AvailableDiscordChannel, DiscordMessage, WatchedChannel
 
 settings = get_settings()
 
@@ -153,6 +154,66 @@ def get_attachment_payloads(message: discord.Message) -> list[dict]:
             }
         )
     return payloads
+
+
+def persist_available_discord_channels(channels: list[dict]) -> None:
+    now = utcnow()
+    try:
+        with managed_session() as session:
+            existing_rows = session.exec(select(AvailableDiscordChannel)).all()
+            existing_by_channel_id = {row.channel_id: row for row in existing_rows}
+            keep_channel_ids = {channel["channel_id"] for channel in channels}
+
+            for row in existing_rows:
+                if row.channel_id not in keep_channel_ids:
+                    session.delete(row)
+
+            for channel in channels:
+                row = existing_by_channel_id.get(channel["channel_id"])
+                if not row:
+                    row = AvailableDiscordChannel(channel_id=channel["channel_id"])
+                row.channel_name = channel["channel_name"]
+                row.guild_id = channel.get("guild_id")
+                row.guild_name = channel.get("guild_name")
+                row.category_name = channel.get("category_name")
+                row.label = channel["label"]
+                row.created_at_discord = parse_iso_datetime(channel.get("created_at"))
+                row.last_message_at = parse_iso_datetime(channel.get("last_message_at"))
+                row.updated_at = now
+                session.add(row)
+
+            session.commit()
+    except ProgrammingError:
+        return
+
+
+def get_cached_available_discord_channels() -> list[dict]:
+    try:
+        with managed_session() as session:
+            rows = session.exec(
+                select(AvailableDiscordChannel).order_by(
+                    AvailableDiscordChannel.guild_name,
+                    AvailableDiscordChannel.category_name,
+                    AvailableDiscordChannel.channel_name,
+                )
+            ).all()
+    except ProgrammingError:
+        return []
+
+    return [
+        {
+            "guild_id": row.guild_id or "",
+            "guild_name": row.guild_name or "",
+            "channel_id": row.channel_id,
+            "channel_name": row.channel_name,
+            "category_name": row.category_name,
+            "label": row.label,
+            "created_at": row.created_at_discord.isoformat() if row.created_at_discord else None,
+            "last_message_at": row.last_message_at.isoformat() if row.last_message_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]
 
 
 def sync_attachment_assets(message_id: int, attachment_payloads: list[dict]) -> None:
@@ -325,6 +386,10 @@ class DealIngestBot(discord.Client):
         print(f"[discord] logged in as {self.user}")
         discord_runtime_state["status"] = "ready"
         discord_runtime_state["error"] = None
+        try:
+            persist_available_discord_channels(list_available_discord_channels())
+        except Exception as exc:
+            print(f"[discord] failed to cache channel inventory: {exc}")
 
         if not self.startup_backfill_done and settings.startup_backfill_enabled:
             self.startup_backfill_done = True
@@ -622,7 +687,11 @@ def list_available_discord_channels() -> list[dict]:
 
     client = get_discord_client()
     if client is None or client.is_closed() or not client.is_ready():
-        return []
+        cached_channels = get_cached_available_discord_channels()
+        with _available_channels_cache_lock:
+            _available_channels_cache["channels"] = list(cached_channels)
+            _available_channels_cache["expires_at"] = now + 30.0
+        return cached_channels
 
     channels: list[dict] = []
 
@@ -662,4 +731,8 @@ def list_available_discord_channels() -> list[dict]:
     with _available_channels_cache_lock:
         _available_channels_cache["channels"] = list(channels)
         _available_channels_cache["expires_at"] = now + 30.0
+    try:
+        persist_available_discord_channels(channels)
+    except Exception as exc:
+        print(f"[discord] failed to cache channel inventory: {exc}")
     return channels
