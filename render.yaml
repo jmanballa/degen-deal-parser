@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: degen-deal-parser
+    runtime: python
+    plan: starter
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: degen-parser-data
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////var/data/degen_live.db
+      - key: PUBLIC_BASE_URL
+        value: https://ops.degencollectibles.com
+      - key: SESSION_COOKIE_NAME
+        value: degen_session
+      - key: SESSION_HTTPS_ONLY
+        value: "true"
+      - key: SESSION_SAME_SITE
+        value: lax
+      - key: SESSION_DOMAIN
+        value: ops.degencollectibles.com
+      - key: DISCORD_INGEST_ENABLED
+        value: "true"
+      - key: PARSER_WORKER_ENABLED
+        value: "true"
+      - key: SESSION_SECRET
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_DISPLAY_NAME
+        value: Degen Admin
+      - key: REVIEWER_USERNAME
+        value: reviewer
+      - key: REVIEWER_PASSWORD
+        sync: false
+      - key: REVIEWER_DISPLAY_NAME
+        value: Degen Reviewer

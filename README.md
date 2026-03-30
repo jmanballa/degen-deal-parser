@@ -54,6 +54,7 @@ Recommended first deployment:
 - host the FastAPI app separately from Shopify
 - keep `degencollectibles.com` on Shopify
 - point a subdomain like `ops.degencollectibles.com` to Render
+- this repo now includes [render.yaml](/C:/Users/jeffr/discord-deal-parser/live-deal-parser/render.yaml) as a starting blueprint
 
 ### Render service settings
 
@@ -68,6 +69,11 @@ Start command:
 ```bash
 python -m uvicorn app.main:app --host 0.0.0.0 --port 10000
 ```
+
+If you use the included Render blueprint:
+- it mounts a persistent disk at `/var/data`
+- it sets `DATABASE_URL=sqlite:////var/data/degen_live.db`
+- you still need to fill in the secret env vars in Render
 
 ### Recommended production env vars
 
