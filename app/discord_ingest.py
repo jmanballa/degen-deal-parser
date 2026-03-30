@@ -1,15 +1,17 @@
 import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
 import discord
+import httpx
 from sqlmodel import Session, select
 
 from .bookkeeping import auto_import_public_google_sheet, extract_google_sheet_url
 from .config import get_settings
 from .db import engine
-from .models import DiscordMessage, WatchedChannel
+from .models import AttachmentAsset, DiscordMessage, WatchedChannel
 
 settings = get_settings()
 
@@ -40,6 +42,13 @@ TRANSACTION_CHANNEL_NAME_HINTS = (
     "cardshow",
     "expo",
 )
+IMAGE_ATTACHMENT_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+
+# Channel ID set is stable between admin changes; cache for 30 s to avoid a
+# DB round-trip on every single Discord on_message event.
+_channel_id_cache: Optional[set[int]] = None
+_channel_id_cache_at: float = 0.0
+_CHANNEL_ID_CACHE_TTL: float = 30.0
 
 
 def utcnow() -> datetime:
@@ -69,11 +78,18 @@ def parse_iso_datetime(value: Optional[str], *, end_of_day: bool = False) -> Opt
 
 
 def get_enabled_channel_ids() -> set[int]:
+    global _channel_id_cache, _channel_id_cache_at
+    now = time.monotonic()
+    if _channel_id_cache is not None and now - _channel_id_cache_at < _CHANNEL_ID_CACHE_TTL:
+        return _channel_id_cache
     with Session(engine) as session:
         rows = session.exec(
             select(WatchedChannel).where(WatchedChannel.is_enabled == True)
         ).all()
-        return {int(r.channel_id) for r in rows}
+        result = {int(r.channel_id) for r in rows}
+    _channel_id_cache = result
+    _channel_id_cache_at = now
+    return result
 
 
 def get_backfill_channel_ids() -> set[int]:
@@ -126,8 +142,79 @@ def seed_channels_from_env() -> None:
         session.commit()
 
 
-def get_attachment_urls(message: discord.Message) -> list[str]:
-    return [a.url for a in message.attachments]
+def get_attachment_payloads(message: discord.Message) -> list[dict]:
+    payloads: list[dict] = []
+    for attachment in message.attachments:
+        filename = getattr(attachment, "filename", None) or ""
+        content_type = getattr(attachment, "content_type", None)
+        is_image = bool(
+            (content_type and content_type.startswith("image/"))
+            or filename.lower().endswith(IMAGE_ATTACHMENT_EXTENSIONS)
+        )
+        payloads.append(
+            {
+                "url": attachment.url,
+                "filename": filename or None,
+                "content_type": content_type,
+                "is_image": is_image,
+            }
+        )
+    return payloads
+
+
+def sync_attachment_assets(message_id: int, attachment_payloads: list[dict]) -> None:
+    payload_urls = {payload["url"] for payload in attachment_payloads}
+
+    # Phase 1: read current state — short session, no I/O blocking.
+    with Session(engine) as session:
+        existing_assets = session.exec(
+            select(AttachmentAsset).where(AttachmentAsset.message_id == message_id)
+        ).all()
+        existing_urls = {asset.source_url for asset in existing_assets}
+        stale_ids = [asset.id for asset in existing_assets if asset.source_url not in payload_urls]
+
+    missing_payloads = [p for p in attachment_payloads if p["url"] not in existing_urls]
+
+    # Phase 2: download outside any DB session so we don't hold a Postgres
+    # connection open while waiting on Discord's CDN (can take several seconds).
+    downloaded: list[dict] = []
+    if missing_payloads:
+        with httpx.Client(follow_redirects=True, timeout=20.0) as client:
+            for payload in missing_payloads:
+                try:
+                    response = client.get(payload["url"])
+                    response.raise_for_status()
+                except Exception as exc:
+                    print(f"[attachments] failed to cache {payload['url']}: {exc}")
+                    continue
+                downloaded.append({
+                    "payload": payload,
+                    "content": response.content,
+                    "content_type": payload.get("content_type") or response.headers.get("content-type"),
+                })
+
+    if not stale_ids and not downloaded:
+        return
+
+    # Phase 3: write results — short session.
+    with Session(engine) as session:
+        for stale_id in stale_ids:
+            asset = session.get(AttachmentAsset, stale_id)
+            if asset:
+                session.delete(asset)
+        for item in downloaded:
+            payload = item["payload"]
+            session.add(
+                AttachmentAsset(
+                    message_id=message_id,
+                    source_url=payload["url"],
+                    filename=payload.get("filename"),
+                    content_type=item["content_type"],
+                    is_image=bool(payload.get("is_image")),
+                    data=item["content"],
+                )
+            )
+        session.commit()
 
 
 def get_message_row(session: Session, discord_message_id: str) -> Optional[DiscordMessage]:
@@ -169,7 +256,8 @@ def insert_or_update_message(
     if not should_track_message(message, watched_channel_ids):
         return False, "ignored"
 
-    attachment_urls = get_attachment_urls(message)
+    attachment_payloads = get_attachment_payloads(message)
+    attachment_urls = [payload["url"] for payload in attachment_payloads]
 
     with Session(engine) as session:
         existing = get_message_row(session, str(message.id))
@@ -191,6 +279,8 @@ def insert_or_update_message(
 
             session.add(existing)
             session.commit()
+            if existing.id is not None:
+                sync_attachment_assets(existing.id, attachment_payloads)
             return True, "updated"
 
         row = DiscordMessage(
@@ -208,6 +298,9 @@ def insert_or_update_message(
         )
         session.add(row)
         session.commit()
+        session.refresh(row)
+        if row.id is not None:
+            sync_attachment_assets(row.id, attachment_payloads)
         return True, "inserted"
 
 

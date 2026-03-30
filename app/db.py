@@ -1,6 +1,9 @@
+import time
 from pathlib import Path
 
 from sqlalchemy import event, text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel, Session, create_engine
 
 from .config import get_settings
@@ -24,12 +27,18 @@ if database_url.startswith("sqlite:///"):
 
 connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
 
-engine = create_engine(
-    database_url,
-    echo=False,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
+engine_kwargs = {
+    "echo": False,
+    "connect_args": connect_args,
+}
+if database_url.startswith("sqlite"):
+    engine_kwargs["pool_recycle"] = -1
+else:
+    # NullPool avoids reusing stale SSL connections across requests/tasks.
+    # pool_pre_ping is intentionally omitted: it is a no-op with NullPool.
+    engine_kwargs["poolclass"] = NullPool
+
+engine = create_engine(database_url, **engine_kwargs)
 
 
 if database_url.startswith("sqlite"):
@@ -112,10 +121,26 @@ def ensure_sqlite_schema() -> None:
 
 
 def init_db() -> None:
-    SQLModel.metadata.create_all(engine)
+    attempts = 1 if database_url.startswith("sqlite") else 5
+    delay_seconds = 1.0
+
+    for attempt in range(1, attempts + 1):
+        try:
+            SQLModel.metadata.create_all(engine)
+            break
+        except OperationalError:
+            if attempt >= attempts:
+                raise
+            time.sleep(delay_seconds)
+            delay_seconds *= 2
     ensure_sqlite_schema()
 
 
 def get_session():
     with Session(engine) as session:
         yield session
+
+
+def dispose_engine() -> None:
+    # With NullPool this is a no-op; kept for forward-compat if pool strategy changes.
+    engine.dispose()

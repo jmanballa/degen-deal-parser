@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import json
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from io import StringIO
@@ -9,6 +10,7 @@ from typing import Optional
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import func
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -36,6 +38,7 @@ from .config import get_settings
 from .corrections import (
     get_correction_pattern_counts,
     get_learning_signal,
+    get_learning_signals,
     promote_correction_pattern,
     save_review_correction,
 )
@@ -48,7 +51,7 @@ from .discord_ingest import (
     seed_channels_from_env,
 )
 from .financials import compute_financials
-from .models import BookkeepingImport, DiscordMessage, ParseAttempt, User, WatchedChannel, utcnow
+from .models import AttachmentAsset, BookkeepingImport, DiscordMessage, ParseAttempt, User, WatchedChannel, utcnow
 from .reporting import build_financial_summary, get_financial_rows, parse_report_datetime
 from .schemas import HealthOut
 from .transactions import build_transaction_summary, get_transactions, rebuild_transactions, sync_transaction_from_message
@@ -57,8 +60,21 @@ from .worker import STALE_PROCESSING_AFTER, parser_loop
 
 settings = get_settings()
 
+
+def count_rows(session: Session, stmt) -> int:
+    count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
+    return int(session.exec(count_stmt).one())
+
+
+def normalize_filesystem_path(path: Path) -> str:
+    normalized = os.path.normpath(str(path))
+    if normalized.startswith("\\\\?\\"):
+        return normalized[4:]
+    return normalized
+
+
 BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates = Jinja2Templates(directory=normalize_filesystem_path(BASE_DIR / "templates"))
 PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 PARSE_STATUS_OPTIONS = ["parsed", "needs_review", "failed", "queued", "ignored"]
@@ -107,6 +123,33 @@ def extract_image_urls(attachment_urls: list[str]) -> list[str]:
     ]
 
 
+def get_cached_attachment_map(session: Session, message_ids: list[int]) -> dict[int, dict]:
+    valid_ids = [message_id for message_id in message_ids if message_id is not None]
+    if not valid_ids:
+        return {}
+
+    assets = session.exec(
+        select(AttachmentAsset)
+        .where(AttachmentAsset.message_id.in_(valid_ids))
+        .order_by(AttachmentAsset.message_id.asc(), AttachmentAsset.id.asc())
+    ).all()
+
+    results: dict[int, dict] = {}
+    for asset in assets:
+        if asset.id is None:
+            continue
+        bucket = results.setdefault(
+            asset.message_id,
+            {"all_urls": [], "image_urls": []},
+        )
+        asset_url = f"/attachments/{asset.id}"
+        bucket["all_urls"].append(asset_url)
+        if asset.is_image:
+            bucket["image_urls"].append(asset_url)
+
+    return results
+
+
 def row_looks_transactional(row: DiscordMessage) -> bool:
     if row.amount is not None:
         return True
@@ -142,6 +185,10 @@ def find_nearby_image_candidates(session: Session, rows: list[DiscordMessage]) -
         .where(DiscordMessage.created_at >= min_created)
         .where(DiscordMessage.created_at <= max_created)
     ).all()
+    cached_assets_by_message_id = get_cached_attachment_map(
+        session,
+        [candidate.id for candidate in candidate_rows if candidate.id is not None],
+    )
 
     results: dict[int, dict] = {}
     for row in targets:
@@ -153,7 +200,12 @@ def find_nearby_image_candidates(session: Session, rows: list[DiscordMessage]) -
                 continue
             if candidate.stitched_group_id:
                 continue
-            candidate_images = extract_image_urls(json.loads(candidate.attachment_urls_json or "[]"))
+            cached_assets = cached_assets_by_message_id.get(candidate.id)
+            candidate_images = (
+                cached_assets["image_urls"]
+                if cached_assets and cached_assets["image_urls"]
+                else extract_image_urls(json.loads(candidate.attachment_urls_json or "[]"))
+            )
             if not candidate_images:
                 continue
             delta_seconds = abs((candidate.created_at - row.created_at).total_seconds())
@@ -281,10 +333,18 @@ def message_list_item(row: DiscordMessage) -> dict:
 
 def build_message_list_items(session: Session, rows: list[DiscordMessage]) -> list[dict]:
     items = [message_list_item(row) for row in rows]
+    cached_assets_by_message_id = get_cached_attachment_map(
+        session,
+        [row.id for row in rows if row.id is not None],
+    )
     nearby_image_candidates = find_nearby_image_candidates(session, rows)
     bookkeeping_status_by_message_id = get_bookkeeping_status_by_message_ids(
         session,
         [item["id"] for item in items if item.get("id") is not None],
+    )
+    learning_signals_by_message = get_learning_signals(
+        session,
+        [item["message"] or "" for item in items],
     )
 
     grouped_ids: set[int] = set()
@@ -315,11 +375,20 @@ def build_message_list_items(session: Session, rows: list[DiscordMessage]) -> li
                 }
             )
         item["grouped_messages"] = grouped_messages
+        cached_assets = cached_assets_by_message_id.get(item["id"])
+        if cached_assets:
+            item["attachment_urls"] = cached_assets["all_urls"]
+            item["image_urls"] = cached_assets["image_urls"]
+            item["first_image_url"] = cached_assets["image_urls"][0] if cached_assets["image_urls"] else None
+            item["has_images"] = bool(cached_assets["image_urls"])
         item["bookkeeping"] = bookkeeping_status_by_message_id.get(
             item["id"],
             {"status": "unmatched", "label": "Unmatched", "sheet_name": ""},
         )
-        item["learning"] = get_learning_signal(session, item["message"] or "")
+        item["learning"] = learning_signals_by_message.get(
+            item["message"] or "",
+            {"exact_match": False, "promoted_rule": False, "similar_count": 0},
+        )
         item["nearby_image"] = nearby_image_candidates.get(item["id"])
         item["possible_missing_image"] = item["nearby_image"] is not None
 
@@ -364,7 +433,6 @@ def message_detail_item(row: DiscordMessage) -> dict:
         "money_out": row.money_out,
         "expense_category": row.expense_category,
     }
-
 
 def build_return_url(
     return_path: str,
@@ -505,7 +573,7 @@ def get_message_rows(
     else:
         stmt = stmt.order_by(sort_column.desc(), DiscordMessage.created_at.desc())
 
-    total_rows = len(session.exec(stmt).all())
+    total_rows = count_rows(session, stmt)
     page = max(page, 1)
     offset = (page - 1) * limit
     rows = session.exec(stmt.offset(offset).limit(limit)).all()
@@ -551,26 +619,39 @@ def get_summary(
         after=after,
         before=before,
     )
-    rows = session.exec(stmt).all()
+    summary_subquery = stmt.order_by(None).subquery()
 
-    total = len(rows)
-    parsed = sum(1 for r in rows if r.parse_status == "parsed")
-    processing = sum(1 for r in rows if r.parse_status == "processing")
-    queued = sum(1 for r in rows if r.parse_status == "queued")
-    failed = sum(1 for r in rows if r.parse_status == "failed")
-    needs_review = sum(1 for r in rows if r.parse_status == "needs_review")
-    ignored = sum(1 for r in rows if r.parse_status == "ignored")
-    with_images = sum(1 for r in rows if json.loads(r.attachment_urls_json or "[]"))
-    deleted = sum(1 for r in rows if r.is_deleted)
+    status_counts = {
+        row[0]: int(row[1])
+        for row in session.exec(
+            select(summary_subquery.c.parse_status, func.count())
+            .group_by(summary_subquery.c.parse_status)
+        ).all()
+    }
+    total = sum(status_counts.values())
+    with_images = int(
+        session.exec(
+            select(func.count()).select_from(summary_subquery).where(
+                summary_subquery.c.attachment_urls_json != "[]"
+            )
+        ).one()
+    )
+    deleted = int(
+        session.exec(
+            select(func.count()).select_from(summary_subquery).where(
+                summary_subquery.c.is_deleted == True  # noqa: E712
+            )
+        ).one()
+    )
 
     return {
         "total": total,
-        "parsed": parsed,
-        "processing": processing,
-        "queued": queued,
-        "failed": failed,
-        "needs_review": needs_review,
-        "ignored": ignored,
+        "parsed": status_counts.get("parsed", 0),
+        "processing": status_counts.get("processing", 0),
+        "queued": status_counts.get("queued", 0),
+        "failed": status_counts.get("failed", 0),
+        "needs_review": status_counts.get("needs_review", 0),
+        "ignored": status_counts.get("ignored", 0),
         "with_images": with_images,
         "deleted": deleted,
     }
@@ -605,7 +686,7 @@ def get_review_history_rows(
         .where(DiscordMessage.reviewed_at != None)  # noqa: E711
         .order_by(DiscordMessage.reviewed_at.desc(), DiscordMessage.created_at.desc())
     )
-    total_rows = len(session.exec(stmt).all())
+    total_rows = count_rows(session, stmt)
     offset = (max(page, 1) - 1) * limit
     rows = session.exec(stmt.offset(offset).limit(limit)).all()
     return rows, total_rows
@@ -663,7 +744,7 @@ def get_partner_deal_rows(
         stmt = stmt.where(DiscordMessage.created_at <= before_dt)
 
     stmt = stmt.order_by(DiscordMessage.created_at.desc())
-    total_rows = len(session.exec(stmt).all())
+    total_rows = count_rows(session, stmt)
     offset = (max(page, 1) - 1) * limit
     rows = session.exec(stmt.offset(offset).limit(limit)).all()
     return rows, total_rows
@@ -755,7 +836,24 @@ app.add_middleware(
     same_site=settings.session_same_site,
     domain=settings.session_domain or None,
 )
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/static", StaticFiles(directory=normalize_filesystem_path(BASE_DIR / "static")), name="static")
+
+
+@app.get("/attachments/{asset_id}")
+def attachment_asset(asset_id: int, request: Request, session: Session = Depends(get_session)):
+    user = getattr(request.state, "current_user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    asset = session.get(AttachmentAsset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    media_type = asset.content_type or "application/octet-stream"
+    headers = {"Cache-Control": "private, max-age=86400"}
+    if asset.filename:
+        headers["Content-Disposition"] = f'inline; filename="{asset.filename}"'
+    return Response(content=asset.data, media_type=media_type, headers=headers)
 
 
 PUBLIC_PATH_PREFIXES = (
@@ -807,12 +905,12 @@ def app_home_for_role(role: str) -> str:
 
 
 def require_role_response(request: Request, minimum_role: str) -> Optional[Response]:
-    user = get_request_user(request)
+    # Middleware already resolved current_user; avoid a second DB round-trip.
+    user = getattr(request.state, "current_user", None)
     if not user:
         return redirect_to_login(request)
     if not has_role(user, minimum_role):
         return HTMLResponse("You do not have permission to view this page.", status_code=403)
-    request.state.current_user = user
     return None
 
 
@@ -990,18 +1088,39 @@ def deal_detail_page(
         raise HTTPException(status_code=404, detail="Deal not found")
 
     item = build_message_list_items(session, [row])[0]
-    attachment_urls = list(json.loads(row.attachment_urls_json or "[]"))
+    attachment_urls = list(item.get("attachment_urls") or [])
+    image_urls = list(item.get("image_urls") or [])
     if row.stitched_group_id:
         grouped_rows = session.exec(
             select(DiscordMessage)
             .where(DiscordMessage.stitched_group_id == row.stitched_group_id)
             .order_by(DiscordMessage.created_at.asc(), DiscordMessage.id.asc())
         ).all()
+        cached_assets_by_message_id = get_cached_attachment_map(
+            session,
+            [grouped_row.id for grouped_row in grouped_rows if grouped_row.id is not None],
+        )
         for grouped_row in grouped_rows:
-            for url in json.loads(grouped_row.attachment_urls_json or "[]"):
+            cached_assets = cached_assets_by_message_id.get(grouped_row.id)
+            grouped_attachment_urls = (
+                cached_assets["all_urls"]
+                if cached_assets
+                else json.loads(grouped_row.attachment_urls_json or "[]")
+            )
+            grouped_image_urls = (
+                cached_assets["image_urls"]
+                if cached_assets
+                else extract_image_urls(grouped_attachment_urls)
+            )
+            for url in grouped_attachment_urls:
                 if url not in attachment_urls:
                     attachment_urls.append(url)
+            for url in grouped_image_urls:
+                if url not in image_urls:
+                    image_urls.append(url)
     item["attachment_urls"] = attachment_urls
+    item["image_urls"] = image_urls
+    item["first_image_url"] = image_urls[0] if image_urls else None
     item["trade_summary"] = row.trade_summary
     item["notes"] = row.notes
     item["image_summary"] = row.image_summary
@@ -1392,16 +1511,16 @@ def message_detail_page(
         raise HTTPException(status_code=404, detail="Message not found")
 
     item = message_detail_item(row)
+    cached_assets = get_cached_attachment_map(
+        session,
+        [row.id] if row.id is not None else [],
+    ).get(row.id)
+    if cached_assets:
+        item["attachment_urls"] = cached_assets["all_urls"]
+        item["image_urls"] = cached_assets["image_urls"]
     item["time"] = format_pacific_datetime(row.created_at)
     item["edited_at"] = format_pacific_datetime(row.edited_at)
     item["is_deleted"] = row.is_deleted
-
-    image_urls = [
-        url
-        for url in item["attachment_urls"]
-        if any(ext in url.lower() for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"])
-    ]
-    item["image_urls"] = image_urls
     item["nearby_image"] = find_nearby_image_candidates(session, [row]).get(row.id)
     item["possible_missing_image"] = item["nearby_image"] is not None
     learning_signal = get_learning_signal(session, row.content or "")
