@@ -905,12 +905,12 @@ def app_home_for_role(role: str) -> str:
 
 
 def require_role_response(request: Request, minimum_role: str) -> Optional[Response]:
-    # Middleware already resolved current_user; avoid a second DB round-trip.
-    user = getattr(request.state, "current_user", None)
+    user = get_request_user(request)
     if not user:
         return redirect_to_login(request)
     if not has_role(user, minimum_role):
         return HTMLResponse("You do not have permission to view this page.", status_code=403)
+    request.state.current_user = user
     return None
 
 
