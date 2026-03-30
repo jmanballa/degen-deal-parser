@@ -18,6 +18,8 @@ discord_runtime_state = {
     "status": "stopped",
     "error": None,
 }
+DISCORD_RETRY_MIN_SECONDS = 15
+DISCORD_RETRY_MAX_SECONDS = 900
 ALLOWED_CHANNEL_CATEGORIES = {
     "Employees",
     "Show Deals",
@@ -443,39 +445,75 @@ async def run_discord_bot(stop_event: asyncio.Event):
     intents.guilds = True
     intents.messages = True
 
-    client = DealIngestBot(intents=intents)
-    discord_client_instance = client
+    retry_delay = DISCORD_RETRY_MIN_SECONDS
     discord_runtime_state["status"] = "starting"
     discord_runtime_state["error"] = None
 
     try:
-        async with client:
-            bot_task = asyncio.create_task(client.start(settings.discord_bot_token))
-            stop_task = asyncio.create_task(stop_event.wait())
-            done, pending = await asyncio.wait(
-                {bot_task, stop_task},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+        while not stop_event.is_set():
+            client = DealIngestBot(intents=intents)
+            discord_client_instance = client
+            discord_runtime_state["status"] = "starting"
+            discord_runtime_state["error"] = None
 
-            for task in pending:
-                task.cancel()
+            try:
+                async with client:
+                    bot_task = asyncio.create_task(client.start(settings.discord_bot_token))
+                    stop_task = asyncio.create_task(stop_event.wait())
+                    done, pending = await asyncio.wait(
+                        {bot_task, stop_task},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
 
-            if stop_task in done:
-                await client.close()
-                await asyncio.gather(bot_task, return_exceptions=True)
-            else:
-                result = await asyncio.gather(bot_task, return_exceptions=True)
-                exc = result[0]
-                if isinstance(exc, Exception):
-                    discord_runtime_state["status"] = "error"
-                    discord_runtime_state["error"] = str(exc)
-                    print(f"[discord] bot stopped with error: {exc}")
+                    for task in pending:
+                        task.cancel()
+
+                    if stop_task in done:
+                        await client.close()
+                        await asyncio.gather(bot_task, return_exceptions=True)
+                        break
+
+                    result = await asyncio.gather(bot_task, return_exceptions=True)
+                    exc = result[0]
+                    if isinstance(exc, Exception):
+                        raise exc
+                    retry_delay = DISCORD_RETRY_MIN_SECONDS
+            except asyncio.CancelledError:
+                raise
+            except discord.HTTPException as exc:
+                status_code = getattr(exc, "status", None)
+                if status_code == 429:
+                    discord_runtime_state["status"] = "rate_limited"
+                    discord_runtime_state["error"] = f"Discord rate limited startup/connect; retrying in {retry_delay}s"
+                    print(f"[discord] rate limited ({exc}); retrying in {retry_delay}s")
+                else:
+                    discord_runtime_state["status"] = "degraded"
+                    discord_runtime_state["error"] = f"Discord HTTP error ({status_code}): {exc}; retrying in {retry_delay}s"
+                    print(f"[discord] HTTP error ({status_code}): {exc}; retrying in {retry_delay}s")
+            except Exception as exc:
+                discord_runtime_state["status"] = "degraded"
+                discord_runtime_state["error"] = f"Discord connection failed: {exc}; retrying in {retry_delay}s"
+                print(f"[discord] bot stopped with error: {exc}; retrying in {retry_delay}s")
+            finally:
+                discord_client_instance = None
+
+            if stop_event.is_set():
+                break
+
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=retry_delay)
+            except asyncio.TimeoutError:
+                pass
+
+            retry_delay = min(retry_delay * 2, DISCORD_RETRY_MAX_SECONDS)
+    except asyncio.CancelledError:
+        raise
     except Exception as exc:
         discord_runtime_state["status"] = "error"
         discord_runtime_state["error"] = str(exc)
         print(f"[discord] bot task crashed: {exc}")
     finally:
-        if discord_runtime_state["status"] not in {"disabled", "error"}:
+        if discord_runtime_state["status"] not in {"disabled", "error", "rate_limited", "degraded"}:
             discord_runtime_state["status"] = "stopped"
             discord_runtime_state["error"] = None
         discord_client_instance = None
