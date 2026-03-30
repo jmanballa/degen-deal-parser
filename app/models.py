@@ -258,3 +258,13 @@ class BackfillRequest(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, index=True)
     started_at: Optional[datetime] = Field(default=None, index=True)
     finished_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class OperationsLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_type: str = Field(index=True)
+    level: str = Field(default="info", index=True)
+    source: str = Field(default="system", index=True)
+    message: str
+    details_json: str = "{}"
+    created_at: datetime = Field(default_factory=utcnow, index=True)

@@ -56,6 +56,7 @@
                     <a class="button secondary-button" href="/deals">Deals</a>
                     <a class="button secondary-button" href="/reports">Reports</a>
                     <a class="button secondary-button" href="/status">Status</a>
+                    <a class="button secondary-button" href="/ops-log">Ops Log</a>
                     {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/admin">Admin Hub</a>{% endif %}
                     {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
                     <form method="post" action="/logout" style="display:inline;"><button type="submit" class="button secondary-button">Log Out</button></form>

@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 
 from .db import managed_session
 from .models import BackfillRequest
+from .ops_log import write_operations_log
 
 BACKFILL_POLL_SECONDS = 5.0
 
@@ -38,7 +39,30 @@ def enqueue_backfill_request(
     session.add(request)
     session.commit()
     session.refresh(request)
+    write_operations_log(
+        session,
+        event_type="backfill_queued",
+        source="web",
+        message=f"Queued backfill request {request.id} for {channel_id or 'all backfill-enabled watched channels'}",
+        details={
+            "request_id": request.id,
+            "channel_id": channel_id,
+            "after": after.isoformat() if after else None,
+            "before": before.isoformat() if before else None,
+            "limit_per_channel": limit_per_channel,
+            "oldest_first": oldest_first,
+            "requested_by": requested_by,
+        },
+    )
     return request
+
+
+def list_recent_backfill_requests(session: Session, limit: int = 10) -> list[BackfillRequest]:
+    return session.exec(
+        select(BackfillRequest)
+        .order_by(BackfillRequest.created_at.desc(), BackfillRequest.id.desc())
+        .limit(limit)
+    ).all()
 
 
 def claim_next_backfill_request(session: Session) -> Optional[BackfillRequest]:
@@ -57,6 +81,21 @@ def claim_next_backfill_request(session: Session) -> Optional[BackfillRequest]:
     session.add(request)
     session.commit()
     session.refresh(request)
+    write_operations_log(
+        session,
+        event_type="backfill_started",
+        source="worker",
+        message=f"Started backfill request {request.id} for {request.channel_id or 'all backfill-enabled watched channels'}",
+        details={
+            "request_id": request.id,
+            "channel_id": request.channel_id,
+            "after": request.after.isoformat() if request.after else None,
+            "before": request.before.isoformat() if request.before else None,
+            "limit_per_channel": request.limit_per_channel,
+            "oldest_first": request.oldest_first,
+            "requested_by": request.requested_by,
+        },
+    )
     return request
 
 
@@ -83,6 +122,26 @@ def mark_backfill_request_complete(
     )
     session.add(request)
     session.commit()
+    write_operations_log(
+        session,
+        event_type="backfill_completed" if ok else "backfill_failed",
+        level="info" if ok else "error",
+        source="worker",
+        message=(
+            f"Completed backfill request {request.id}: inserted={request.inserted_count}, skipped={request.skipped_count}"
+            if ok else
+            f"Backfill request {request.id} failed: {request.error_message or 'unknown error'}"
+        ),
+        details={
+            "request_id": request.id,
+            "channel_id": request.channel_id,
+            "status": request.status,
+            "inserted_count": request.inserted_count,
+            "skipped_count": request.skipped_count,
+            "error_message": request.error_message,
+            "result": result,
+        },
+    )
 
 
 async def process_backfill_request_once(client) -> bool:
@@ -131,6 +190,15 @@ async def backfill_request_loop(stop_event: asyncio.Event, get_client) -> None:
             processed = await process_backfill_request_once(get_client())
         except Exception as exc:
             print(f"[backfill] queue loop error: {exc}")
+            with managed_session() as session:
+                write_operations_log(
+                    session,
+                    event_type="backfill_loop_error",
+                    level="error",
+                    source="worker",
+                    message=f"Backfill queue loop error: {exc}",
+                    details={"error": str(exc)},
+                )
             processed = False
 
         if processed:

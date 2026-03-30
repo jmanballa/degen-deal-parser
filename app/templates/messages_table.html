@@ -348,6 +348,23 @@
                                 <div class="form-row"><label for="oldest_first">Order</label><select name="oldest_first" id="oldest_first"><option value="true">Oldest first</option><option value="false">Newest first</option></select></div>
                                 <button type="submit" class="primary-button">Run Backfill</button>
                             </form>
+                            <div style="margin-bottom:14px;">
+                                <div class="side-summary" style="text-transform:uppercase; letter-spacing:.08em;">Recent Backfill Requests</div>
+                                {% for job in recent_backfill_requests %}
+                                <div class="channel-item" style="margin-top:10px;">
+                                    <strong>Request {{ job["id"] }} | {{ job["status"].replace("_", " ") }}</strong>
+                                    <div class="small-line">Target: {{ job["target_label"] }}</div>
+                                    <div class="small-line">Range: {{ job["after"] }} to {{ job["before"] }}</div>
+                                    <div class="small-line">Requested by {{ job["requested_by"] }} at {{ job["created_at"] }}</div>
+                                    {% if job["started_at"] %}<div class="small-line">Started: {{ job["started_at"] }}</div>{% endif %}
+                                    {% if job["finished_at"] %}<div class="small-line">Finished: {{ job["finished_at"] }}</div>{% endif %}
+                                    {% if job["status"] == "completed" %}<div class="small-line">Inserted: {{ job["inserted_count"] }} | Skipped: {{ job["skipped_count"] }}</div>{% endif %}
+                                    {% if job["error_message"] %}<div class="small-line" style="color:#a23f28;">Error: {{ job["error_message"] }}</div>{% endif %}
+                                </div>
+                                {% else %}
+                                <div class="helper">No backfill requests yet.</div>
+                                {% endfor %}
+                            </div>
                             <div class="inline-actions">
                                 <form method="post" action="/admin/recompute-financials/form" onsubmit="return confirm('Recompute financial fields for all parsed messages?');"><button type="submit" class="secondary-button tiny-button">Recompute Financials</button></form>
                                 <form method="post" action="/admin/rebuild-transactions/form" onsubmit="return confirm('Rebuild normalized transactions from current parsed messages?');"><button type="submit" class="secondary-button tiny-button">Rebuild Transactions</button></form>

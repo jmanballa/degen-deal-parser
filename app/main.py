@@ -30,7 +30,7 @@ from .bookkeeping import (
     list_detected_bookkeeping_posts,
     reconcile_bookkeeping_import,
 )
-from .backfill_requests import enqueue_backfill_request
+from .backfill_requests import enqueue_backfill_request, list_recent_backfill_requests
 from .channels import (
     get_available_channel_choices,
     get_channel_filter_choices,
@@ -58,6 +58,7 @@ from .discord_ingest import (
 )
 from .financials import compute_financials
 from .models import AttachmentAsset, BookkeepingImport, DiscordMessage, ParseAttempt, User, WatchedChannel, utcnow
+from .ops_log import list_operations_logs
 from .reporting import build_financial_summary, get_financial_rows, parse_report_datetime
 from .runtime_monitor import get_runtime_heartbeat_status, runtime_heartbeat_loop
 from .schemas import HealthOut
@@ -1100,6 +1101,27 @@ def status_json(
     return build_status_snapshot(session)
 
 
+@app.get("/ops-log", response_class=HTMLResponse)
+def operations_log_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    return templates.TemplateResponse(
+        request,
+        "ops_log.html",
+        {
+            "request": request,
+            "title": "Operations Log",
+            "current_user": getattr(request.state, "current_user", None),
+            "logs": serialize_operations_logs(list_operations_logs(session)),
+            "snapshot": build_status_snapshot(session),
+        },
+    )
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_home_page(
     request: Request,
@@ -1363,6 +1385,76 @@ def queue_backfill_request(
         f"Queued+backfill+request+{queued.id}+for+{target}."
         "+The+worker+will+run+it+when+Discord+is+ready."
     )
+
+
+def get_backfill_target_channel_ids(
+    session: Session,
+    *,
+    channel_id: Optional[str],
+) -> list[str]:
+    if channel_id:
+        return [str(channel_id)]
+
+    return [
+        row.channel_id
+        for row in get_watched_channels(session)
+        if row.backfill_enabled
+    ]
+
+
+def persist_backfill_window_for_targets(
+    session: Session,
+    *,
+    channel_ids: list[str],
+    after_dt: Optional[datetime],
+    before_dt: Optional[datetime],
+) -> None:
+    if not channel_ids:
+        return
+
+    for target_channel_id in channel_ids:
+        update_backfill_window(
+            session,
+            channel_id=target_channel_id,
+            backfill_after=after_dt,
+            backfill_before=before_dt,
+        )
+    session.commit()
+
+
+def serialize_backfill_requests(rows: list) -> list[dict]:
+    return [
+        {
+            "id": row.id,
+            "channel_id": row.channel_id or "",
+            "target_label": row.channel_id or "all backfill-enabled watched channels",
+            "status": row.status,
+            "requested_by": row.requested_by or "system",
+            "after": format_pacific_datetime(row.after) if row.after else "no start",
+            "before": format_pacific_datetime(row.before) if row.before else "no end",
+            "inserted_count": row.inserted_count,
+            "skipped_count": row.skipped_count,
+            "created_at": format_pacific_datetime(row.created_at),
+            "started_at": format_pacific_datetime(row.started_at) if row.started_at else "",
+            "finished_at": format_pacific_datetime(row.finished_at) if row.finished_at else "",
+            "error_message": row.error_message or "",
+        }
+        for row in rows
+    ]
+
+
+def serialize_operations_logs(rows: list) -> list[dict]:
+    return [
+        {
+            "id": row.id,
+            "event_type": row.event_type,
+            "level": row.level,
+            "source": row.source,
+            "message": row.message,
+            "created_at": format_pacific_datetime(row.created_at),
+        }
+        for row in rows
+    ]
 
 
 def recompute_financial_fields(session: Session) -> int:
@@ -2750,8 +2842,17 @@ async def admin_backfill(
     session: Session = Depends(get_session),
 ):
     _, _, after_dt, before_dt = validate_backfill_range(after, before)
+    target_channel_ids = get_backfill_target_channel_ids(session, channel_id=channel_id)
+    if not target_channel_ids:
+        raise HTTPException(status_code=400, detail="No backfill-enabled watched channels are available for this request")
     client = get_discord_client()
     if client is None or not client.is_ready():
+        persist_backfill_window_for_targets(
+            session,
+            channel_ids=target_channel_ids,
+            after_dt=after_dt,
+            before_dt=before_dt,
+        )
         queued_message = queue_backfill_request(
             session,
             request,
@@ -2792,8 +2893,20 @@ async def admin_backfill_form(
 ):
     try:
         _, _, after_dt, before_dt = validate_backfill_range(after, before)
+        target_channel_ids = get_backfill_target_channel_ids(session, channel_id=channel_id)
+        if not target_channel_ids:
+            return RedirectResponse(
+                url="/table?error=No+backfill-enabled+watched+channels+are+available+for+this+request",
+                status_code=303,
+            )
         client = get_discord_client()
         if client is None or not client.is_ready():
+            persist_backfill_window_for_targets(
+                session,
+                channel_ids=target_channel_ids,
+                after_dt=after_dt,
+                before_dt=before_dt,
+            )
             queued_message = queue_backfill_request(
                 session,
                 request,
@@ -2813,14 +2926,12 @@ async def admin_backfill_form(
                 before=before_dt,
             )
             if result.get("ok"):
-                with managed_session() as session:
-                    update_backfill_window(
-                        session,
-                        channel_id=str(channel_id),
-                        backfill_after=after_dt,
-                        backfill_before=before_dt,
-                    )
-                    session.commit()
+                persist_backfill_window_for_targets(
+                    session,
+                    channel_ids=target_channel_ids,
+                    after_dt=after_dt,
+                    before_dt=before_dt,
+                )
                 channel_name = result.get("channel_name") or result.get("channel_id")
                 msg = f"Backfill complete for {channel_name}: inserted={result.get('inserted', 0)}, skipped={result.get('skipped', 0)}"
                 return RedirectResponse(url=f"/table?success={msg}", status_code=303)
@@ -2835,18 +2946,12 @@ async def admin_backfill_form(
         )
         if not result.get("ok"):
             return RedirectResponse(url="/table?error=Backfill+failed+for+one+or+more+channels", status_code=303)
-        with managed_session() as session:
-            watched_channels = get_watched_channels(session)
-            for watched_channel in watched_channels:
-                if not watched_channel.backfill_enabled:
-                    continue
-                update_backfill_window(
-                    session,
-                    channel_id=watched_channel.channel_id,
-                    backfill_after=after_dt,
-                    backfill_before=before_dt,
-                )
-            session.commit()
+        persist_backfill_window_for_targets(
+            session,
+            channel_ids=target_channel_ids,
+            after_dt=after_dt,
+            before_dt=before_dt,
+        )
         msg = f"Backfill complete: inserted={result.get('total_inserted', 0)}, skipped={result.get('total_skipped', 0)}"
         return RedirectResponse(url=f"/table?success={msg}", status_code=303)
 
@@ -2901,6 +3006,7 @@ def messages_table(
         channel_id=channel_id,
     )
     financial_summary = build_financial_summary(financial_rows)
+    recent_backfill_requests = serialize_backfill_requests(list_recent_backfill_requests(session))
     pagination = build_pagination(page=page, limit=limit, total_rows=total_rows)
     parser_progress = get_parser_progress(
         session,
@@ -2930,6 +3036,7 @@ def messages_table(
             "pagination": pagination,
             "summary": summary,
             "financial_summary": financial_summary,
+            "recent_backfill_requests": recent_backfill_requests,
             "parser_progress": parser_progress,
             "success": success,
             "error": error,
@@ -2988,6 +3095,7 @@ def review_table(
     watched_channels = get_watched_channels(session)
     available_discord_channels, has_live_available_discord_channels = get_available_channel_choices(session)
     watched_channel_groups = build_watched_channel_groups(watched_channels, available_discord_channels)
+    recent_backfill_requests = serialize_backfill_requests(list_recent_backfill_requests(session))
     parser_progress = get_parser_progress(
         session,
         status="review_queue",
@@ -3017,6 +3125,7 @@ def review_table(
             "pagination": pagination,
             "summary": summary,
             "financial_summary": financial_summary,
+            "recent_backfill_requests": recent_backfill_requests,
             "parser_progress": parser_progress,
             "success": success,
             "error": error,
