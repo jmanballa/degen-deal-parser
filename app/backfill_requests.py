@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -10,6 +10,8 @@ from .models import BackfillRequest
 from .ops_log import write_operations_log
 
 BACKFILL_POLL_SECONDS = 5.0
+BACKFILL_REQUEST_TIMEOUT_SECONDS = 300
+STALE_BACKFILL_AFTER = timedelta(minutes=15)
 
 
 def utcnow() -> datetime:
@@ -63,6 +65,47 @@ def list_recent_backfill_requests(session: Session, limit: int = 10) -> list[Bac
         .order_by(BackfillRequest.created_at.desc(), BackfillRequest.id.desc())
         .limit(limit)
     ).all()
+
+
+def recover_stale_backfill_requests(session: Session) -> int:
+    cutoff = utcnow() - STALE_BACKFILL_AFTER
+    rows = session.exec(
+        select(BackfillRequest)
+        .where(BackfillRequest.status == "processing")
+        .order_by(BackfillRequest.started_at, BackfillRequest.id)
+    ).all()
+
+    recovered = 0
+    for row in rows:
+        started_at = row.started_at or row.created_at
+        if started_at is None:
+            continue
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        if started_at >= cutoff:
+            continue
+
+        row.status = "failed"
+        row.finished_at = utcnow()
+        row.error_message = "Recovered stale backfill request after worker interruption or timeout."
+        session.add(row)
+        session.commit()
+        write_operations_log(
+            session,
+            event_type="backfill_recovered_stale",
+            level="error",
+            source="worker",
+            message=f"Recovered stale backfill request {row.id}",
+            details={
+                "request_id": row.id,
+                "channel_id": row.channel_id,
+                "started_at": started_at.isoformat(),
+                "cutoff": cutoff.isoformat(),
+            },
+        )
+        recovered += 1
+
+    return recovered
 
 
 def claim_next_backfill_request(session: Session) -> Optional[BackfillRequest]:
@@ -156,20 +199,31 @@ async def process_backfill_request_once(client) -> bool:
 
     try:
         if request.channel_id:
-            result = await client.backfill_channel(
-                channel_id=int(request.channel_id),
-                after=request.after,
-                before=request.before,
-                limit=request.limit_per_channel,
-                oldest_first=request.oldest_first,
+            result = await asyncio.wait_for(
+                client.backfill_channel(
+                    channel_id=int(request.channel_id),
+                    after=request.after,
+                    before=request.before,
+                    limit=request.limit_per_channel,
+                    oldest_first=request.oldest_first,
+                ),
+                timeout=BACKFILL_REQUEST_TIMEOUT_SECONDS,
             )
         else:
-            result = await client.backfill_enabled_channels(
-                after=request.after,
-                before=request.before,
-                limit_per_channel=request.limit_per_channel,
-                oldest_first=request.oldest_first,
+            result = await asyncio.wait_for(
+                client.backfill_enabled_channels(
+                    after=request.after,
+                    before=request.before,
+                    limit_per_channel=request.limit_per_channel,
+                    oldest_first=request.oldest_first,
+                ),
+                timeout=BACKFILL_REQUEST_TIMEOUT_SECONDS,
             )
+    except asyncio.TimeoutError:
+        result = {
+            "ok": False,
+            "error": f"Backfill request timed out after {BACKFILL_REQUEST_TIMEOUT_SECONDS} seconds",
+        }
     except Exception as exc:
         result = {"ok": False, "error": str(exc)}
 
@@ -187,6 +241,8 @@ async def process_backfill_request_once(client) -> bool:
 async def backfill_request_loop(stop_event: asyncio.Event, get_client) -> None:
     while not stop_event.is_set():
         try:
+            with managed_session() as session:
+                recover_stale_backfill_requests(session)
             processed = await process_backfill_request_once(get_client())
         except Exception as exc:
             print(f"[backfill] queue loop error: {exc}")
