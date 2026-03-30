@@ -3,7 +3,7 @@ import json
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 import discord
 import httpx
@@ -35,6 +35,7 @@ ALLOWED_CHANNEL_CATEGORIES = {
     "Past Shows",
     "Offline Deals",
 }
+BACKFILL_PROGRESS_EVERY_MESSAGES = 25
 TRANSACTION_CHANNEL_NAME_HINTS = (
     "deal",
     "deals",
@@ -432,6 +433,7 @@ class DealIngestBot(discord.Client):
         oldest_first: bool = True,
         after: Optional[datetime] = None,
         before: Optional[datetime] = None,
+        progress_callback: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> dict:
         watched_channel_ids = get_enabled_channel_ids()
         if channel_id not in watched_channel_ids:
@@ -462,6 +464,23 @@ class DealIngestBot(discord.Client):
         inserted_count = 0
         updated_count = 0
         skipped_count = 0
+        processed_count = 0
+
+        if progress_callback:
+            await progress_callback(
+                {
+                    "event_type": "backfill_channel_started",
+                    "message": f"Started channel backfill for {getattr(channel, 'name', channel_id)}",
+                    "details": {
+                        "channel_id": channel_id,
+                        "channel_name": getattr(channel, "name", None),
+                        "after": after.isoformat() if after else None,
+                        "before": before.isoformat() if before else None,
+                        "limit": limit,
+                        "oldest_first": oldest_first,
+                    },
+                }
+            )
 
         try:
             async for message in channel.history(
@@ -470,28 +489,93 @@ class DealIngestBot(discord.Client):
                 after=after,
                 before=before,
             ):
+                processed_count += 1
                 if not should_track_message(message, watched_channel_ids):
                     skipped_count += 1
-                    continue
-
-                ok, action = insert_or_update_message(
-                    message,
-                    is_edit=False,
-                    watched_channel_ids=watched_channel_ids,
-                )
-                if not ok:
-                    skipped_count += 1
-                elif action == "inserted":
-                    inserted_count += 1
                 else:
-                    updated_count += 1
+                    ok, action = insert_or_update_message(
+                        message,
+                        is_edit=False,
+                        watched_channel_ids=watched_channel_ids,
+                    )
+                    if not ok:
+                        skipped_count += 1
+                    elif action == "inserted":
+                        inserted_count += 1
+                    else:
+                        updated_count += 1
+
+                if progress_callback and (
+                    processed_count == 1
+                    or processed_count % BACKFILL_PROGRESS_EVERY_MESSAGES == 0
+                ):
+                    preview = (message.content or "").strip().replace("\n", " ")
+                    if len(preview) > 140:
+                        preview = f"{preview[:137]}..."
+                    await progress_callback(
+                        {
+                            "event_type": "backfill_channel_progress",
+                            "message": (
+                                f"{getattr(channel, 'name', channel_id)}: processed {processed_count} messages "
+                                f"(inserted={inserted_count}, updated={updated_count}, skipped={skipped_count})"
+                            ),
+                            "details": {
+                                "channel_id": channel_id,
+                                "channel_name": getattr(channel, "name", None),
+                                "processed_count": processed_count,
+                                "inserted_count": inserted_count,
+                                "updated_count": updated_count,
+                                "skipped_count": skipped_count,
+                                "last_message_id": str(message.id),
+                                "last_message_author": getattr(message.author, "display_name", None) or getattr(message.author, "name", None),
+                                "last_message_created_at": message.created_at.isoformat() if getattr(message, "created_at", None) else None,
+                                "last_message_preview": preview,
+                            },
+                        }
+                    )
         except Exception as e:
+            if progress_callback:
+                await progress_callback(
+                    {
+                        "event_type": "backfill_channel_failed",
+                        "level": "error",
+                        "message": f"Channel backfill failed for {getattr(channel, 'name', channel_id)}: {e}",
+                        "details": {
+                            "channel_id": channel_id,
+                            "channel_name": getattr(channel, "name", None),
+                            "processed_count": processed_count,
+                            "inserted_count": inserted_count,
+                            "updated_count": updated_count,
+                            "skipped_count": skipped_count,
+                            "error": str(e),
+                        },
+                    }
+                )
             return {
                 "ok": False,
                 "channel_id": channel_id,
                 "channel_name": getattr(channel, "name", None),
                 "error": f"Backfill failed while reading channel history: {e}",
             }
+
+        if progress_callback:
+            await progress_callback(
+                {
+                    "event_type": "backfill_channel_completed",
+                    "message": (
+                        f"Completed channel backfill for {getattr(channel, 'name', channel_id)}: "
+                        f"processed={processed_count}, inserted={inserted_count}, updated={updated_count}, skipped={skipped_count}"
+                    ),
+                    "details": {
+                        "channel_id": channel_id,
+                        "channel_name": getattr(channel, "name", None),
+                        "processed_count": processed_count,
+                        "inserted_count": inserted_count,
+                        "updated_count": updated_count,
+                        "skipped_count": skipped_count,
+                    },
+                }
+            )
 
         return {
             "ok": True,
@@ -511,6 +595,7 @@ class DealIngestBot(discord.Client):
         oldest_first: bool = True,
         after: Optional[datetime] = None,
         before: Optional[datetime] = None,
+        progress_callback: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> dict:
         total_inserted = 0
         total_updated = 0
@@ -523,6 +608,18 @@ class DealIngestBot(discord.Client):
             channel_before = before if before is not None else watched_channel.backfill_before
 
             if after is None and before is None and channel_after is None and channel_before is None:
+                if progress_callback:
+                    await progress_callback(
+                        {
+                            "event_type": "backfill_channel_skipped",
+                            "message": f"Skipped channel {watched_channel.channel_name or watched_channel.channel_id}: no backfill range configured",
+                            "details": {
+                                "channel_id": int(watched_channel.channel_id),
+                                "channel_name": watched_channel.channel_name,
+                                "skipped_reason": "no backfill range configured",
+                            },
+                        }
+                    )
                 results.append(
                     {
                         "ok": True,
@@ -542,6 +639,7 @@ class DealIngestBot(discord.Client):
                 oldest_first=oldest_first,
                 after=channel_after,
                 before=channel_before,
+                progress_callback=progress_callback,
             )
             results.append(result)
 

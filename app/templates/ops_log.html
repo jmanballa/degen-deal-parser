@@ -73,6 +73,9 @@
                     <span class="pill {{ row['level'] }}">{{ row["level"] }}</span>
                     <span class="pill">{{ row["source"] }}</span>
                     <span class="pill">{{ row["event_type"].replace("_", " ") }}</span>
+                    {% if row["details"].get("request_id") %}
+                    <a class="button" href="/ops-log/backfill/{{ row['details']['request_id'] }}" style="padding:6px 10px; font-size:12px;">Request {{ row["details"]["request_id"] }}</a>
+                    {% endif %}
                 </div>
                 <div>{{ row["message"] }}</div>
             </div>

@@ -38,3 +38,27 @@ def list_operations_logs(
         .order_by(OperationsLog.created_at.desc(), OperationsLog.id.desc())
         .limit(limit)
     ).all()
+
+
+def parse_operations_log_details(row: OperationsLog) -> dict:
+    try:
+        return json.loads(row.details_json or "{}")
+    except json.JSONDecodeError:
+        return {}
+
+
+def list_operations_logs_for_backfill_request(
+    session: Session,
+    *,
+    request_id: int,
+    limit: int = 300,
+) -> list[OperationsLog]:
+    rows = list_operations_logs(session, limit=max(limit * 4, 500))
+    filtered: list[OperationsLog] = []
+    for row in rows:
+        details = parse_operations_log_details(row)
+        if details.get("request_id") == request_id:
+            filtered.append(row)
+        if len(filtered) >= limit:
+            break
+    return filtered

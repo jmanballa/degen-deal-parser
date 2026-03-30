@@ -185,6 +185,27 @@ def claim_next_backfill_request(session: Session) -> Optional[dict]:
     return payload
 
 
+def log_backfill_request_progress(
+    request_id: int,
+    *,
+    event_type: str,
+    message: str,
+    level: str = "info",
+    source: str = "worker",
+    details: Optional[dict] = None,
+) -> None:
+    payload = {"request_id": request_id, **(details or {})}
+    with managed_session() as session:
+        write_operations_log(
+            session,
+            event_type=event_type,
+            level=level,
+            source=source,
+            message=message,
+            details=payload,
+        )
+
+
 def mark_backfill_request_complete(
     session: Session,
     request_id: int,
@@ -240,6 +261,19 @@ async def process_backfill_request_once(client) -> bool:
     if not request or request.get("id") is None:
         return False
 
+    async def progress_callback(payload: dict) -> None:
+        event_type = str(payload.get("event_type") or "backfill_progress")
+        message = str(payload.get("message") or f"Backfill request {request['id']} progress update")
+        level = str(payload.get("level") or "info")
+        details = dict(payload.get("details") or {})
+        log_backfill_request_progress(
+            request["id"],
+            event_type=event_type,
+            message=message,
+            level=level,
+            details=details,
+        )
+
     try:
         if request["channel_id"]:
             result = await asyncio.wait_for(
@@ -249,6 +283,7 @@ async def process_backfill_request_once(client) -> bool:
                     before=request["before"],
                     limit=request["limit_per_channel"],
                     oldest_first=request["oldest_first"],
+                    progress_callback=progress_callback,
                 ),
                 timeout=BACKFILL_REQUEST_TIMEOUT_SECONDS,
             )
@@ -259,6 +294,7 @@ async def process_backfill_request_once(client) -> bool:
                     before=request["before"],
                     limit_per_channel=request["limit_per_channel"],
                     oldest_first=request["oldest_first"],
+                    progress_callback=progress_callback,
                 ),
                 timeout=BACKFILL_REQUEST_TIMEOUT_SECONDS,
             )

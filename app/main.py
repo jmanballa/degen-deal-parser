@@ -57,8 +57,8 @@ from .discord_ingest import (
     seed_channels_from_env,
 )
 from .financials import compute_financials
-from .models import AttachmentAsset, BookkeepingImport, DiscordMessage, ParseAttempt, User, WatchedChannel, utcnow
-from .ops_log import list_operations_logs
+from .models import AttachmentAsset, BackfillRequest, BookkeepingImport, DiscordMessage, ParseAttempt, User, WatchedChannel, utcnow
+from .ops_log import list_operations_logs, list_operations_logs_for_backfill_request, parse_operations_log_details
 from .reporting import build_financial_summary, get_financial_rows, parse_report_datetime
 from .runtime_monitor import get_runtime_heartbeat_status, runtime_heartbeat_loop
 from .schemas import HealthOut
@@ -1122,6 +1122,34 @@ def operations_log_page(
     )
 
 
+@app.get("/ops-log/backfill/{request_id}", response_class=HTMLResponse)
+def backfill_request_detail_page(
+    request_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    row = session.get(BackfillRequest, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Backfill request not found")
+
+    return templates.TemplateResponse(
+        request,
+        "backfill_request_detail.html",
+        {
+            "request": request,
+            "title": f"Backfill Request {request_id}",
+            "current_user": getattr(request.state, "current_user", None),
+            "backfill_request": serialize_backfill_request_detail(row),
+            "logs": serialize_operations_logs(
+                list_operations_logs_for_backfill_request(session, request_id=request_id)
+            ),
+        },
+    )
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_home_page(
     request: Request,
@@ -1438,6 +1466,7 @@ def serialize_backfill_requests(rows: list) -> list[dict]:
             "started_at": format_pacific_datetime(row.started_at) if row.started_at else "",
             "finished_at": format_pacific_datetime(row.finished_at) if row.finished_at else "",
             "error_message": row.error_message or "",
+            "detail_url": f"/ops-log/backfill/{row.id}" if row.id is not None else "",
         }
         for row in rows
     ]
@@ -1452,9 +1481,34 @@ def serialize_operations_logs(rows: list) -> list[dict]:
             "source": row.source,
             "message": row.message,
             "created_at": format_pacific_datetime(row.created_at),
+            "details": parse_operations_log_details(row),
         }
         for row in rows
     ]
+
+
+def serialize_backfill_request_detail(row: BackfillRequest) -> dict:
+    result = {}
+    try:
+        result = json.loads(row.result_json or "{}")
+    except json.JSONDecodeError:
+        result = {}
+
+    return {
+        "id": row.id,
+        "target_label": row.channel_id or "all backfill-enabled watched channels",
+        "status": row.status,
+        "requested_by": row.requested_by or "system",
+        "after": format_pacific_datetime(row.after) if row.after else "no start",
+        "before": format_pacific_datetime(row.before) if row.before else "no end",
+        "inserted_count": row.inserted_count,
+        "skipped_count": row.skipped_count,
+        "created_at": format_pacific_datetime(row.created_at),
+        "started_at": format_pacific_datetime(row.started_at) if row.started_at else "",
+        "finished_at": format_pacific_datetime(row.finished_at) if row.finished_at else "",
+        "error_message": row.error_message or "",
+        "result": result,
+    }
 
 
 def recompute_financial_fields(session: Session) -> int:
