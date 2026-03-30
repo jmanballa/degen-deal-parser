@@ -17,6 +17,18 @@ From the project root:
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
+For fast local UI and design work, use:
+
+```powershell
+.\scripts\run_ui_dev.ps1
+```
+
+That mode:
+- runs against local SQLite at `data/degen_ui_dev.db`
+- disables Discord ingest and parser worker
+- keeps hot reload on for templates and styling
+- avoids shared Postgres latency during design work
+
 Then open:
 - `http://127.0.0.1:8000/login`
 
