@@ -1,16 +1,17 @@
 import asyncio
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
 import discord
 import httpx
-from sqlmodel import Session, select
+from sqlmodel import select
 
 from .bookkeeping import auto_import_public_google_sheet, extract_google_sheet_url
 from .config import get_settings
-from .db import engine
+from .db import engine, managed_session
 from .models import AttachmentAsset, DiscordMessage, WatchedChannel
 
 settings = get_settings()
@@ -19,6 +20,11 @@ discord_client_instance = None
 discord_runtime_state = {
     "status": "stopped",
     "error": None,
+}
+_available_channels_cache_lock = threading.Lock()
+_available_channels_cache = {
+    "expires_at": 0.0,
+    "channels": [],
 }
 DISCORD_RETRY_MIN_SECONDS = 15
 DISCORD_RETRY_MAX_SECONDS = 900
@@ -43,12 +49,6 @@ TRANSACTION_CHANNEL_NAME_HINTS = (
     "expo",
 )
 IMAGE_ATTACHMENT_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
-
-# Channel ID set is stable between admin changes; cache for 30 s to avoid a
-# DB round-trip on every single Discord on_message event.
-_channel_id_cache: Optional[set[int]] = None
-_channel_id_cache_at: float = 0.0
-_CHANNEL_ID_CACHE_TTL: float = 30.0
 
 
 def utcnow() -> datetime:
@@ -78,22 +78,15 @@ def parse_iso_datetime(value: Optional[str], *, end_of_day: bool = False) -> Opt
 
 
 def get_enabled_channel_ids() -> set[int]:
-    global _channel_id_cache, _channel_id_cache_at
-    now = time.monotonic()
-    if _channel_id_cache is not None and now - _channel_id_cache_at < _CHANNEL_ID_CACHE_TTL:
-        return _channel_id_cache
-    with Session(engine) as session:
+    with managed_session() as session:
         rows = session.exec(
             select(WatchedChannel).where(WatchedChannel.is_enabled == True)
         ).all()
-        result = {int(r.channel_id) for r in rows}
-    _channel_id_cache = result
-    _channel_id_cache_at = now
-    return result
+        return {int(r.channel_id) for r in rows}
 
 
 def get_backfill_channel_ids() -> set[int]:
-    with Session(engine) as session:
+    with managed_session() as session:
         rows = session.exec(
             select(WatchedChannel).where(
                 WatchedChannel.is_enabled == True,
@@ -104,7 +97,7 @@ def get_backfill_channel_ids() -> set[int]:
 
 
 def get_backfill_channels() -> list[WatchedChannel]:
-    with Session(engine) as session:
+    with managed_session() as session:
         return session.exec(
             select(WatchedChannel)
             .where(
@@ -116,7 +109,7 @@ def get_backfill_channels() -> list[WatchedChannel]:
 
 
 def seed_channels_from_env() -> None:
-    with Session(engine) as session:
+    with managed_session() as session:
         existing = session.exec(select(WatchedChannel)).all()
         existing_by_id = {row.channel_id: row for row in existing}
 
@@ -163,57 +156,44 @@ def get_attachment_payloads(message: discord.Message) -> list[dict]:
 
 
 def sync_attachment_assets(message_id: int, attachment_payloads: list[dict]) -> None:
-    payload_urls = {payload["url"] for payload in attachment_payloads}
-
-    # Phase 1: read current state — short session, no I/O blocking.
-    with Session(engine) as session:
+    with managed_session() as session:
         existing_assets = session.exec(
             select(AttachmentAsset).where(AttachmentAsset.message_id == message_id)
         ).all()
-        existing_urls = {asset.source_url for asset in existing_assets}
-        stale_ids = [asset.id for asset in existing_assets if asset.source_url not in payload_urls]
+        existing_by_url = {asset.source_url: asset for asset in existing_assets}
+        keep_urls = {payload["url"] for payload in attachment_payloads}
 
-    missing_payloads = [p for p in attachment_payloads if p["url"] not in existing_urls]
-
-    # Phase 2: download outside any DB session so we don't hold a Postgres
-    # connection open while waiting on Discord's CDN (can take several seconds).
-    downloaded: list[dict] = []
-    if missing_payloads:
-        with httpx.Client(follow_redirects=True, timeout=20.0) as client:
-            for payload in missing_payloads:
-                try:
-                    response = client.get(payload["url"])
-                    response.raise_for_status()
-                except Exception as exc:
-                    print(f"[attachments] failed to cache {payload['url']}: {exc}")
-                    continue
-                downloaded.append({
-                    "payload": payload,
-                    "content": response.content,
-                    "content_type": payload.get("content_type") or response.headers.get("content-type"),
-                })
-
-    if not stale_ids and not downloaded:
-        return
-
-    # Phase 3: write results — short session.
-    with Session(engine) as session:
-        for stale_id in stale_ids:
-            asset = session.get(AttachmentAsset, stale_id)
-            if asset:
+        for asset in existing_assets:
+            if asset.source_url not in keep_urls:
                 session.delete(asset)
-        for item in downloaded:
-            payload = item["payload"]
-            session.add(
-                AttachmentAsset(
-                    message_id=message_id,
-                    source_url=payload["url"],
-                    filename=payload.get("filename"),
-                    content_type=item["content_type"],
-                    is_image=bool(payload.get("is_image")),
-                    data=item["content"],
-                )
-            )
+
+        missing_payloads = [
+            payload
+            for payload in attachment_payloads
+            if payload["url"] not in existing_by_url
+        ]
+
+        if missing_payloads:
+            with httpx.Client(follow_redirects=True, timeout=20.0) as client:
+                for payload in missing_payloads:
+                    try:
+                        response = client.get(payload["url"])
+                        response.raise_for_status()
+                    except Exception as exc:
+                        print(f"[attachments] failed to cache {payload['url']}: {exc}")
+                        continue
+
+                    session.add(
+                        AttachmentAsset(
+                            message_id=message_id,
+                            source_url=payload["url"],
+                            filename=payload.get("filename"),
+                            content_type=payload.get("content_type") or response.headers.get("content-type"),
+                            is_image=bool(payload.get("is_image")),
+                            data=response.content,
+                        )
+                    )
+
         session.commit()
 
 
@@ -259,7 +239,7 @@ def insert_or_update_message(
     attachment_payloads = get_attachment_payloads(message)
     attachment_urls = [payload["url"] for payload in attachment_payloads]
 
-    with Session(engine) as session:
+    with managed_session() as session:
         existing = get_message_row(session, str(message.id))
 
         if existing:
@@ -322,7 +302,7 @@ async def maybe_auto_import_bookkeeping_message(message: discord.Message) -> Non
 
 
 def mark_message_deleted(message: discord.Message) -> bool:
-    with Session(engine) as session:
+    with managed_session() as session:
         existing = get_message_row(session, str(message.id))
         if not existing:
             return False
@@ -635,6 +615,11 @@ def looks_like_transaction_channel(channel_name: str, category_name: Optional[st
 
 
 def list_available_discord_channels() -> list[dict]:
+    now = time.monotonic()
+    with _available_channels_cache_lock:
+        if float(_available_channels_cache["expires_at"]) > now:
+            return list(_available_channels_cache["channels"])
+
     client = get_discord_client()
     if client is None or client.is_closed() or not client.is_ready():
         return []
@@ -674,4 +659,7 @@ def list_available_discord_channels() -> list[dict]:
             x["channel_name"].lower(),
         )
     )
+    with _available_channels_cache_lock:
+        _available_channels_cache["channels"] = list(channels)
+        _available_channels_cache["expires_at"] = now + 30.0
     return channels

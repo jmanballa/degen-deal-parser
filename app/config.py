@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     reviewer_username: str = Field(default="", alias="REVIEWER_USERNAME")
     reviewer_password: str = Field(default="", alias="REVIEWER_PASSWORD")
     reviewer_display_name: str = Field(default="Reviewer", alias="REVIEWER_DISPLAY_NAME")
+    auth_reseed_passwords: bool = Field(default=False, alias="AUTH_RESEED_PASSWORDS")
+    runtime_name: str = Field(default="local_ingest", alias="RUNTIME_NAME")
+    runtime_label: str = Field(default="Ingest Worker", alias="RUNTIME_LABEL")
 
     @property
     def channel_ids(self) -> List[int]:

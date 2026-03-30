@@ -8,7 +8,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, select
 
 from .config import get_settings
-from .db import dispose_engine, engine
+from .db import dispose_engine, engine, managed_session
 from .financials import compute_financials
 from .models import DiscordMessage, ParseAttempt
 from .parser import parse_message, TimedOutRowError
@@ -16,6 +16,7 @@ from .transactions import sync_transaction_from_message
 
 settings = get_settings()
 STALE_PROCESSING_AFTER = timedelta(minutes=10)
+STALE_RECOVERY_ERROR = "Recovered from stale processing state after worker interruption."
 
 
 def utcnow():
@@ -29,7 +30,6 @@ def close_or_recover_unfinished_attempts(session: Session) -> None:
         select(ParseAttempt)
         .where(ParseAttempt.finished_at == None)  # noqa: E711
         .order_by(ParseAttempt.started_at)
-        .limit(500)
     ).all()
 
     changed = False
@@ -57,13 +57,25 @@ def close_or_recover_unfinished_attempts(session: Session) -> None:
 
         if row.parse_status == "processing" and attempt_started_at and attempt_started_at < cutoff:
             row.parse_status = "queued"
-            row.last_error = "Recovered from stale processing state after worker interruption."
+            row.last_error = STALE_RECOVERY_ERROR
+            row.parse_attempts = max((row.parse_attempts or 0) - 1, 0)
             attempt.finished_at = recovery_now
             attempt.success = False
             attempt.error = "recovered stale processing attempt"
             session.add(row)
             session.add(attempt)
             changed = True
+
+    recovered_rows = session.exec(
+        select(DiscordMessage)
+        .where(DiscordMessage.parse_status == "queued")
+        .where(DiscordMessage.parse_attempts >= settings.parser_max_attempts)
+        .where(DiscordMessage.last_error == STALE_RECOVERY_ERROR)
+    ).all()
+    for row in recovered_rows:
+        row.parse_attempts = max(settings.parser_max_attempts - 1, 0)
+        session.add(row)
+        changed = True
 
     if changed:
         session.commit()
@@ -149,7 +161,7 @@ async def parser_loop(stop_event: asyncio.Event):
 async def process_once():
     row_ids: list[int] = []
 
-    with Session(engine) as session:
+    with managed_session() as session:
         close_or_recover_unfinished_attempts(session)
 
         rows = session.exec(
@@ -181,7 +193,7 @@ async def process_once():
 
 
 async def process_row(row_id: int):
-    with Session(engine) as session:
+    with managed_session() as session:
         row = session.get(DiscordMessage, row_id)
         if not row:
             return

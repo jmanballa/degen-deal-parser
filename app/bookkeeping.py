@@ -23,7 +23,7 @@ from .models import (
     utcnow,
 )
 from .transactions import transaction_base_query
-from .db import engine
+from .db import engine, managed_session
 
 
 KIND_ALIASES = {
@@ -677,7 +677,7 @@ async def auto_import_public_google_sheet(
 
     filename = f"{re.sub(r'[^a-zA-Z0-9._-]+', '-', show_label).strip('-') or 'bookkeeping-import'}{suffix}"
 
-    with Session(engine) as session:
+    with managed_session() as session:
         imported = import_bookkeeping_file(
             session,
             filename=filename,
@@ -694,7 +694,7 @@ async def auto_import_public_google_sheet(
 
 
 async def refresh_bookkeeping_import_from_source(bookkeeping_import_id: int) -> Optional[int]:
-    with Session(engine) as session:
+    with managed_session() as session:
         existing = session.get(BookkeepingImport, bookkeeping_import_id)
         if not existing:
             raise ValueError("Bookkeeping import not found")
@@ -727,7 +727,7 @@ async def refresh_bookkeeping_import_from_source(bookkeeping_import_id: int) -> 
     if not filename.lower().endswith((".xlsx", ".csv")):
         filename = f"{filename}{suffix}"
 
-    with Session(engine) as session:
+    with managed_session() as session:
         imported = import_bookkeeping_file(
             session,
             filename=filename,

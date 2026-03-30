@@ -30,6 +30,7 @@
         .review-item { padding:12px 0; border-top:1px solid #eee3d3; }
         .review-item:first-child { border-top:none; padding-top:0; }
         .meta-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .alert { margin-bottom:18px; padding:14px 16px; border-radius:18px; border:1px solid #efc28f; background:#fff5df; color:#8a580d; font-weight:700; }
         @media (max-width:1000px){ .hero, .layout, .summary-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } }
     </style>
 </head>
@@ -45,12 +46,19 @@
                     {% if current_user and current_user.role in ["admin","reviewer"] %}<a class="button primary-button" href="/review">Open Review Queue</a>{% endif %}
                     <a class="button secondary-button" href="/deals">Deals</a>
                     <a class="button secondary-button" href="/reports">Reports</a>
+                    <a class="button secondary-button" href="/status">Status</a>
                     {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/admin">Admin Hub</a>{% endif %}
                     {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
                     <form method="post" action="/logout" style="display:inline;"><button type="submit" class="button secondary-button">Log Out</button></form>
                 </div>
             </div>
         </section>
+
+        {% if parser_progress["local_runtime"]["needs_attention"] %}
+        <div class="alert">
+            {{ parser_progress["local_runtime"]["alert_message"] }}
+        </div>
+        {% endif %}
 
         <div class="summary-grid">
             <div class="metric"><div class="metric-label">Needs Review</div><div class="metric-value">{{ review_summary["needs_review"] }}</div></div>
@@ -81,6 +89,8 @@
 
             <div class="card">
                 <h2 style="margin-top:0;">Parser Health</h2>
+              <div class="review-item"><div class="metric-label">Ingest Worker</div><div>{{ parser_progress["local_runtime"]["label"] }}{% if parser_progress["local_runtime"]["host_name"] %} on {{ parser_progress["local_runtime"]["host_name"] }}{% endif %}</div><div class="small">Last heartbeat: {{ parser_progress["local_runtime"]["updated_at_label"] }}</div></div>
+                <div class="review-item"><div class="metric-label">Discord Runtime</div><div>{{ parser_progress["local_runtime"]["details"].get("discord_status", "unknown") }}</div>{% if parser_progress["local_runtime"]["details"].get("discord_error") %}<div class="small">{{ parser_progress["local_runtime"]["details"]["discord_error"] }}</div>{% endif %}</div>
                 <div class="review-item"><div class="metric-label">Completion</div><div>{{ parser_progress["completed"] }} / {{ parser_progress["total"] }} ({{ parser_progress["percent_complete"] }}%)</div></div>
                 <div class="review-item"><div class="metric-label">Images In Flight</div><div>{{ parser_progress["processing_with_images"] }}</div></div>
                 <div class="review-item"><div class="metric-label">Oldest In Flight</div><div>{{ parser_progress["oldest_processing_age_label"] }}</div></div>

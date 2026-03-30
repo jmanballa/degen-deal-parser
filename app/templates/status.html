@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1360px; margin:0 auto; padding:20px; }
+        .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
+        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); width:fit-content; }
+        .pill { background:#f5eadc; color:var(--muted); }
+        .pill.ok { background:#e7f5ee; color:#11543d; }
+        .pill.warn { background:#fff1d7; color:#8a580d; }
+        .pill.bad { background:#fde8e6; color:#8e2722; }
+        h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.95; letter-spacing:-.04em; }
+        p, .small { color:var(--muted); line-height:1.5; }
+        .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background:#fff; color:var(--text); border:1px solid var(--line); font-weight:800; }
+        .banner { margin-bottom:18px; padding:14px 16px; border-radius:18px; border:1px solid #efc28f; background:#fff5df; color:#8a580d; font-weight:700; }
+        .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+        .metric { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; }
+        .metric-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; }
+        .layout { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+        .card { padding:18px; }
+        .list { display:grid; gap:10px; }
+        .item { padding:12px 0; border-top:1px solid #eee3d3; }
+        .item:first-child { border-top:none; padding-top:0; }
+        @media (max-width:1000px){ .hero, .grid, .layout { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } .hero { text-align:center; } }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <section class="hero">
+            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
+            <div>
+                <div class="eyebrow">Operations Health</div>
+                <h1>{{ title }}</h1>
+      <p>Use this page to quickly tell whether the shared database is reachable, whether the ingest worker is actually alive, and whether the parser queue is moving.</p>
+                <div class="actions">
+                    <a class="button" href="/dashboard">Dashboard</a>
+                    <a class="button" href="/admin">Admin Hub</a>
+                    <a class="button" href="/table">Admin Table</a>
+                    <a class="button" href="/review">Review Queue</a>
+                </div>
+            </div>
+        </section>
+
+        {% if snapshot["local_runtime"]["needs_attention"] %}
+        <div class="banner">{{ snapshot["local_runtime"]["alert_message"] }}</div>
+        {% endif %}
+
+        <div class="grid">
+            <div class="metric">
+                <div class="metric-label">Database</div>
+                <div class="metric-value">{{ "Healthy" if snapshot["db_ok"] else "Down" }}</div>
+            </div>
+            <div class="metric">
+          <div class="metric-label">Ingest Worker</div>
+                <div class="metric-value">{{ snapshot["local_runtime"]["label"] }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Queued</div>
+                <div class="metric-value">{{ snapshot["parser_progress"]["queued"] }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Processing</div>
+                <div class="metric-value">{{ snapshot["parser_progress"]["processing"] }}</div>
+            </div>
+        </div>
+
+        <div class="layout">
+            <div class="card">
+                <h2 style="margin-top:0;">Runtime</h2>
+                <div class="list">
+                    <div class="item"><strong>Heartbeat:</strong> <span class="pill {% if snapshot['local_runtime']['needs_attention'] %}warn{% else %}ok{% endif %}">{{ snapshot["local_runtime"]["label"] }}</span></div>
+                    <div class="item"><strong>Host:</strong> {{ snapshot["local_runtime"]["host_name"] or "unknown" }}</div>
+                    <div class="item"><strong>Last heartbeat:</strong> {{ snapshot["local_runtime"]["updated_at_label"] }}</div>
+                    <div class="item"><strong>Discord ingest enabled:</strong> {{ "Yes" if snapshot["runtime_flags"]["discord_ingest_enabled"] else "No" }}</div>
+                    <div class="item"><strong>Parser worker enabled:</strong> {{ "Yes" if snapshot["runtime_flags"]["parser_worker_enabled"] else "No" }}</div>
+                    <div class="item"><strong>Discord runtime:</strong> {{ snapshot["local_runtime"]["details"].get("discord_status", "unknown") }}</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 style="margin-top:0;">Queue</h2>
+                <div class="list">
+                    <div class="item"><strong>Backlog:</strong> {{ snapshot["queue_backlog"] }}</div>
+                    <div class="item"><strong>Queue moving:</strong> <span class="pill {% if snapshot['queue_is_moving'] %}ok{% else %}warn{% endif %}">{{ "Yes" if snapshot["queue_is_moving"] else "No" }}</span></div>
+                    <div class="item"><strong>Needs review:</strong> {{ snapshot["parser_progress"]["needs_review"] }}</div>
+                    <div class="item"><strong>Failed:</strong> {{ snapshot["parser_progress"]["failed"] }}</div>
+                    <div class="item"><strong>Recovered stale:</strong> {{ snapshot["parser_progress"]["recovered_stale"] }}</div>
+                    <div class="item"><strong>Oldest in flight:</strong> {{ snapshot["parser_progress"]["oldest_processing_age_label"] }}</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 style="margin-top:0;">Recent Activity</h2>
+                <div class="list">
+                    <div class="item"><strong>Latest ingest:</strong> {{ snapshot["recent_activity"]["latest_ingested_label"] }}</div>
+                    <div class="item"><strong>Latest parse finish:</strong> {{ snapshot["recent_activity"]["latest_parse_finished_label"] }}</div>
+                    <div class="item"><strong>Latest review:</strong> {{ snapshot["recent_activity"]["latest_reviewed_label"] }}</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 style="margin-top:0;">Cost + Tokens</h2>
+                <div class="list">
+                    <div class="item"><strong>Estimated spend:</strong> ${{ "%.4f"|format(snapshot["parser_progress"]["usage"]["estimated_cost_usd"]) }}</div>
+                    <div class="item"><strong>Total tokens:</strong> {{ snapshot["parser_progress"]["usage"]["total_tokens"] }}</div>
+                    <div class="item"><strong>Input / cached:</strong> {{ snapshot["parser_progress"]["usage"]["input_tokens"] }} / {{ snapshot["parser_progress"]["usage"]["cached_input_tokens"] }}</div>
+                    <div class="item"><strong>Output / attempts:</strong> {{ snapshot["parser_progress"]["usage"]["output_tokens"] }} / {{ snapshot["parser_progress"]["usage"]["attempts"] }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

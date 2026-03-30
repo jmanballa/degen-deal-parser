@@ -62,7 +62,7 @@ def upsert_seed_user(
 
     if existing:
         changed = False
-        if existing.password_hash != hash_password(password):
+        if settings.auth_reseed_passwords and existing.password_hash != hash_password(password):
             existing.password_hash = hash_password(password)
             changed = True
         if existing.display_name != display_name:

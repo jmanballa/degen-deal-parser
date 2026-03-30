@@ -111,24 +111,56 @@ postgres://USER:PASSWORD@HOST:5432/DBNAME
 
 The app normalizes `postgres://...` to the SQLAlchemy `psycopg` driver automatically.
 
-Recommended architecture:
-- local machine:
-  - `DISCORD_INGEST_ENABLED=true`
-  - `PARSER_WORKER_ENABLED=true`
-- Render web service:
+Recommended durable architecture:
+- web UI host:
   - `DISCORD_INGEST_ENABLED=false`
   - `PARSER_WORKER_ENABLED=false`
+- dedicated worker host:
+  - `DISCORD_INGEST_ENABLED=true`
+  - `PARSER_WORKER_ENABLED=true`
 
-That keeps Discord/API rate-limit-sensitive work local while your hosted site stays available for employees and partners.
+That keeps the employee/partner UI isolated from Discord connectivity and parser load, while the background ingest worker runs on an always-on host with a stable network path.
+
+### Dedicated worker host
+
+This repo now includes a standalone worker entrypoint:
+
+```bash
+python -m app.worker_service
+```
+
+That process:
+- initializes the shared database
+- seeds watched channels from `DISCORD_CHANNEL_IDS` if provided
+- runs Discord ingestion
+- runs the parser worker
+- writes the shared runtime heartbeat used by `/dashboard`, `/table`, and `/status`
+
+Recommended worker env vars:
+
+```text
+DATABASE_URL=<shared postgres url>
+DISCORD_BOT_TOKEN=<discord token>
+OPENAI_API_KEY=<openai key>
+DISCORD_INGEST_ENABLED=true
+PARSER_WORKER_ENABLED=true
+STARTUP_BACKFILL_ENABLED=false
+AUTH_RESEED_PASSWORDS=false
+```
+
+`STARTUP_BACKFILL_ENABLED=false` is recommended on an always-on worker host to reduce Discord startup pressure and avoid repeated heavy reconnect backfills on deploys.
+
+### Render split deployment
+
+The included [render.yaml](/C:/Users/jeffr/discord-deal-parser/live-deal-parser/render.yaml) now models the durable split:
+- `degen-deal-parser` web service for the UI
+- `degen-deal-parser-worker` worker service for Discord ingest + parser processing
+
+Both services should use the same Postgres `DATABASE_URL`.
 
 ### Discord bot and parser worker
 
-This app starts:
-- the FastAPI web server
-- the Discord ingestion bot
-- the parser worker
-
-So only run one deployed web instance unless you intentionally separate those responsibilities later.
+For production, prefer the dedicated worker host instead of relying on the FastAPI app lifespan to keep the background jobs alive.
 
 ## Shopify Domain Setup
 

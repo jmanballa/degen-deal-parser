@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from .db import engine
+from .db import engine, managed_session
 from .models import DiscordMessage, ReviewCorrection, utcnow
 
 
@@ -86,7 +86,7 @@ def get_exact_correction_match(message_text: str) -> dict | None:
     if not normalized_text:
         return None
 
-    with Session(engine) as session:
+    with managed_session() as session:
         correction = session.exec(
             select(ReviewCorrection)
             .where(ReviewCorrection.normalized_text == normalized_text)
@@ -111,7 +111,7 @@ def get_relevant_correction_hints(message_text: str, limit: int = 3) -> list[dic
     if not message_tokens:
         return []
 
-    with Session(engine) as session:
+    with managed_session() as session:
         corrections = session.exec(
             select(ReviewCorrection).order_by(ReviewCorrection.updated_at.desc())
         ).all()
@@ -160,7 +160,7 @@ def get_relevant_correction_hints(message_text: str, limit: int = 3) -> list[dic
 
 
 def get_correction_pattern_counts(limit: int = 10) -> list[dict]:
-    with Session(engine) as session:
+    with managed_session() as session:
         corrections = session.exec(select(ReviewCorrection)).all()
 
     grouped: dict[str, dict] = {}
@@ -240,14 +240,13 @@ def get_learning_signals(session: Session, message_texts: list[str]) -> dict[str
             for message_text in message_texts
         }
 
-    corrections = session.exec(select(ReviewCorrection)).all()
+    exact_matches = session.exec(
+        select(ReviewCorrection).where(ReviewCorrection.normalized_text.in_(non_empty_normalized))
+    ).all()
 
     exact_matches_by_text: dict[str, list[ReviewCorrection]] = {}
-    correction_tokens_by_text: dict[str, set[str]] = {}
-    for correction in corrections:
+    for correction in exact_matches:
         exact_matches_by_text.setdefault(correction.normalized_text, []).append(correction)
-        if correction.normalized_text not in correction_tokens_by_text:
-            correction_tokens_by_text[correction.normalized_text] = tokenize_normalized_text(correction.normalized_text)
 
     results: dict[str, dict] = {}
     for message_text in message_texts:
@@ -264,22 +263,10 @@ def get_learning_signals(session: Session, message_texts: list[str]) -> dict[str
         exact_match = bool(exact_matches)
         promoted_rule = any(match.correction_source == "promoted_rule" for match in exact_matches)
 
-        message_tokens = tokenize_normalized_text(message_text)
-        similar_count = 0
-        if message_tokens:
-            seen_texts: set[str] = set()
-            for correction_text, correction_tokens in correction_tokens_by_text.items():
-                if correction_text == normalized_text or correction_text in seen_texts:
-                    continue
-                overlap = len(message_tokens & correction_tokens)
-                if overlap >= 2:
-                    similar_count += 1
-                    seen_texts.add(correction_text)
-
         results[message_text] = {
             "exact_match": exact_match,
             "promoted_rule": promoted_rule,
-            "similar_count": similar_count,
+            "similar_count": 0,
         }
 
     return results

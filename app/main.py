@@ -2,6 +2,8 @@ import asyncio
 import csv
 import json
 import os
+import socket
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from io import StringIO
@@ -11,8 +13,9 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
+from sqlalchemy.exc import OperationalError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -42,8 +45,9 @@ from .corrections import (
     promote_correction_pattern,
     save_review_correction,
 )
-from .db import get_session, init_db, engine
+from .db import engine, get_session, init_db, managed_session, recent_db_failure
 from .discord_ingest import (
+    discord_runtime_state,
     get_discord_client,
     list_available_discord_channels,
     parse_iso_datetime,
@@ -53,6 +57,7 @@ from .discord_ingest import (
 from .financials import compute_financials
 from .models import AttachmentAsset, BookkeepingImport, DiscordMessage, ParseAttempt, User, WatchedChannel, utcnow
 from .reporting import build_financial_summary, get_financial_rows, parse_report_datetime
+from .runtime_monitor import get_runtime_heartbeat_status, runtime_heartbeat_loop
 from .schemas import HealthOut
 from .transactions import build_transaction_summary, get_transactions, rebuild_transactions, sync_transaction_from_message
 from .worker import STALE_PROCESSING_AFTER, parser_loop
@@ -85,6 +90,7 @@ CASH_DIRECTION_OPTIONS = ["", "to_store", "from_store", "none", "unknown"]
 CATEGORY_OPTIONS = ["", "slabs", "singles", "sealed", "packs", "mixed", "accessories", "unknown"]
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]
 NEARBY_IMAGE_AUDIT_WINDOW_SECONDS = 30
+LOCAL_HEARTBEAT_RUNTIME_NAME = settings.runtime_name
 
 
 def format_pacific_datetime(value: object, include_zone: bool = True) -> str:
@@ -148,6 +154,15 @@ def get_cached_attachment_map(session: Session, message_ids: list[int]) -> dict[
             bucket["image_urls"].append(asset_url)
 
     return results
+
+
+def local_runtime_details() -> dict:
+    return {
+        "discord_status": discord_runtime_state.get("status"),
+        "discord_error": discord_runtime_state.get("error"),
+        "parser_worker_enabled": settings.parser_worker_enabled,
+        "discord_ingest_enabled": settings.discord_ingest_enabled,
+    }
 
 
 def row_looks_transactional(row: DiscordMessage) -> bool:
@@ -792,14 +807,33 @@ def build_watched_channel_groups(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    with Session(engine) as session:
+    with managed_session() as session:
         seed_default_users(session)
     seed_channels_from_env()
 
     stop_event = asyncio.Event()
     app.state.stop_event = stop_event
+    heartbeat_stop_event = threading.Event()
+    app.state.heartbeat_stop_event = heartbeat_stop_event
 
     background_tasks: list[asyncio.Task] = []
+
+    if settings.discord_ingest_enabled or settings.parser_worker_enabled:
+        heartbeat_thread = threading.Thread(
+            target=runtime_heartbeat_loop,
+            kwargs={
+                "stop_event": heartbeat_stop_event,
+                "runtime_name": LOCAL_HEARTBEAT_RUNTIME_NAME,
+                "host_name": socket.gethostname(),
+                "details_provider": local_runtime_details,
+            },
+            name="local-heartbeat",
+            daemon=True,
+        )
+        heartbeat_thread.start()
+        app.state.heartbeat_thread = heartbeat_thread
+    else:
+        app.state.heartbeat_thread = None
 
     discord_task = asyncio.create_task(run_discord_bot(stop_event), name="discord-ingest")
     background_tasks.append(discord_task)
@@ -816,6 +850,7 @@ async def lifespan(app: FastAPI):
     yield
 
     stop_event.set()
+    heartbeat_stop_event.set()
 
     done, pending = await asyncio.wait(background_tasks, timeout=10)
     for task in pending:
@@ -825,6 +860,9 @@ async def lifespan(app: FastAPI):
         await asyncio.gather(*pending, return_exceptions=True)
     if done:
         await asyncio.gather(*done, return_exceptions=True)
+    heartbeat_thread = getattr(app.state, "heartbeat_thread", None)
+    if heartbeat_thread:
+        heartbeat_thread.join(timeout=5)
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -839,18 +877,38 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=normalize_filesystem_path(BASE_DIR / "static")), name="static")
 
 
-@app.get("/attachments/{asset_id}")
-def attachment_asset(asset_id: int, request: Request, session: Session = Depends(get_session)):
-    user = getattr(request.state, "current_user", None)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required")
+@app.exception_handler(OperationalError)
+async def handle_operational_error(request: Request, exc: OperationalError):
+    dispose_engine()
+    payload = {
+        "ok": False,
+        "error": "Database connection is temporarily unavailable.",
+        "detail": "The shared database did not accept the connection cleanly. Please retry in a few seconds.",
+    }
+    headers = {"Retry-After": "5"}
+    wants_json = (
+        request.url.path.startswith("/admin/parser-progress")
+        or request.url.path.startswith("/health")
+        or "application/json" in request.headers.get("accept", "")
+    )
+    if wants_json:
+        return JSONResponse(status_code=503, content=payload, headers=headers)
+    return HTMLResponse(
+        "<h1>Database temporarily unavailable</h1>"
+        "<p>The shared database connection dropped unexpectedly. Please retry in a few seconds.</p>",
+        status_code=503,
+        headers=headers,
+    )
 
+
+@app.get("/attachments/{asset_id}")
+def attachment_asset(asset_id: int, session: Session = Depends(get_session)):
     asset = session.get(AttachmentAsset, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Attachment not found")
 
     media_type = asset.content_type or "application/octet-stream"
-    headers = {"Cache-Control": "private, max-age=86400"}
+    headers = {}
     if asset.filename:
         headers["Content-Disposition"] = f'inline; filename="{asset.filename}"'
     return Response(content=asset.data, media_type=media_type, headers=headers)
@@ -882,7 +940,9 @@ def get_request_user(request: Request) -> Optional[User]:
     user_id = session_data.get("user_id")
     if not user_id:
         return None
-    with Session(engine) as session:
+    if recent_db_failure():
+        return None
+    with managed_session() as session:
         user = session.get(User, user_id)
         if not user or not user.is_active:
             return None
@@ -923,13 +983,40 @@ def current_user_label(request: Request) -> str:
 
 @app.middleware("http")
 async def attach_current_user(request: Request, call_next):
+    if request.url.path.startswith(PUBLIC_PATH_PREFIXES):
+        request.state.current_user = None
+        return await call_next(request)
     request.state.current_user = get_request_user(request)
     return await call_next(request)
 
 
 @app.get("/health", response_model=HealthOut)
 def health():
-    return HealthOut(ok=True)
+    try:
+        with managed_session() as session:
+            local_runtime = get_runtime_heartbeat_status(
+                session,
+                LOCAL_HEARTBEAT_RUNTIME_NAME,
+                runtime_label=settings.runtime_label,
+                updated_at_formatter=format_pacific_datetime,
+            )
+        return HealthOut(
+            ok=True,
+            db_ok=True,
+            local_runtime_status=local_runtime["status"],
+            local_runtime_label=local_runtime["label"],
+            local_runtime_needs_attention=local_runtime["needs_attention"],
+            local_runtime_updated_at=local_runtime["updated_at"],
+        )
+    except Exception as exc:
+        return HealthOut(
+            ok=False,
+            db_ok=False,
+            local_runtime_status="unknown",
+            local_runtime_label="Unknown",
+            local_runtime_needs_attention=True,
+            error=str(exc),
+        )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -974,6 +1061,36 @@ def dashboard_page(
             "parser_progress": get_parser_progress(session),
         },
     )
+
+
+@app.get("/status", response_class=HTMLResponse)
+def status_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    return templates.TemplateResponse(
+        request,
+        "status.html",
+        {
+            "request": request,
+            "title": "System Status",
+            "current_user": getattr(request.state, "current_user", None),
+            "snapshot": build_status_snapshot(session),
+        },
+    )
+
+
+@app.get("/status.json")
+def status_json(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return build_status_snapshot(session)
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1281,62 +1398,79 @@ def get_parser_progress(
     after: Optional[str] = None,
     before: Optional[str] = None,
 ) -> dict:
-    rows = session.exec(
-        build_message_stmt(
-            status=status,
-            channel_id=channel_id,
-            entry_kind=entry_kind,
-            after=after,
-            before=before,
-        )
-    ).all()
+    stmt = build_message_stmt(
+        status=status,
+        channel_id=channel_id,
+        entry_kind=entry_kind,
+        after=after,
+        before=before,
+    )
+    summary_subquery = stmt.order_by(None).subquery()
 
-    total = len(rows)
-    parsed = sum(1 for row in rows if row.parse_status == "parsed")
-    processing = sum(1 for row in rows if row.parse_status == "processing")
-    queued = sum(1 for row in rows if row.parse_status == "queued")
-    failed = sum(1 for row in rows if row.parse_status == "failed")
-    needs_review = sum(1 for row in rows if row.parse_status == "needs_review")
-    ignored = sum(1 for row in rows if row.parse_status == "ignored")
+    status_counts = {
+        row[0]: int(row[1])
+        for row in session.exec(
+            select(summary_subquery.c.parse_status, func.count())
+            .group_by(summary_subquery.c.parse_status)
+        ).all()
+    }
+    total = sum(status_counts.values())
+    parsed = status_counts.get("parsed", 0)
+    processing = status_counts.get("processing", 0)
+    queued = status_counts.get("queued", 0)
+    failed = status_counts.get("failed", 0)
+    needs_review = status_counts.get("needs_review", 0)
+    ignored = status_counts.get("ignored", 0)
     completed = parsed + needs_review + failed + ignored
     pending = queued + processing
     percent_complete = round((completed / total) * 100, 1) if total else 100.0
-    processing_rows = [row for row in rows if row.parse_status == "processing"]
-    row_ids = [row.id for row in rows if row.id is not None]
-    processing_ids = [row.id for row in processing_rows if row.id is not None]
-    processing_with_images = sum(
-        1 for row in processing_rows if row.attachment_urls_json and row.attachment_urls_json != "[]"
-    )
-    recovered_stale = sum(
-        1
-        for row in rows
-        if (row.last_error or "").startswith("Recovered from stale processing state")
-    )
+    processing_ids = [
+        row_id
+        for row_id in session.exec(
+            select(summary_subquery.c.id).where(summary_subquery.c.parse_status == "processing")
+        ).all()
+        if row_id is not None
+    ]
+    processing_with_images = int(
+        session.exec(
+            select(func.count())
+            .select_from(summary_subquery)
+            .where(
+                summary_subquery.c.parse_status == "processing",
+                summary_subquery.c.attachment_urls_json != "[]",
+            )
+        ).one()
+    ) if processing else 0
+    recovered_stale = int(
+        session.exec(
+            select(func.count())
+            .select_from(summary_subquery)
+            .where(summary_subquery.c.last_error.like("Recovered from stale processing state%"))
+        ).one()
+    ) if total else 0
 
     oldest_processing_started_at = None
     oldest_processing_age_seconds = None
     stale_processing = 0
-    usage_summary = {
-        "attempts": 0,
-        "input_tokens": 0,
-        "cached_input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "estimated_cost_usd": 0.0,
-    }
-    if row_ids:
-        usage_attempts = session.exec(
-            select(ParseAttempt).where(ParseAttempt.message_id.in_(row_ids))
-        ).all()
-        usage_summary["attempts"] = len(usage_attempts)
-        usage_summary["input_tokens"] = sum(int(attempt.input_tokens or 0) for attempt in usage_attempts)
-        usage_summary["cached_input_tokens"] = sum(int(attempt.cached_input_tokens or 0) for attempt in usage_attempts)
-        usage_summary["output_tokens"] = sum(int(attempt.output_tokens or 0) for attempt in usage_attempts)
-        usage_summary["total_tokens"] = sum(int(attempt.total_tokens or 0) for attempt in usage_attempts)
-        usage_summary["estimated_cost_usd"] = round(
-            sum(float(attempt.estimated_cost_usd or 0.0) for attempt in usage_attempts),
-            4,
+    usage_aggregate = session.exec(
+        select(
+            func.count(ParseAttempt.id),
+            func.coalesce(func.sum(ParseAttempt.input_tokens), 0),
+            func.coalesce(func.sum(ParseAttempt.cached_input_tokens), 0),
+            func.coalesce(func.sum(ParseAttempt.output_tokens), 0),
+            func.coalesce(func.sum(ParseAttempt.total_tokens), 0),
+            func.coalesce(func.sum(ParseAttempt.estimated_cost_usd), 0.0),
         )
+        .join(summary_subquery, ParseAttempt.message_id == summary_subquery.c.id)
+    ).one()
+    usage_summary = {
+        "attempts": int(usage_aggregate[0] or 0),
+        "input_tokens": int(usage_aggregate[1] or 0),
+        "cached_input_tokens": int(usage_aggregate[2] or 0),
+        "output_tokens": int(usage_aggregate[3] or 0),
+        "total_tokens": int(usage_aggregate[4] or 0),
+        "estimated_cost_usd": round(float(usage_aggregate[5] or 0.0), 4),
+    }
 
     if processing_ids:
         unfinished_attempts = session.exec(
@@ -1391,6 +1525,56 @@ def get_parser_progress(
         "oldest_processing_age_label": oldest_processing_age_label,
         "stale_threshold_minutes": int(STALE_PROCESSING_AFTER.total_seconds() // 60),
         "usage": usage_summary,
+        "local_runtime": get_runtime_heartbeat_status(
+            session,
+            LOCAL_HEARTBEAT_RUNTIME_NAME,
+            runtime_label=settings.runtime_label,
+            updated_at_formatter=format_pacific_datetime,
+        ),
+    }
+
+
+def build_status_snapshot(session: Session) -> dict:
+    local_runtime = get_runtime_heartbeat_status(
+        session,
+        LOCAL_HEARTBEAT_RUNTIME_NAME,
+        runtime_label=settings.runtime_label,
+        updated_at_formatter=format_pacific_datetime,
+    )
+    parser_progress = get_parser_progress(session)
+    latest_ingested_at = session.exec(
+        select(DiscordMessage.ingested_at)
+        .order_by(DiscordMessage.ingested_at.desc())
+        .limit(1)
+    ).first()
+    latest_reviewed_at = session.exec(
+        select(DiscordMessage.reviewed_at)
+        .where(DiscordMessage.reviewed_at != None)  # noqa: E711
+        .order_by(DiscordMessage.reviewed_at.desc())
+        .limit(1)
+    ).first()
+    latest_parse_finished_at = session.exec(
+        select(ParseAttempt.finished_at)
+        .where(ParseAttempt.finished_at != None)  # noqa: E711
+        .order_by(ParseAttempt.finished_at.desc())
+        .limit(1)
+    ).first()
+
+    return {
+        "db_ok": True,
+        "local_runtime": local_runtime,
+        "parser_progress": parser_progress,
+        "queue_backlog": parser_progress["queued"] + parser_progress["processing"],
+        "queue_is_moving": parser_progress["processing"] > 0 or parser_progress["queued"] == 0,
+        "recent_activity": {
+            "latest_ingested_label": format_pacific_datetime(latest_ingested_at),
+            "latest_reviewed_label": format_pacific_datetime(latest_reviewed_at),
+            "latest_parse_finished_label": format_pacific_datetime(latest_parse_finished_at),
+        },
+        "runtime_flags": {
+            "discord_ingest_enabled": settings.discord_ingest_enabled,
+            "parser_worker_enabled": settings.parser_worker_enabled,
+        },
     }
 
 
@@ -2303,7 +2487,7 @@ def mark_incorrect_message_form(
 
 @app.post("/admin/clear")
 def clear_all_messages():
-    with Session(engine) as session:
+    with managed_session() as session:
         attempts = session.exec(select(ParseAttempt)).all()
         rows = session.exec(select(DiscordMessage)).all()
         count = len(rows)
@@ -2316,7 +2500,7 @@ def clear_all_messages():
     return {"ok": True, "deleted": count}
 @app.post("/admin/clear/form")
 def clear_all_messages_form():
-    with Session(engine) as session:
+    with managed_session() as session:
         attempts = session.exec(select(ParseAttempt)).all()
         rows = session.exec(select(DiscordMessage)).all()
         count = len(rows)
@@ -2363,7 +2547,7 @@ def admin_rebuild_transactions_form(session: Session = Depends(get_session)):
 
 @app.post("/admin/clear/channel/{channel_id}")
 def clear_channel_messages(channel_id: str):
-    with Session(engine) as session:
+    with managed_session() as session:
         rows = session.exec(
             select(DiscordMessage).where(DiscordMessage.channel_id == channel_id)
         ).all()
@@ -2391,7 +2575,7 @@ def clear_channel_messages(channel_id: str):
 def clear_channel_messages_form(
     channel_id: str = Form(...),
 ):
-    with Session(engine) as session:
+    with managed_session() as session:
         rows = session.exec(
             select(DiscordMessage).where(DiscordMessage.channel_id == channel_id)
         ).all()
@@ -2472,7 +2656,7 @@ async def admin_backfill_form(
                 before=before_dt,
             )
             if result.get("ok"):
-                with Session(engine) as session:
+                with managed_session() as session:
                     update_backfill_window(
                         session,
                         channel_id=str(channel_id),
@@ -2494,7 +2678,7 @@ async def admin_backfill_form(
         )
         if not result.get("ok"):
             return RedirectResponse(url="/table?error=Backfill+failed+for+one+or+more+channels", status_code=303)
-        with Session(engine) as session:
+        with managed_session() as session:
             watched_channels = get_watched_channels(session)
             for watched_channel in watched_channels:
                 if not watched_channel.backfill_enabled:

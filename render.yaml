@@ -23,6 +23,8 @@ services:
         value: "false"
       - key: PARSER_WORKER_ENABLED
         value: "false"
+      - key: AUTH_RESEED_PASSWORDS
+        value: "false"
       - key: SESSION_SECRET
         sync: false
       - key: DISCORD_BOT_TOKEN
@@ -41,3 +43,35 @@ services:
         sync: false
       - key: REVIEWER_DISPLAY_NAME
         value: Degen Reviewer
+  - type: worker
+    name: degen-deal-parser-worker
+    runtime: python
+    plan: starter
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.worker_service
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DISCORD_INGEST_ENABLED
+        value: "true"
+      - key: PARSER_WORKER_ENABLED
+        value: "true"
+      - key: STARTUP_BACKFILL_ENABLED
+        value: "false"
+      - key: AUTH_RESEED_PASSWORDS
+        value: "false"
+      - key: PARSER_POLL_SECONDS
+        value: "2"
+      - key: PARSER_BATCH_SIZE
+        value: "10"
+      - key: PARSER_MAX_ATTEMPTS
+        value: "3"
+      - key: RUNTIME_NAME
+        value: local_ingest
+      - key: RUNTIME_LABEL
+        value: Ingest Worker
