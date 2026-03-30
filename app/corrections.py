@@ -224,6 +224,67 @@ def get_learning_signal(session: Session, message_text: str) -> dict:
     }
 
 
+def get_learning_signals(session: Session, message_texts: list[str]) -> dict[str, dict]:
+    normalized_texts = {
+        message_text: normalize_correction_text(message_text)
+        for message_text in message_texts
+    }
+    non_empty_normalized = {value for value in normalized_texts.values() if value}
+    if not non_empty_normalized:
+        return {
+            message_text: {
+                "exact_match": False,
+                "promoted_rule": False,
+                "similar_count": 0,
+            }
+            for message_text in message_texts
+        }
+
+    corrections = session.exec(select(ReviewCorrection)).all()
+
+    exact_matches_by_text: dict[str, list[ReviewCorrection]] = {}
+    correction_tokens_by_text: dict[str, set[str]] = {}
+    for correction in corrections:
+        exact_matches_by_text.setdefault(correction.normalized_text, []).append(correction)
+        if correction.normalized_text not in correction_tokens_by_text:
+            correction_tokens_by_text[correction.normalized_text] = tokenize_normalized_text(correction.normalized_text)
+
+    results: dict[str, dict] = {}
+    for message_text in message_texts:
+        normalized_text = normalized_texts[message_text]
+        if not normalized_text:
+            results[message_text] = {
+                "exact_match": False,
+                "promoted_rule": False,
+                "similar_count": 0,
+            }
+            continue
+
+        exact_matches = exact_matches_by_text.get(normalized_text, [])
+        exact_match = bool(exact_matches)
+        promoted_rule = any(match.correction_source == "promoted_rule" for match in exact_matches)
+
+        message_tokens = tokenize_normalized_text(message_text)
+        similar_count = 0
+        if message_tokens:
+            seen_texts: set[str] = set()
+            for correction_text, correction_tokens in correction_tokens_by_text.items():
+                if correction_text == normalized_text or correction_text in seen_texts:
+                    continue
+                overlap = len(message_tokens & correction_tokens)
+                if overlap >= 2:
+                    similar_count += 1
+                    seen_texts.add(correction_text)
+
+        results[message_text] = {
+            "exact_match": exact_match,
+            "promoted_rule": promoted_rule,
+            "similar_count": similar_count,
+        }
+
+    return results
+
+
 def promote_correction_pattern(session: Session, normalized_text: str) -> int:
     normalized = normalize_correction_text(normalized_text)
     if not normalized:

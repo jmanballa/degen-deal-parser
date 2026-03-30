@@ -6,13 +6,9 @@ services:
     autoDeploy: true
     buildCommand: pip install -r requirements.txt
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    disk:
-      name: degen-parser-data
-      mountPath: /var/data
-      sizeGB: 5
     envVars:
       - key: DATABASE_URL
-        value: sqlite:////var/data/degen_live.db
+        sync: false
       - key: PUBLIC_BASE_URL
         value: https://ops.degencollectibles.com
       - key: SESSION_COOKIE_NAME

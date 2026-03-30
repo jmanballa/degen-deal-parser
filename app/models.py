@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Optional
+from sqlalchemy import Column, LargeBinary
 from sqlmodel import SQLModel, Field
 
 
@@ -83,6 +84,17 @@ class DiscordMessage(SQLModel, table=True):
     money_in: Optional[float] = None
     money_out: Optional[float] = None
     expense_category: Optional[str] = Field(default=None, index=True)
+
+
+class AttachmentAsset(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    message_id: int = Field(index=True, foreign_key="discordmessage.id")
+    source_url: str = Field(index=True)
+    filename: Optional[str] = None
+    content_type: Optional[str] = None
+    is_image: bool = Field(default=False, index=True)
+    data: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    created_at: datetime = Field(default_factory=utcnow, index=True)
 
 
 class ParseAttempt(SQLModel, table=True):
