@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1500px; margin:0 auto; padding:22px; }
+        .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero { display:grid; grid-template-columns:minmax(220px,300px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .logo-wrap img { width:100%; max-width:260px; display:block; margin:0 auto; filter:drop-shadow(0 18px 28px rgba(60,24,8,.2)); }
+        .eyebrow, .chip { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); width:fit-content; }
+        .chip { background:#f5eadc; color:var(--muted); }
+        h1 { margin:10px 0 8px; font-size:clamp(30px,4vw,50px); line-height:.95; letter-spacing:-.04em; }
+        p, .small { color:var(--muted); }
+        p { margin:0 0 16px; line-height:1.6; font-size:15px; max-width:860px; }
+        .actions, .filters, .summary-strip { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+        .actions { align-items:center; }
+        .summary-strip { justify-content:space-between; margin-top:12px; }
+        .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; }
+        .primary-button { background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; box-shadow:0 10px 18px rgba(212,83,56,.22); }
+        .secondary-button { background:#fff; color:var(--text); border:1px solid var(--line); }
+        .card { padding:18px; margin-bottom:18px; }
+        .sticky-card { position:sticky; top:16px; z-index:4; }
+        label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); min-width:140px; }
+        input, select { padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        .helper-card { padding:12px 14px; border-radius:16px; border:1px solid #eadfce; background:#fffdf9; color:var(--muted); font-size:13px; }
+        .summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }
+        .metric { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; min-height:92px; }
+        .metric-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; }
+        .chart-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:18px; }
+        .bar-list { display:flex; flex-direction:column; gap:10px; }
+        .bar-row { display:grid; grid-template-columns:150px 1fr 96px; gap:10px; align-items:center; }
+        .bar-label { font-size:13px; font-weight:700; color:var(--muted); text-transform:capitalize; }
+        .bar-track { height:16px; background:#f1e5d8; border-radius:999px; overflow:hidden; }
+        .bar-fill-expense, .bar-fill-channel { height:100%; border-radius:999px; }
+        .bar-fill-expense { background:linear-gradient(90deg,#c96d16,#d44b34); }
+        .bar-fill-channel { background:linear-gradient(90deg,#b45b22,#f0c46b); }
+        .bar-value { font-size:13px; font-weight:700; text-align:right; }
+        table { width:100%; border-collapse:separate; border-spacing:0; }
+        th, td { padding:10px 12px; border-bottom:1px solid #efe4d6; text-align:left; vertical-align:top; font-size:13px; }
+        thead th { background:#fff6ea; color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; position:sticky; top:0; z-index:1; }
+        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:20px; background:#fff; max-height:58vh; }
+        @media (max-width:1200px){.chart-grid{grid-template-columns:1fr}.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.sticky-card{position:static}}
+        @media (max-width:900px){.page{padding:16px 14px 28px}.hero{grid-template-columns:1fr;text-align:center}.eyebrow{margin:0 auto}.actions{justify-content:center}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media (max-width:640px){.summary-grid,.bar-row{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+    <div class="page">
+        <section class="hero">
+            <div class="logo-wrap"><img src="/static/degen-logo.png" alt="Degen Collectibles logo"></div>
+            <div>
+                <div class="eyebrow">Degen Collectibles Reporting</div>
+                <h1>{{ title }}</h1>
+                <p>Read the store's normalized transaction layer with a cleaner view of revenue, buys, expenses, and daily flow across channels.</p>
+                <div class="actions">
+                    <a href="/table" class="button secondary-button" style="width:auto;">Back to Table</a>
+                    <a href="/bookkeeping" class="button secondary-button" style="width:auto;">Bookkeeping Reconciliation</a>
+                    <a href="/reports/export.csv?start={{ selected_start }}&end={{ selected_end }}&channel_id={{ selected_channel_id }}&entry_kind={{ selected_entry_kind }}" class="button primary-button" style="width:auto;">Export CSV</a>
+                </div>
+                <div class="summary-strip">
+                    <div class="helper-card">Use this page to spot channel or category drift before jumping back into the review queue.</div>
+                    <div class="helper-card">Current scope: {{ selected_entry_kind if selected_entry_kind else "all kinds" }}{% if selected_channel_id %} | one channel{% else %} | all channels{% endif %}</div>
+                </div>
+            </div>
+        </section>
+
+        <div class="card sticky-card">
+            <form method="get" action="/reports" class="filters">
+                <label>Start<input type="date" name="start" value="{{ selected_start }}"></label>
+                <label>End<input type="date" name="end" value="{{ selected_end }}"></label>
+                <label>Channel<select name="channel_id"><option value="">All channels</option>{% for ch in channels %}<option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>{% endfor %}</select></label>
+                <label>Financial Kind<select name="entry_kind"><option value="">All</option><option value="sale" {% if selected_entry_kind == "sale" %}selected{% endif %}>sale</option><option value="buy" {% if selected_entry_kind == "buy" %}selected{% endif %}>buy</option><option value="trade" {% if selected_entry_kind == "trade" %}selected{% endif %}>trade</option><option value="expense" {% if selected_entry_kind == "expense" %}selected{% endif %}>expense</option><option value="unknown" {% if selected_entry_kind == "unknown" %}selected{% endif %}>unknown</option></select></label>
+                <button type="submit" class="secondary-button">Apply</button>
+            </form>
+        </div>
+
+        <div class="summary-grid" style="margin-bottom:18px;">
+            <div class="metric"><div class="metric-label">Transactions</div><div class="metric-value">{{ summary["rows"] }}</div></div>
+            <div class="metric"><div class="metric-label">Sales</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("sales", 0)) }}</div></div>
+            <div class="metric"><div class="metric-label">Buys</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("buys", 0)) }}</div></div>
+            <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("expenses", 0)) }}</div></div>
+            <div class="metric"><div class="metric-label">Money In</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("money_in", 0)) }}</div></div>
+            <div class="metric"><div class="metric-label">Net</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("net", 0)) }}</div></div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="card">
+                <h2 style="margin-top:0;">Expenses By Category</h2>
+                {% if expense_chart %}
+                    <div class="bar-list">{% for row in expense_chart %}<div class="bar-row"><div class="bar-label">{{ row["label"].replace("_", " ") }}</div><div class="bar-track"><div class="bar-fill-expense" style="width: {{ row['width_pct'] }}%;"></div></div><div class="bar-value">${{ "%.2f"|format(row["value"]) }}</div></div>{% endfor %}</div>
+                {% else %}
+                    <div class="small">No expense transactions in this view.</div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h2 style="margin-top:0;">Net By Channel</h2>
+                {% if channel_chart %}
+                    <div class="bar-list">{% for row in channel_chart %}<div class="bar-row"><div class="bar-label">{{ row["label"] }}</div><div class="bar-track"><div class="bar-fill-channel" style="width: {{ row['width_pct'] }}%;"></div></div><div class="bar-value">${{ "%.2f"|format(row["value"]) }}</div></div>{% endfor %}</div>
+                {% else %}
+                    <div class="small">No transactions in this view.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-top:0;">Daily Totals</h2>
+            <div class="table-shell">
+                <table>
+                    <thead><tr><th>Date</th><th>Sales</th><th>Buys</th><th>Expenses</th><th>Trade In</th><th>Trade Out</th><th>Net</th></tr></thead>
+                    <tbody>
+                        {% for row in summary["timeline"] %}
+                        <tr><td>{{ row["date"] }}</td><td>${{ "%.2f"|format(row["sales"]) }}</td><td>${{ "%.2f"|format(row["buys"]) }}</td><td>${{ "%.2f"|format(row["expenses"]) }}</td><td>${{ "%.2f"|format(row["trade_in"]) }}</td><td>${{ "%.2f"|format(row["trade_out"]) }}</td><td>${{ "%.2f"|format(row["net"]) }}</td></tr>
+                        {% else %}
+                        <tr><td colspan="7" class="small">No transactions in this view.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-top:0;">Recent Transactions</h2>
+            <div class="table-shell">
+                <table>
+                    <thead><tr><th>When</th><th>Channel</th><th>Author</th><th>Kind</th><th>Type</th><th>Amount</th><th>Money In</th><th>Money Out</th><th>Category</th></tr></thead>
+                    <tbody>
+                        {% for row in transactions[-50:] | reverse %}
+                        <tr><td>{{ row.occurred_at|pacific_datetime }}</td><td>{{ row.channel_name or row.channel_id or "" }}</td><td>{{ row.author_name or "" }}</td><td><span class="chip">{{ row.entry_kind or "" }}</span></td><td>{{ row.deal_type or "" }}</td><td>{{ "$%.2f"|format(row.amount) if row.amount is not none else "" }}</td><td>{{ "$%.2f"|format(row.money_in) if row.money_in is not none else "" }}</td><td>{{ "$%.2f"|format(row.money_out) if row.money_out is not none else "" }}</td><td>{{ row.category or row.expense_category or "" }}</td></tr>
+                        {% else %}
+                        <tr><td colspan="9" class="small">No transactions in this view.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

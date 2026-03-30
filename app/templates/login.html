@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; min-height:100vh; display:grid; place-items:center; padding:20px; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        .card { width:min(460px,100%); background:var(--card); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); padding:28px; }
+        .logo { display:block; width:min(220px,70%); margin:0 auto 14px; }
+        .eyebrow { display:inline-flex; padding:6px 10px; border-radius:999px; background:rgba(37,28,22,.06); color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        h1 { margin:12px 0 8px; font-size:36px; line-height:.95; letter-spacing:-.04em; }
+        p { margin:0 0 18px; color:var(--muted); line-height:1.5; }
+        label { display:block; margin-bottom:12px; color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        input { width:100%; margin-top:6px; padding:12px 14px; border-radius:14px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        button { width:100%; appearance:none; border:none; border-radius:14px; padding:12px 14px; background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; font:inherit; font-weight:800; cursor:pointer; box-shadow:0 10px 18px rgba(212,83,56,.22); }
+        .error { margin-bottom:12px; padding:12px 14px; border-radius:14px; border:1px solid #efb8b4; background:#fff0ef; color:#9d2f2b; font-weight:700; }
+        .helper { margin-top:14px; color:var(--muted); font-size:13px; line-height:1.5; }
+    </style>
+</head>
+<body>
+    <form class="card" method="post" action="/login">
+        <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
+        <div class="eyebrow">Team Sign In</div>
+        <h1>{{ title }}</h1>
+        <p>Use your Degen internal account to review deals, browse reports, or manage the parser.</p>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <label>Username<input type="text" name="username" autocomplete="username" required></label>
+        <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+        <button type="submit">Sign In</button>
+        <div class="helper">Admin and reviewer users are seeded from your local app settings, so you can start using roles without a big setup process.</div>
+    </form>
+</body>
+</html>

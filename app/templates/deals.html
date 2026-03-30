@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1440px; margin:0 auto; padding:20px; }
+        .hero, .card, .deal-card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
+        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); width:fit-content; }
+        .pill { background:#f5eadc; color:var(--muted); }
+        h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.95; letter-spacing:-.04em; }
+        p, .small { color:var(--muted); line-height:1.5; }
+        .actions, .meta-row, .pagination { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; }
+        .primary-button { background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; box-shadow:0 10px 18px rgba(212,83,56,.22); }
+        .secondary-button { background:#fff; color:var(--text); border:1px solid var(--line); }
+        .card { padding:18px; margin-bottom:18px; }
+        .filters { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+        label { display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        input, select { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        .summary-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+        .metric { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; }
+        .metric-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; }
+        .deal-list { display:grid; gap:16px; }
+        .deal-card { padding:18px; display:grid; grid-template-columns:120px 1fr auto; gap:16px; align-items:start; }
+        .thumb { width:100%; height:120px; object-fit:cover; border-radius:16px; border:1px solid #e2d7c7; background:#fff; }
+        .thumb-placeholder { width:100%; height:120px; display:grid; place-items:center; border-radius:16px; border:1px dashed #d8c7b3; color:var(--muted); background:#fffdf9; }
+        .deal-text { white-space:pre-wrap; line-height:1.5; margin-top:8px; }
+        .deal-financials { display:grid; gap:8px; min-width:170px; }
+        .finance-row { background:#fff; border:1px solid #eadfce; border-radius:14px; padding:10px 12px; }
+        @media (max-width:1050px){ .deal-card { grid-template-columns:96px 1fr; } .deal-financials { grid-column:1 / -1; grid-template-columns:repeat(2,minmax(0,1fr)); } }
+        @media (max-width:900px){ .hero, .filters, .summary-grid, .deal-card, .deal-financials { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } .hero { text-align:center; } }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <section class="hero">
+            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
+            <div>
+                <div class="eyebrow">Partner Deal Ledger</div>
+                <h1>{{ title }}</h1>
+                <p>Browse parsed deals and financial summaries across the Discord channels you currently watch, without the parser and admin controls getting in the way.</p>
+                <div class="actions">
+                    <a class="button secondary-button" href="/dashboard">Dashboard</a>
+                    <a class="button secondary-button" href="/reports">Reports</a>
+                    {% if current_user and current_user.role in ["admin","reviewer"] %}<a class="button secondary-button" href="/review">Review Queue</a>{% endif %}
+                </div>
+            </div>
+        </section>
+
+        <div class="card">
+            <form method="get" action="/deals" class="filters">
+                <label>Channel<select name="channel_id"><option value="">All watched channels</option>{% for ch in channels %}<option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>{% endfor %}</select></label>
+                <label>Financial Kind<select name="entry_kind"><option value="">All</option><option value="sale" {% if selected_entry_kind == "sale" %}selected{% endif %}>sale</option><option value="buy" {% if selected_entry_kind == "buy" %}selected{% endif %}>buy</option><option value="trade" {% if selected_entry_kind == "trade" %}selected{% endif %}>trade</option><option value="expense" {% if selected_entry_kind == "expense" %}selected{% endif %}>expense</option><option value="unknown" {% if selected_entry_kind == "unknown" %}selected{% endif %}>unknown</option></select></label>
+                <label>After<input type="date" name="after" value="{{ selected_after }}"></label>
+                <label>Before<input type="date" name="before" value="{{ selected_before }}"></label>
+                <label>Rows<select name="limit">{% for option in [10,25,50,100] %}<option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <button type="submit" class="secondary-button">Apply Filters</button>
+            </form>
+        </div>
+
+        <div class="summary-grid">
+            <div class="metric"><div class="metric-label">Rows</div><div class="metric-value">{{ summary["rows"] }}</div></div>
+            <div class="metric"><div class="metric-label">Sales</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("sales", 0)) }}</div></div>
+            <div class="metric"><div class="metric-label">Buys</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("buys", 0)) }}</div></div>
+            <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("expenses", 0)) }}</div></div>
+            <div class="metric"><div class="metric-label">Net</div><div class="metric-value">${{ "%.2f"|format(summary["totals"].get("net", 0)) }}</div></div>
+        </div>
+
+        <div class="deal-list">
+            {% for row in rows %}
+            <a class="deal-card" href="/deals/{{ row['id'] }}?channel_id={{ selected_channel_id }}&entry_kind={{ selected_entry_kind }}&after={{ selected_after }}&before={{ selected_before }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">
+                <div>
+                    {% if row["first_image_url"] %}
+                    <img class="thumb" src="{{ row['first_image_url'] }}" alt="deal image">
+                    {% else %}
+                    <div class="thumb-placeholder">No image</div>
+                    {% endif %}
+                </div>
+                <div>
+                    <div class="meta-row">
+                        <strong>{{ row["channel"] or row["channel_id"] }}</strong>
+                        <span class="small">{{ row["time"] }}</span>
+                        <span class="pill">{{ row["entry_kind"] or "unknown" }}</span>
+                        {% if row["bookkeeping"]["status"] == "matched" %}<span class="pill">bookkeeping matched</span>{% elif row["bookkeeping"]["status"] == "partial" %}<span class="pill">bookkeeping partial</span>{% endif %}
+                    </div>
+                    <div class="small">{{ row["author"] or "" }}</div>
+                    <div class="deal-text">{{ row["message"] or "(image-only message)" }}</div>
+                </div>
+                <div class="deal-financials">
+                    <div class="finance-row"><div class="metric-label">Amount</div><div>{{ row["amount_display"] or "-" }}</div></div>
+                    <div class="finance-row"><div class="metric-label">Payment</div><div>{{ row["payment_display"] or "-" }}</div></div>
+                    <div class="finance-row"><div class="metric-label">Category</div><div>{{ row["category"] or row["expense_category"] or "-" }}</div></div>
+                    <div class="finance-row"><div class="metric-label">Money In / Out</div><div>${{ "%.2f"|format(row["money_in"] or 0) }} / ${{ "%.2f"|format(row["money_out"] or 0) }}</div></div>
+                </div>
+            </a>
+            {% else %}
+            <div class="card"><div class="small">No watched-channel deals match the current filters.</div></div>
+            {% endfor %}
+        </div>
+
+        <div class="card">
+            <div class="pagination">
+                {% if pagination["has_previous"] %}<a class="button secondary-button" href="/deals?channel_id={{ selected_channel_id }}&entry_kind={{ selected_entry_kind }}&after={{ selected_after }}&before={{ selected_before }}&page={{ pagination['previous_page'] }}&limit={{ selected_limit }}">Previous</a>{% endif %}
+                <span class="small">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
+                {% if pagination["has_next"] %}<a class="button secondary-button" href="/deals?channel_id={{ selected_channel_id }}&entry_kind={{ selected_entry_kind }}&after={{ selected_after }}&before={{ selected_before }}&page={{ pagination['next_page'] }}&limit={{ selected_limit }}">Next</a>{% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

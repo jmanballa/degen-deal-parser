@@ -6,10 +6,18 @@ from typing import Any, Dict, List
 from openai import OpenAI
 
 from .config import get_settings
+from .corrections import get_exact_correction_match, get_relevant_correction_hints
 
 settings = get_settings()
 
 MODEL = "gpt-5-nano"
+MODEL_PRICING_PER_MILLION = {
+    "gpt-5-nano": {
+        "input": 0.05,
+        "cached_input": 0.005,
+        "output": 0.40,
+    }
+}
 client_openai = OpenAI(
     api_key=settings.openai_api_key,
     timeout=60.0,
@@ -20,6 +28,105 @@ api_semaphore = asyncio.Semaphore(3)
 
 class TimedOutRowError(Exception):
     pass
+
+
+def estimate_usage_cost_usd(
+    *,
+    model: str,
+    input_tokens: int = 0,
+    cached_input_tokens: int = 0,
+    output_tokens: int = 0,
+) -> float:
+    pricing = MODEL_PRICING_PER_MILLION.get(model, MODEL_PRICING_PER_MILLION.get("gpt-5-nano"))
+    billable_input_tokens = max(input_tokens - cached_input_tokens, 0)
+    cost = (
+        (billable_input_tokens / 1_000_000) * pricing["input"] +
+        (cached_input_tokens / 1_000_000) * pricing["cached_input"] +
+        (output_tokens / 1_000_000) * pricing["output"]
+    )
+    return round(cost, 6)
+
+
+def extract_usage_metrics(response: Any, *, model: str) -> Dict[str, Any]:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost_usd": 0.0,
+        }
+
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+    total_tokens = int(getattr(usage, "total_tokens", input_tokens + output_tokens) or (input_tokens + output_tokens))
+
+    input_details = getattr(usage, "input_tokens_details", None)
+    cached_input_tokens = int(getattr(input_details, "cached_tokens", 0) or 0) if input_details else 0
+
+    return {
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "estimated_cost_usd": estimate_usage_cost_usd(
+            model=model,
+            input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
+            output_tokens=output_tokens,
+        ),
+    }
+
+
+def strip_message_prefixes(text: str) -> str:
+    return re.sub(r"(?im)^\s*message\s+\d+:\s*", "", text or "")
+
+
+def strip_urls(text: str) -> str:
+    return re.sub(r"https?://\S+", " ", text or "", flags=re.I)
+
+
+def normalize_detector_text(text: str) -> str:
+    normalized = strip_message_prefixes(text)
+    normalized = strip_urls(normalized)
+    normalized = re.sub(r"\s+", " ", normalized or "").strip()
+    return normalized
+
+
+def split_stitched_messages(text: str) -> List[str]:
+    raw_text = text or ""
+    matches = list(re.finditer(r"(?im)^\s*message\s+\d+:\s*", raw_text))
+    if not matches:
+        cleaned = raw_text.strip()
+        return [cleaned] if cleaned else []
+
+    parts: List[str] = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(raw_text)
+        part = raw_text[start:end].strip()
+        if part:
+            parts.append(part)
+    return parts
+
+
+def normalize_message_part(text: str) -> str:
+    cleaned = normalize_detector_text(text or "")
+    if cleaned == "[no text]":
+        return ""
+    return cleaned
+
+
+def has_no_text_placeholder(text: str) -> bool:
+    return normalize_message_part(text) == ""
+
+
+def first_nonempty_value(*values: Any) -> Any:
+    for value in values:
+        if value not in {None, "", "unknown"}:
+            return value
+    return None
 
 
 def is_image_url(url: str) -> bool:
@@ -154,13 +261,354 @@ def parse_trade_hint(message_text: str) -> Dict[str, Any] | None:
     }
 
 
+def extract_payment_amount_method(text: str) -> tuple[float | None, str | None]:
+    lower = normalize_message_part(text).lower()
+    if not lower:
+        return None, None
+
+    patterns = [
+        r"^(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap)$",
+        r"^(zelle|venmo|paypal|cash|card|tap)\s*\$?\s*(\d+(?:\.\d{1,2})?)$",
+    ]
+
+    for pattern in patterns:
+        match = re.fullmatch(pattern, lower, re.I)
+        if not match:
+            continue
+        try:
+            if match.group(1).replace(".", "", 1).isdigit():
+                amount = float(match.group(1))
+                payment = match.group(2).lower()
+            else:
+                payment = match.group(1).lower()
+                amount = float(match.group(2))
+        except Exception:
+            return None, None
+        if payment == "tap":
+            payment = "card"
+        return amount, payment
+
+    return None, None
+
+
+QUANTITY_UNITS = (
+    "box",
+    "boxes",
+    "booster",
+    "booster box",
+    "booster boxes",
+    "pack",
+    "packs",
+    "slab",
+    "slabs",
+    "case",
+    "cases",
+    "card",
+    "cards",
+    "binder",
+    "binders",
+    "lot",
+    "lots",
+)
+
+GRADE_WORDS = ("psa", "bgs", "sgc", "cgc", "grade")
+
+
+def normalize_payment_method(payment_method: str) -> str:
+    return "card" if payment_method == "tap" else payment_method
+
+
+def extract_payment_segments(text: str) -> list[tuple[float, str]]:
+    lower = normalize_message_part(text).lower()
+    if not lower:
+        return []
+
+    patterns = [
+        r"(?<![#\w])(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(cash|zelle|venmo|paypal|card|tap)\b",
+        r"\b(cash|zelle|venmo|paypal|card|tap)\s*\$?\s*(\d+(?:\.\d{1,2})?)\b",
+    ]
+
+    segments: list[tuple[float, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, lower, re.I):
+            if match.group(1).replace(".", "", 1).isdigit():
+                amount = float(match.group(1))
+                method = normalize_payment_method(match.group(2).lower())
+            else:
+                method = normalize_payment_method(match.group(1).lower())
+                amount = float(match.group(2))
+            key = (f"{amount:.2f}", method)
+            if key in seen:
+                continue
+            seen.add(key)
+            segments.append((amount, method))
+
+    return segments
+
+
+def has_quantity_unit_after(text: str, number_end: int) -> bool:
+    lower = normalize_message_part(text).lower()
+    after = lower[number_end:]
+    return bool(re.match(r"\s*(?:x\s*)?(?:%s)\b" % "|".join(re.escape(unit) for unit in QUANTITY_UNITS), after, re.I))
+
+
+def has_grade_context_before(text: str, number_start: int) -> bool:
+    lower = normalize_message_part(text).lower()
+    before = lower[max(0, number_start - 12):number_start]
+    return any(re.search(rf"\b{re.escape(word)}\s*$", before, re.I) for word in GRADE_WORDS)
+
+
+def extract_unlabeled_amount(text: str) -> float | None:
+    lower = normalize_message_part(text).lower()
+    if not lower:
+        return None
+
+    candidates: list[float] = []
+    for match in re.finditer(r"\$?\d+(?:\.\d{1,2})?", lower):
+        token = match.group(0).replace("$", "")
+        try:
+            amount = float(token)
+        except Exception:
+            continue
+        if has_quantity_unit_after(lower, match.end()):
+            continue
+        if has_grade_context_before(lower, match.start()):
+            continue
+        candidates.append(amount)
+
+    return candidates[-1] if candidates else None
+
+
+def extract_payment_summary(text: str) -> dict[str, Any] | None:
+    segments = extract_payment_segments(text)
+    if not segments:
+        return None
+
+    if len(segments) == 1:
+        amount, method = segments[0]
+        return {
+            "amount": amount,
+            "payment_method": method,
+            "payment_breakdown": segments,
+        }
+
+    total_amount = round(sum(amount for amount, _ in segments), 2)
+    return {
+        "amount": total_amount,
+        "payment_method": "mixed",
+        "payment_breakdown": segments,
+    }
+
+
+def infer_category_from_text(message_text: str) -> str | None:
+    lower = (message_text or "").lower()
+    if not lower:
+        return None
+    if any(token in lower for token in ("box", "boxes", "booster box", "sealed", "case")):
+        return "sealed"
+    if any(token in lower for token in ("pack", "packs")):
+        return "packs"
+    if any(token in lower for token in ("slab", "slabs", "psa", "bgs")):
+        return "slabs"
+    if any(token in lower for token in ("single", "singles", "binder", "lot", "cards", "card")):
+        return "singles"
+    return None
+
+
+def extract_multi_payment_summary(text: str) -> dict[str, Any] | None:
+    summary = extract_payment_summary(text)
+    if not summary or len(summary["payment_breakdown"]) < 2:
+        return None
+    methods = sorted({method for _, method in summary["payment_breakdown"]})
+    if len(methods) < 2:
+        return None
+    return summary
+
+
+def parse_stitched_rule_hint(message_text: str) -> Dict[str, Any] | None:
+    message_parts = split_stitched_messages(message_text)
+    if len(message_parts) <= 1:
+        return None
+
+    normalized_parts = [normalize_message_part(part) for part in message_parts]
+    nonempty_parts = [part for part in normalized_parts if part]
+    if not nonempty_parts:
+        return None
+
+    explicit_type: str | None = None
+    explicit_part: str | None = None
+    trade_part: str | None = None
+    payment_amount: float | None = None
+    payment_method: str | None = None
+    payment_breakdown: list[tuple[float, str]] = []
+    saw_image_only_lead = bool(message_parts and has_no_text_placeholder(message_parts[0]))
+
+    for original_part, normalized_part in zip(message_parts, normalized_parts):
+        if not normalized_part:
+            continue
+
+        trade_hint = parse_trade_hint(normalized_part)
+        if trade_hint and trade_part is None:
+            trade_part = normalized_part
+
+        inferred_type = infer_explicit_buy_sell_type(normalized_part)
+        if inferred_type:
+            explicit_type = inferred_type
+            explicit_part = normalized_part
+
+        payment_summary = extract_payment_summary(normalized_part)
+        if payment_summary and payment_amount is None:
+            payment_amount = payment_summary["amount"]
+            payment_method = payment_summary["payment_method"]
+            payment_breakdown = payment_summary["payment_breakdown"]
+
+    if explicit_type and explicit_part and not any(has_explicit_trade_signal(part) for part in nonempty_parts):
+        notes = "stitched explicit buy/sell override"
+        if saw_image_only_lead:
+            notes = "image-first stitched explicit buy/sell override"
+        return {
+            "parsed_type": explicit_type,
+            "parsed_amount": payment_amount,
+            "parsed_payment_method": payment_method or "unknown",
+            "parsed_cash_direction": "to_store" if explicit_type == "sell" else "from_store",
+            "parsed_category": "unknown",
+            "parsed_items": [],
+            "parsed_items_in": [],
+            "parsed_items_out": [],
+            "parsed_trade_summary": "",
+            "parsed_notes": notes,
+            "image_summary": "no image used",
+            "confidence": 0.94 if saw_image_only_lead else 0.92,
+            "needs_review": False,
+        }
+
+    if trade_part:
+        trade_hint = parse_trade_hint(trade_part)
+        if trade_hint:
+            if payment_amount is not None and trade_hint.get("parsed_amount") is None:
+                trade_hint["parsed_amount"] = payment_amount
+                trade_hint["parsed_payment_method"] = payment_method or trade_hint.get("parsed_payment_method") or "unknown"
+                trade_hint["parsed_cash_direction"] = "to_store"
+                trade_hint["parsed_trade_summary"] = (
+                    (trade_hint.get("parsed_trade_summary") or "trade detected from in/out wording")
+                    + f" | plus ${payment_amount:g} {payment_method or 'unknown'}"
+                )
+            if saw_image_only_lead:
+                trade_hint["parsed_notes"] = "image-first stitched trade parse"
+                trade_hint["confidence"] = max(float(trade_hint.get("confidence", 0.0)), 0.97)
+            else:
+                trade_hint["parsed_notes"] = "stitched trade parse"
+            return trade_hint
+
+    descriptive_parts = [
+        part for part in nonempty_parts
+        if not is_payment_only_message_text(part)
+    ]
+    if payment_amount is not None and descriptive_parts:
+        for part in descriptive_parts:
+            inferred_type = infer_explicit_buy_sell_type(part)
+            if inferred_type and not has_explicit_trade_signal(part):
+                notes = "stitched payment followup"
+                if saw_image_only_lead:
+                    notes = "image-first stitched payment followup"
+                return {
+                    "parsed_type": inferred_type,
+                    "parsed_amount": payment_amount,
+                    "parsed_payment_method": payment_method or "unknown",
+                    "parsed_cash_direction": "to_store" if inferred_type == "sell" else "from_store",
+                    "parsed_category": "unknown",
+                    "parsed_items": [],
+                    "parsed_items_in": [],
+                    "parsed_items_out": [],
+                    "parsed_trade_summary": "",
+                    "parsed_notes": notes,
+                    "image_summary": "no image used",
+                    "confidence": 0.93 if saw_image_only_lead else 0.9,
+                    "needs_review": False,
+                }
+
+    return None
+
+
+def is_payment_only_message_text(text: str) -> bool:
+    amount, method = extract_payment_amount_method(text)
+    return amount is not None and method is not None
+
+
 def parse_by_rules(message_text: str) -> Dict[str, Any] | None:
     text = (message_text or "").strip()
+
+    stitched_hint = parse_stitched_rule_hint(text)
+    if stitched_hint:
+        return stitched_hint
 
     trade_hint = parse_trade_hint(text)
     if trade_hint:
         return trade_hint
     lower = text.lower()
+
+    explicit_type = infer_explicit_buy_sell_type(text)
+    payment_summary = extract_payment_summary(text)
+    multi_payment = extract_multi_payment_summary(text)
+    inferred_category = infer_category_from_text(text) or "unknown"
+    if explicit_type and payment_summary and not has_explicit_trade_signal(text):
+        if payment_summary["payment_method"] == "mixed":
+            breakdown = " + ".join(f"${amount:g} {method}" for amount, method in payment_summary["payment_breakdown"])
+            notes = f"rule-based multi-payment {explicit_type}: {breakdown}"
+        else:
+            notes = f"rule-based explicit {explicit_type} with payment amount"
+        return {
+            "parsed_type": explicit_type,
+            "parsed_amount": payment_summary["amount"],
+            "parsed_payment_method": payment_summary["payment_method"],
+            "parsed_cash_direction": "to_store" if explicit_type == "sell" else "from_store",
+            "parsed_category": inferred_category,
+            "parsed_items": [],
+            "parsed_items_in": [],
+            "parsed_items_out": [],
+            "parsed_trade_summary": "",
+            "parsed_notes": notes,
+            "image_summary": "no image used",
+            "confidence": 0.94,
+            "needs_review": False,
+        }
+    if explicit_type and multi_payment and not has_explicit_trade_signal(text):
+        breakdown = " + ".join(f"${amount:g} {method}" for amount, method in multi_payment["payment_breakdown"])
+        return {
+            "parsed_type": explicit_type,
+            "parsed_amount": multi_payment["amount"],
+            "parsed_payment_method": multi_payment["payment_method"],
+            "parsed_cash_direction": "to_store" if explicit_type == "sell" else "from_store",
+            "parsed_category": inferred_category,
+            "parsed_items": [],
+            "parsed_items_in": [],
+            "parsed_items_out": [],
+            "parsed_trade_summary": "",
+            "parsed_notes": f"rule-based multi-payment {explicit_type}: {breakdown}",
+            "image_summary": "no image used",
+            "confidence": 0.94,
+            "needs_review": False,
+        }
+
+    if explicit_type and not has_explicit_trade_signal(text):
+        unlabeled_amount = extract_unlabeled_amount(text)
+        if unlabeled_amount is not None:
+            return {
+                "parsed_type": explicit_type,
+                "parsed_amount": unlabeled_amount,
+                "parsed_payment_method": "unknown",
+                "parsed_cash_direction": "to_store" if explicit_type == "sell" else "from_store",
+                "parsed_category": inferred_category,
+                "parsed_items": [],
+                "parsed_items_in": [],
+                "parsed_items_out": [],
+                "parsed_trade_summary": "",
+                "parsed_notes": f"rule-based explicit {explicit_type} with inferred amount",
+                "image_summary": "no image used",
+                "confidence": 0.88,
+                "needs_review": True,
+            }
 
     amount_first_match = re.fullmatch(
         r"\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap)",
@@ -220,6 +668,8 @@ def parse_by_rules(message_text: str) -> Dict[str, Any] | None:
                 amount = float(m.group(2))
             except Exception:
                 amount = None
+            if amount is not None and has_quantity_unit_after(text, m.end(2)):
+                amount = None
 
         if m.lastindex and m.lastindex >= 3:
             payment = (m.group(3) or "").lower() or None
@@ -258,6 +708,264 @@ def parse_by_rules(message_text: str) -> Dict[str, Any] | None:
     return None
 
 
+def has_transaction_signal(message_text: str) -> bool:
+    lower = normalize_detector_text(message_text).lower()
+    if not lower:
+        return False
+
+    transaction_patterns = [
+        r"\b(sold|sell|bought|buy|paid|trade|traded)\b",
+        r"\b(zelle|venmo|paypal|cash|tap|card)\b\s*\$?\d",
+        r"\$?\d+(?:\.\d{1,2})?\s*\b(zelle|venmo|paypal|cash|tap|card)\b",
+        r"\b(top|bottom|left|right)\b.*\b(in|out)\b",
+        r"\b(in)\b.*\b(out)\b",
+        r"\b(out)\b.*\b(in)\b",
+        r"\b(psa|bgs|slab|slabs|single|singles|packs|sealed|binder|collection)\b.*\b\d",
+    ]
+    return any(re.search(pattern, lower, re.I) for pattern in transaction_patterns)
+
+
+def looks_like_date_marker(message_text: str) -> bool:
+    lower = normalize_detector_text(message_text).lower().rstrip(":")
+    if not lower:
+        return False
+
+    patterns = [
+        r"^(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+\d{1,2}$",
+        r"^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$",
+        r"^\d{1,2}/\d{1,2}(?:/\d{2,4})?$",
+    ]
+    return any(re.fullmatch(pattern, lower, re.I) for pattern in patterns)
+
+
+def detect_non_transaction_message(message_text: str, image_urls: List[str] | None = None) -> Dict[str, Any] | None:
+    normalized = normalize_detector_text(message_text)
+    lower = normalized.lower()
+    image_urls = image_urls or []
+
+    if not lower:
+        return {
+            "parsed_type": None,
+            "parsed_amount": None,
+            "parsed_payment_method": None,
+            "parsed_cash_direction": None,
+            "parsed_category": None,
+            "parsed_items": [],
+            "parsed_items_in": [],
+            "parsed_items_out": [],
+            "parsed_trade_summary": "",
+            "parsed_notes": "ignored blank or non-transaction message",
+            "image_summary": "no image used",
+            "confidence": 0.99,
+            "needs_review": False,
+            "ignore_message": True,
+        }
+
+    non_transaction_keywords = [
+        "profit overview",
+        "daily profit",
+        "profit recap",
+        "summary",
+        "recap",
+        "spreadsheet",
+        "google sheet",
+        "docs.google.com",
+        "screenshot",
+        "overview",
+        "report",
+        "totals",
+    ]
+
+    if has_transaction_signal(lower):
+        return None
+
+    if looks_like_date_marker(lower):
+        return {
+            "parsed_type": None,
+            "parsed_amount": None,
+            "parsed_payment_method": None,
+            "parsed_cash_direction": None,
+            "parsed_category": None,
+            "parsed_items": [],
+            "parsed_items_in": [],
+            "parsed_items_out": [],
+            "parsed_trade_summary": "",
+            "parsed_notes": "ignored date marker or non-transaction heading",
+            "image_summary": "no image used" if not image_urls else "non-transaction image ignored",
+            "confidence": 0.99,
+            "needs_review": False,
+            "ignore_message": True,
+        }
+
+    if any(keyword in lower for keyword in non_transaction_keywords):
+        return {
+            "parsed_type": None,
+            "parsed_amount": None,
+            "parsed_payment_method": None,
+            "parsed_cash_direction": None,
+            "parsed_category": None,
+            "parsed_items": [],
+            "parsed_items_in": [],
+            "parsed_items_out": [],
+            "parsed_trade_summary": "",
+            "parsed_notes": "ignored non-transaction summary or screenshot",
+            "image_summary": "non-transaction image ignored" if image_urls else "no image used",
+            "confidence": 0.98,
+            "needs_review": False,
+            "ignore_message": True,
+        }
+
+    return None
+
+
+def has_explicit_trade_signal(message_text: str) -> bool:
+    lower = (message_text or "").lower()
+    if not lower:
+        return False
+
+    trade_patterns = [
+        r"\btrade\b",
+        r"\btop\b.*\bout\b",
+        r"\bbottom\b.*\bin\b",
+        r"\bleft\b.*\b(out|in)\b",
+        r"\bright\b.*\b(out|in)\b",
+        r"\b(out)\b.*\b(in)\b",
+        r"\b(in)\b.*\b(out)\b",
+        r"\bplus\b",
+        r"^\+\s*\$?\d+",
+    ]
+    return any(re.search(pattern, lower, re.I) for pattern in trade_patterns)
+
+
+def has_explicit_buy_signal(message_text: str) -> bool:
+    lower = (message_text or "").lower()
+    if not lower:
+        return False
+    return bool(re.search(r"\b(bought|buy|paid|sold us|bought from)\b", lower, re.I))
+
+
+def infer_explicit_buy_sell_type(message_text: str) -> str | None:
+    lower = (message_text or "").lower()
+    if not lower:
+        return None
+
+    sell_patterns = [
+        r"\b(sold|sell|sold us|customer sold)\b",
+    ]
+    buy_patterns = [
+        r"\b(bought|buy|paid|bought from|picked up|picked up from)\b",
+    ]
+
+    if any(re.search(pattern, lower, re.I) for pattern in sell_patterns):
+        return "sell"
+    if any(re.search(pattern, lower, re.I) for pattern in buy_patterns):
+        return "buy"
+    return None
+
+
+def has_explicit_sell_signal(message_text: str) -> bool:
+    lower = (message_text or "").lower()
+    if not lower:
+        return False
+    return bool(re.search(r"\b(sold|sell|sold to)\b", lower, re.I))
+
+
+def enforce_store_conventions(
+    message_text: str,
+    parsed: Dict[str, Any],
+    rule_hint: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    if not rule_hint:
+        return parsed
+
+    explicit_buy_sell = infer_explicit_buy_sell_type(message_text)
+    message_parts = split_stitched_messages(message_text)
+    explicit_parts = [
+        part for part in message_parts
+        if infer_explicit_buy_sell_type(part) is not None
+    ]
+    has_trade_in_any_part = any(has_explicit_trade_signal(part) for part in message_parts)
+    if parsed.get("parsed_type") == "trade" and explicit_buy_sell and not has_explicit_trade_signal(message_text):
+        return {
+            **parsed,
+            "parsed_type": explicit_buy_sell,
+            "parsed_cash_direction": "to_store" if explicit_buy_sell == "sell" else "from_store",
+            "parsed_notes": "explicit buy/sell wording overrode trade guess",
+            "confidence": max(float(parsed.get("confidence", 0.0)), 0.9),
+        }
+
+    # Hard store rule:
+    # payment-only shorthand defaults to a sale unless there is clear contrary context.
+    if (
+        rule_hint.get("parsed_type") == "sell"
+        and rule_hint.get("parsed_notes") == "rule-based payment-only sell default"
+        and not has_explicit_trade_signal(message_text)
+        and not explicit_buy_sell
+    ):
+        return {
+            **parsed,
+            "parsed_type": "sell",
+            "parsed_amount": rule_hint.get("parsed_amount"),
+            "parsed_payment_method": rule_hint.get("parsed_payment_method"),
+            "parsed_cash_direction": "to_store",
+            "parsed_category": parsed.get("parsed_category") or "unknown",
+            "parsed_notes": "payment-only sell default (store rule)",
+            "needs_review": bool(parsed.get("needs_review", False)),
+            "confidence": max(float(parsed.get("confidence", 0.0)), 0.9),
+        }
+
+    # Hard store rule:
+    # explicit buy/sell text in the stitched message should outrank image-based AI guesses,
+    # unless the text also clearly signals a trade.
+    if (
+        rule_hint.get("parsed_type") in {"buy", "sell"}
+        and not has_trade_in_any_part
+    ):
+        rule_type = rule_hint.get("parsed_type")
+        explicit_signal_matches = (
+            (rule_type == "buy" and any(has_explicit_buy_signal(part) for part in explicit_parts or [message_text]))
+            or (rule_type == "sell" and any(has_explicit_sell_signal(part) for part in explicit_parts or [message_text]))
+        )
+        if explicit_signal_matches:
+            return {
+                **parsed,
+                "parsed_type": rule_type,
+                "parsed_amount": first_nonempty_value(rule_hint.get("parsed_amount"), parsed.get("parsed_amount")),
+                "parsed_payment_method": first_nonempty_value(rule_hint.get("parsed_payment_method"), parsed.get("parsed_payment_method")) or "unknown",
+                "parsed_cash_direction": first_nonempty_value(rule_hint.get("parsed_cash_direction"), parsed.get("parsed_cash_direction")) or ("to_store" if rule_type == "sell" else "from_store"),
+                "parsed_category": first_nonempty_value(parsed.get("parsed_category"), rule_hint.get("parsed_category"), infer_category_from_text(message_text)) or "unknown",
+                "parsed_notes": f"explicit {rule_type} text override (store rule)",
+                "confidence": max(float(parsed.get("confidence", 0.0)), 0.9),
+                "needs_review": False,
+            }
+
+    multi_payment = extract_multi_payment_summary(message_text)
+    if multi_payment and explicit_buy_sell and not has_trade_in_any_part:
+        return {
+            **parsed,
+            "parsed_type": explicit_buy_sell,
+            "parsed_amount": multi_payment["amount"],
+            "parsed_payment_method": "mixed",
+            "parsed_cash_direction": "to_store" if explicit_buy_sell == "sell" else "from_store",
+            "parsed_category": first_nonempty_value(parsed.get("parsed_category"), infer_category_from_text(message_text)) or "unknown",
+            "parsed_notes": "explicit buy/sell multi-payment override",
+            "confidence": max(float(parsed.get("confidence", 0.0)), 0.93),
+            "needs_review": False,
+        }
+
+    if explicit_buy_sell and parsed.get("parsed_type") in {None, "unknown"} and not has_trade_in_any_part:
+        return {
+            **parsed,
+            "parsed_type": explicit_buy_sell,
+            "parsed_cash_direction": "to_store" if explicit_buy_sell == "sell" else "from_store",
+            "parsed_notes": "explicit buy/sell wording",
+            "confidence": max(float(parsed.get("confidence", 0.0)), 0.9),
+            "needs_review": False,
+        }
+
+    return parsed
+
+
 def build_schema() -> Dict[str, Any]:
     return {
         "type": "object",
@@ -272,7 +980,7 @@ def build_schema() -> Dict[str, Any]:
             },
             "parsed_payment_method": {
                 "type": ["string", "null"],
-                "enum": ["cash", "zelle", "venmo", "paypal", "card", "trade", "unknown", None]
+                "enum": ["cash", "zelle", "venmo", "paypal", "card", "mixed", "trade", "unknown", None]
             },
             "parsed_cash_direction": {
                 "type": ["string", "null"],
@@ -328,7 +1036,13 @@ def build_schema() -> Dict[str, Any]:
     }
 
 
-def build_prompt(author_name: str, message_text: str, rule_hint: Dict[str, Any] | None, has_images: bool) -> str:
+def build_prompt(
+    author_name: str,
+    message_text: str,
+    rule_hint: Dict[str, Any] | None,
+    has_images: bool,
+    correction_hints: List[Dict[str, Any]] | None = None,
+) -> str:
     hint_block = ""
     if rule_hint:
         hint_block = f"""
@@ -340,6 +1054,23 @@ Optional weak hint from a rule parser:
 
 Use this only if it matches the actual stitched conversation and image(s).
 """.strip()
+
+    correction_block = ""
+    if correction_hints:
+        correction_lines = []
+        for index, hint in enumerate(correction_hints, start=1):
+            correction_lines.append(
+                f"- correction {index}: text='{hint.get('normalized_text')}', "
+                f"type={hint.get('deal_type')}, amount={hint.get('amount')}, "
+                f"payment={hint.get('payment_method')}, cash_direction={hint.get('cash_direction')}, "
+                f"category={hint.get('category')}, entry_kind={hint.get('entry_kind')}, "
+                f"notes={hint.get('notes')}"
+            )
+        correction_block = (
+            "Relevant past manual corrections from this store. "
+            "Use them as strong guidance when the new message looks materially similar:\n"
+            + "\n".join(correction_lines)
+        )
 
     image_block = (
         "There are attached images. Use them to identify category, visible items, and trade direction when possible."
@@ -393,7 +1124,8 @@ Rules:
   - "none" if no cash is involved
   - "unknown" if unclear
 - Payment method must be one of:
-  cash / zelle / venmo / paypal / card / trade / unknown
+  cash / zelle / venmo / paypal / card / mixed / trade / unknown
+- If the deal clearly uses multiple payment methods, sum them into parsed_amount and use payment method "mixed".
 - parsed_category must be one of:
   slabs / singles / sealed / packs / mixed / accessories / unknown
 - If multiple categories are clearly involved, use "mixed".
@@ -405,7 +1137,8 @@ Rules:
 - image_summary should describe what is visible, or say "no image used" if none was used.
 - confidence should be between 0 and 1.
 - needs_review should be true if shorthand is ambiguous or confidence < 0.85.
-- If the text contains both "in" and "out" describing store item flow, classify it as "trade", not "buy" or "sell".
+  - If the text contains explicit buy/sell wording, prefer "buy" or "sell" over a trade guess from images alone.
+  - If the text contains both "in" and "out" describing store item flow, classify it as "trade", not "buy" or "sell".
 - If a message is only an amount plus payment method, default it to a sell unless other context indicates otherwise.
 {image_block}
 
@@ -414,6 +1147,8 @@ Stitched transaction text:
 {message_text}
 
 {hint_block}
+
+{correction_block}
 """.strip()
 
 
@@ -423,6 +1158,7 @@ def parse_deal_with_ai(
     image_urls: List[str] | None = None
 ) -> Dict[str, Any]:
     image_urls = image_urls or []
+    correction_hints = get_relevant_correction_hints(message_text)
     rule_hint = parse_by_rules(message_text)
     schema = build_schema()
     prompt = build_prompt(
@@ -430,6 +1166,7 @@ def parse_deal_with_ai(
         message_text=message_text,
         rule_hint=rule_hint,
         has_images=bool(image_urls),
+        correction_hints=correction_hints,
     )
 
     content = [{"type": "input_text", "text": prompt}]
@@ -457,7 +1194,13 @@ def parse_deal_with_ai(
         },
     )
 
-    return json.loads(response.output_text)
+    parsed = json.loads(response.output_text)
+    usage_metrics = extract_usage_metrics(response, model=MODEL)
+    return enforce_store_conventions(
+        message_text=message_text,
+        parsed=parsed,
+        rule_hint=rule_hint,
+    ) | {"_openai_usage": usage_metrics, "_openai_model": MODEL}
 
 
 async def parse_deal_with_ai_async(
@@ -486,6 +1229,14 @@ async def parse_message(content: str, attachment_urls: list[str], author_name: s
         use_first_image_only=True,
         max_images=2,
     )
+
+    non_transaction = detect_non_transaction_message(content or "", image_urls=image_urls)
+    if non_transaction:
+        return non_transaction
+
+    exact_correction = get_exact_correction_match(content or "")
+    if exact_correction:
+        return exact_correction
 
     try:
         return await parse_deal_with_ai_async(

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1480px; margin:0 auto; padding:22px; }
+        .banner { padding:12px 16px; border-radius:14px; margin-bottom:16px; font-weight:700; border:1px solid; box-shadow:var(--shadow); }
+        .banner-success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
+        .banner-error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
+        .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero { padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .eyebrow, .pill, .meta-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); }
+        .pill { background:#f5eadc; color:var(--muted); }
+        .pill-danger { background:#fde8e6; color:#8e2722; }
+        .pill-success { background:#e7f5ee; color:#11543d; }
+        .meta-pill { background:#fff; border:1px solid #ead7c1; color:var(--muted); text-transform:none; letter-spacing:0; }
+        h1 { margin:10px 0 8px; font-size:clamp(28px,4vw,48px); line-height:.95; letter-spacing:-.04em; }
+        h2 { margin:0 0 12px; }
+        .small { color:var(--muted); font-size:13px; line-height:1.5; }
+        .back-row, .hero-meta, .hero-actions, .button-row, .thumb-list { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .back-row { margin-bottom:14px; }
+        .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; }
+        .primary-button { background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; box-shadow:0 10px 18px rgba(212,83,56,.22); }
+        .secondary-button { background:#fff; color:var(--text); border:1px solid var(--line); }
+        .layout { display:grid; grid-template-columns:1.05fr .95fr; gap:18px; align-items:start; }
+        .card { padding:18px; }
+        .message-box { white-space:pre-wrap; border:1px solid #eadfce; border-radius:18px; padding:14px; background:#fff; line-height:1.5; }
+        .summary-grid, .detail-grid, .edit-grid { display:grid; gap:12px; }
+        .summary-grid { grid-template-columns:repeat(5,minmax(0,1fr)); margin-top:14px; }
+        .detail-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .edit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .metric, .detail-card { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; }
+        .metric-label, .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-value { font-size:24px; font-weight:800; letter-spacing:-.03em; }
+        .field { display:flex; flex-direction:column; gap:6px; }
+        .field-wide { grid-column:1 / -1; }
+        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        textarea { min-height:92px; resize:vertical; }
+        .checkbox-row { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
+        .checkbox-row input { width:auto; }
+        .thumb-list { margin-top:14px; }
+        .thumb { max-width:220px; max-height:220px; border:1px solid #d0d5dd; border-radius:14px; background:#fff; }
+        .sticky-card { position:sticky; top:18px; }
+        @media (max-width:1200px){.layout{grid-template-columns:1fr}.sticky-card{position:static}.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        @media (max-width:900px){.page{padding:16px 14px 28px}.summary-grid,.detail-grid,.edit-grid{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="back-row">
+            <a class="button secondary-button" href="{{ back_url }}">Back to Table</a>
+        </div>
+
+        {% if success %}<div class="banner banner-success">{{ success }}</div>{% endif %}
+        {% if error %}<div class="banner banner-error">{{ error }}</div>{% endif %}
+
+        <section class="hero">
+            <div class="eyebrow">Discord Message Detail</div>
+            <h1>{{ title }}</h1>
+            <div class="small">{{ message["channel_name"] or message["channel_id"] }} | {{ message["author_name"] or "" }}</div>
+            <div class="small">Created {{ message["time"] or message["created_at"] or "" }}{% if message["edited_at"] %} | Edited {{ message["edited_at"] }}{% endif %}</div>
+            <div class="hero-meta" style="margin-top:12px;">
+                <span class="pill">{{ message["parse_status"] or "unknown" }}</span>
+                <span class="pill {% if message['needs_review'] %}pill-danger{% else %}pill-success{% endif %}">{{ "needs review" if message["needs_review"] else "approved flow" }}</span>
+                {% if message["is_deleted"] %}<span class="pill pill-danger">deleted in Discord</span>{% endif %}
+                {% if message["confidence"] is not none %}<span class="meta-pill">confidence {{ message["confidence"] }}</span>{% endif %}
+                <span class="meta-pill">attempts {{ message["parse_attempts"] }}</span>
+                {% if learning_signal["promoted_rule"] %}<span class="pill pill-success">promoted rule available</span>{% elif learning_signal["exact_match"] %}<span class="pill pill-success">exact correction memory</span>{% elif learning_signal["similar_count"] %}<span class="meta-pill">{{ learning_signal["similar_count"] }} similar correction patterns</span>{% endif %}
+            </div>
+            <div class="summary-grid">
+                <div class="metric"><div class="metric-label">Financial Kind</div><div class="metric-value">{{ message["entry_kind"] or "-" }}</div></div>
+                <div class="metric"><div class="metric-label">Deal Type</div><div class="metric-value">{{ message["deal_type"] or "-" }}</div></div>
+                <div class="metric"><div class="metric-label">Amount</div><div class="metric-value">{{ "$%.2f"|format(message["amount"]) if message["amount"] is not none else "-" }}</div></div>
+                <div class="metric"><div class="metric-label">Money In</div><div class="metric-value">{{ "$%.2f"|format(message["money_in"]) if message["money_in"] is not none else "-" }}</div></div>
+                <div class="metric"><div class="metric-label">Money Out</div><div class="metric-value">{{ "$%.2f"|format(message["money_out"]) if message["money_out"] is not none else "-" }}</div></div>
+            </div>
+        </section>
+
+        <div class="layout">
+            <div>
+                <div class="card">
+                    <h2>Message</h2>
+                    <div class="message-box">{{ message["content"] or "" }}</div>
+                    {% if message["image_urls"] %}
+                    <div class="thumb-list">
+                        {% for url in message["image_urls"] %}
+                        <a href="{{ url }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ url }}" alt="attachment image"></a>
+                        {% endfor %}
+                    </div>
+                    {% elif message["nearby_image"] %}
+                    <div class="detail-card" style="margin-top:14px;">
+                        <div class="label">Possible Missing Image</div>
+                        <div class="small">A nearby same-author image was found {{ message["nearby_image"]["delta_seconds"] }} seconds away.</div>
+                        {% if message["nearby_image"]["message"] %}<div style="margin-top:8px;">{{ message["nearby_image"]["message"] }}</div>{% endif %}
+                        <div class="thumb-list">
+                            <a href="{{ message['nearby_image']['image_url'] }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ message['nearby_image']['image_url'] }}" alt="nearby attachment image"></a>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="card">
+                    <h2>Parser Detail</h2>
+                    <div class="detail-grid">
+                        <div class="detail-card"><div class="label">Payment Method</div><div>{{ message["payment_method"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Cash Direction</div><div>{{ message["cash_direction"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Category</div><div>{{ message["category"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Expense Category</div><div>{{ message["expense_category"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Items In</div><div>{{ ", ".join(message["items_in"]) if message["items_in"] else "" }}</div></div>
+                        <div class="detail-card"><div class="label">Items Out</div><div>{{ ", ".join(message["items_out"]) if message["items_out"] else "" }}</div></div>
+                        <div class="detail-card"><div class="label">Item Names</div><div>{{ ", ".join(message["item_names"]) if message["item_names"] else "" }}</div></div>
+                        <div class="detail-card"><div class="label">Trade Summary</div><div>{{ message["trade_summary"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Image Summary</div><div>{{ message["image_summary"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Last Error</div><div>{{ message["last_error"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Discord Message ID</div><div>{{ message["discord_message_id"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Channel ID</div><div>{{ message["channel_id"] or "" }}</div></div>
+                        <div class="detail-card"><div class="label">Notes</div><div>{{ message["notes"] or "" }}</div></div>
+                    </div>
+                </div>
+
+                {% if correction_patterns %}
+                <div class="card">
+                    <h2>Correction Memory</h2>
+                    <div class="small" style="margin-bottom:12px;">Repeated manual corrections the parser can reuse for similar rows.</div>
+                    <div class="small" style="margin-bottom:12px;">
+                        {% if learning_signal["promoted_rule"] %}This message already matches a promoted rule pattern.{% elif learning_signal["exact_match"] %}This message already has an exact correction-memory match.{% elif learning_signal["similar_count"] %}This message has {{ learning_signal["similar_count"] }} similar correction pattern(s) the parser can use as hints.{% else %}No learned correction patterns match this message yet.{% endif %}
+                    </div>
+                    <div class="detail-grid">
+                        {% for pattern in correction_patterns %}
+                        <div class="detail-card">
+                            <div class="label">Pattern</div>
+                            <div>{{ pattern["normalized_text"] }}</div>
+                            <div class="small" style="margin-top:8px;">
+                                count={{ pattern["count"] }}
+                                {% if pattern["deal_type"] %}| type={{ pattern["deal_type"] }}{% endif %}
+                                {% if pattern["payment_method"] %}| payment={{ pattern["payment_method"] }}{% endif %}
+                                {% if pattern["cash_direction"] %}| cash={{ pattern["cash_direction"] }}{% endif %}
+                                {% if pattern["correction_source"] == "promoted_rule" %}| promoted rule{% endif %}
+                            </div>
+                            {% if pattern["count"] >= 2 and pattern["correction_source"] != "promoted_rule" %}
+                            <form method="post" action="/admin/corrections/promote-form" style="margin-top:10px;">
+                                <input type="hidden" name="normalized_text" value="{{ pattern['normalized_text'] }}">
+                                <input type="hidden" name="return_to" value="{{ request.url }}">
+                                <button type="submit" class="secondary-button">Promote to Rule</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div>
+                <div class="card sticky-card">
+                    <h2>Edit Parsed Values</h2>
+                    <div class="small" style="margin-bottom:12px;">Use this full form when the inline review fields are not enough and you need to correct item flow or parser detail.</div>
+                    <div class="detail-card" style="margin-bottom:12px;">
+                        <div class="label">Manual Correction Memory</div>
+                        <div class="small">Saving changes here overrides the current AI parse for this deal and stores your correction in parser memory, even if the row was previously marked as parsed.</div>
+                    </div>
+                    <form method="post" action="/messages/{{ message['id'] }}/edit-form" id="edit-form">
+                        <input type="hidden" name="return_path" value="{{ return_path }}">
+                        <input type="hidden" name="stay_on_detail" value="true">
+                        <input type="hidden" name="status" value="{{ selected_status }}">
+                        <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
+                        <input type="hidden" name="after" value="{{ selected_after }}">
+                        <input type="hidden" name="before" value="{{ selected_before }}">
+                        <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
+                        <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
+                        <input type="hidden" name="page" value="{{ selected_page }}">
+                        <input type="hidden" name="limit" value="{{ selected_limit }}">
+
+                        <div class="edit-grid">
+                            <label class="field"><span class="label">Status</span><select name="parse_status">{% for option in parse_status_options %}<option value="{{ option }}" {% if message["parse_status"] == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                            <label class="field"><span class="label">Needs Review</span><span class="checkbox-row"><input type="checkbox" name="needs_review" value="true" {% if message["needs_review"] %}checked{% endif %}><span>Keep this row in the review flow</span></span></label>
+                            <label class="field"><span class="label">Parsed Type</span><select name="deal_type">{% for option in deal_type_options %}<option value="{{ option }}" {% if (message["deal_type"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                            <label class="field"><span class="label">Financial Kind</span><select name="entry_kind">{% for option in entry_kind_options %}<option value="{{ option }}" {% if (message["entry_kind"] or "") == option %}selected{% endif %}>{{ option or "auto" }}</option>{% endfor %}</select></label>
+                            <label class="field"><span class="label">Amount</span><input type="text" name="amount" value="{{ message['amount'] if message['amount'] is not none else '' }}"></label>
+                            <label class="field"><span class="label">Confidence</span><input type="text" name="confidence" value="{{ message['confidence'] if message['confidence'] is not none else '' }}"></label>
+                            <label class="field"><span class="label">Payment Method</span><select name="payment_method">{% for option in payment_method_options %}<option value="{{ option }}" {% if (message["payment_method"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                            <label class="field"><span class="label">Cash Direction</span><select name="cash_direction">{% for option in cash_direction_options %}<option value="{{ option }}" {% if (message["cash_direction"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                            <label class="field"><span class="label">Category</span><select name="category">{% for option in category_options %}<option value="{{ option }}" {% if (message["category"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                            <label class="field"><span class="label">Expense Category</span><input type="text" name="expense_category" value="{{ message['expense_category'] or '' }}" placeholder="leave blank for auto"></label>
+                            <label class="field field-wide"><span class="label">Notes</span><textarea name="notes">{{ message["notes"] or "" }}</textarea></label>
+                            <label class="field field-wide"><span class="label">Trade Summary</span><textarea name="trade_summary">{{ message["trade_summary"] or "" }}</textarea></label>
+                            <label class="field field-wide"><span class="label">Item Names</span><textarea name="item_names_text" placeholder="One per line or comma separated">{{ "\n".join(message["item_names"]) if message["item_names"] else "" }}</textarea></label>
+                            <label class="field field-wide"><span class="label">Items In</span><textarea name="items_in_text" placeholder="One per line or comma separated">{{ "\n".join(message["items_in"]) if message["items_in"] else "" }}</textarea></label>
+                            <label class="field field-wide"><span class="label">Items Out</span><textarea name="items_out_text" placeholder="One per line or comma separated">{{ "\n".join(message["items_out"]) if message["items_out"] else "" }}</textarea></label>
+                        </div>
+
+                        <div class="button-row" style="margin-top:14px;">
+                            <button type="submit" class="primary-button">Save Changes</button>
+                            <a href="{{ back_url }}" class="button secondary-button">Back to Table</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

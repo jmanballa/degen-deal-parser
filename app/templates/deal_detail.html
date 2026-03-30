@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1280px; margin:0 auto; padding:20px; }
+        .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero, .card { padding:20px; margin-bottom:18px; }
+        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); }
+        .pill { background:#f5eadc; color:var(--muted); }
+        h1 { margin:10px 0 8px; font-size:clamp(30px,4vw,46px); line-height:.95; letter-spacing:-.04em; }
+        .small { color:var(--muted); line-height:1.5; }
+        .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background:#fff; color:var(--text); border:1px solid var(--line); font-weight:800; }
+        .layout { display:grid; grid-template-columns:1fr 360px; gap:18px; }
+        .media { display:grid; gap:12px; }
+        .media img { width:100%; border-radius:18px; border:1px solid #e2d7c7; background:#fff; }
+        .message-box, .group-box { background:#fff; border:1px solid #eadfce; border-radius:16px; padding:14px; }
+        .message-box { white-space:pre-wrap; line-height:1.55; }
+        .group-item { padding:8px 0; border-top:1px solid #f0e7da; }
+        .group-item:first-child { border-top:none; padding-top:0; }
+        .stat { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:16px; padding:12px; margin-bottom:10px; }
+        .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; font-weight:800; }
+        @media (max-width:980px){ .layout { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <a class="button" href="{{ back_url }}">Back to Deals</a>
+        <section class="hero">
+            <div class="eyebrow">Deal Detail</div>
+            <h1>{{ title }}</h1>
+            <div class="small">{{ deal["channel"] or deal["channel_id"] }} | {{ deal["author"] or "" }} | {{ deal["time"] }}</div>
+            <div style="margin-top:10px;">
+                <span class="pill">{{ deal["entry_kind"] or "unknown" }}</span>
+                {% if deal["payment_display"] %}<span class="pill">{{ deal["payment_display"] }}</span>{% endif %}
+                {% if deal["category"] or deal["expense_category"] %}<span class="pill">{{ deal["category"] or deal["expense_category"] }}</span>{% endif %}
+            </div>
+        </section>
+
+        <div class="layout">
+            <div class="card">
+                <div class="media">
+                    {% if deal["attachment_urls"] %}
+                        {% for url in deal["attachment_urls"] %}
+                        <a href="{{ url }}" target="_blank" rel="noopener noreferrer"><img src="{{ url }}" alt="deal attachment"></a>
+                        {% endfor %}
+                    {% elif deal["nearby_image"] %}
+                    <div class="message-box small">No image was saved on this parsed deal, but a nearby same-author image was found {{ deal["nearby_image"]["delta_seconds"] }} seconds away.</div>
+                    <a href="{{ deal['nearby_image']['image_url'] }}" target="_blank" rel="noopener noreferrer"><img src="{{ deal['nearby_image']['image_url'] }}" alt="nearby deal attachment"></a>
+                    {% else %}
+                    <div class="message-box small">No attachment images on this deal.</div>
+                    {% endif %}
+                </div>
+                <div class="message-box" style="margin-top:14px;">{{ deal["message"] or "(image-only message)" }}</div>
+                {% if deal["grouped_messages"] %}
+                <div class="group-box" style="margin-top:14px;">
+                    <div class="label">Grouped Context</div>
+                    {% for grouped in deal["grouped_messages"] %}
+                    <div class="group-item">
+                        <div class="small">{{ grouped["time"] }}{% if grouped["has_image"] %} | image{% endif %}{% if grouped["is_self"] %} | this row{% endif %}</div>
+                        <div>{{ grouped["message"] or "(image-only message)" }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <div class="stat"><div class="label">Amount</div><div>{{ deal["amount_display"] or "-" }}</div></div>
+                <div class="stat"><div class="label">Money In</div><div>${{ "%.2f"|format(deal["money_in"] or 0) }}</div></div>
+                <div class="stat"><div class="label">Money Out</div><div>${{ "%.2f"|format(deal["money_out"] or 0) }}</div></div>
+                <div class="stat"><div class="label">Payment</div><div>{{ deal["payment_display"] or "-" }}</div></div>
+                <div class="stat"><div class="label">Trade Summary</div><div>{{ deal["trade_summary"] or "-" }}</div></div>
+                <div class="stat"><div class="label">Notes</div><div>{{ deal["notes"] or "-" }}</div></div>
+                <div class="stat"><div class="label">Bookkeeping</div><div>{{ deal["bookkeeping"]["label"] if deal["bookkeeping"] else "Unmatched" }}</div></div>
+                {% if deal["nearby_image"] %}<div class="stat"><div class="label">Image Audit</div><div>Possible missing image: nearby same-author image {{ deal["nearby_image"]["delta_seconds"] }}s away.</div></div>{% endif %}
+                {% if deal["reviewed_by"] or deal["reviewed_at"] %}<div class="stat"><div class="label">Reviewed</div><div>{% if deal["reviewed_by"] %}{{ deal["reviewed_by"] }}{% endif %}{% if deal["reviewed_at"] %}{% if deal["reviewed_by"] %} on {% endif %}{{ deal["reviewed_at"] }}{% endif %}</div></div>{% endif %}
+                {% if deal["image_summary"] %}<div class="stat"><div class="label">Image Summary</div><div>{{ deal["image_summary"] }}</div></div>{% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

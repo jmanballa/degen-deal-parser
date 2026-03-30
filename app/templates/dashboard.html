@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1450px; margin:0 auto; padding:20px; }
+        .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
+        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); width:fit-content; }
+        .pill { background:#f5eadc; color:var(--muted); }
+        h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.95; letter-spacing:-.04em; }
+        p, .small { color:var(--muted); line-height:1.5; }
+        .top-actions, .quick-links { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; }
+        .primary-button { background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; box-shadow:0 10px 18px rgba(212,83,56,.22); }
+        .secondary-button { background:#fff; color:var(--text); border:1px solid var(--line); }
+        .card { padding:18px; margin-bottom:18px; }
+        .summary-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+        .metric { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; }
+        .metric-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; }
+        .layout { display:grid; grid-template-columns:1.2fr .8fr; gap:18px; }
+        .review-item { padding:12px 0; border-top:1px solid #eee3d3; }
+        .review-item:first-child { border-top:none; padding-top:0; }
+        .meta-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        @media (max-width:1000px){ .hero, .layout, .summary-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <section class="hero">
+            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
+            <div>
+                <div class="eyebrow">Internal Operations</div>
+                <h1>{{ title }}</h1>
+                <p>Welcome back{% if current_user %}, {{ current_user.display_name or current_user.username }}{% endif %}. This is the quickest place to jump into reviewing, reporting, or admin tasks without dropping into the power table first.</p>
+                <div class="quick-links">
+                    {% if current_user and current_user.role in ["admin","reviewer"] %}<a class="button primary-button" href="/review">Open Review Queue</a>{% endif %}
+                    <a class="button secondary-button" href="/deals">Deals</a>
+                    <a class="button secondary-button" href="/reports">Reports</a>
+                    {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/admin">Admin Hub</a>{% endif %}
+                    {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
+                    <form method="post" action="/logout" style="display:inline;"><button type="submit" class="button secondary-button">Log Out</button></form>
+                </div>
+            </div>
+        </section>
+
+        <div class="summary-grid">
+            <div class="metric"><div class="metric-label">Needs Review</div><div class="metric-value">{{ review_summary["needs_review"] }}</div></div>
+            <div class="metric"><div class="metric-label">Failed</div><div class="metric-value">{{ review_summary["failed"] }}</div></div>
+            <div class="metric"><div class="metric-label">Queued</div><div class="metric-value">{{ parser_progress["queued"] }}</div></div>
+            <div class="metric"><div class="metric-label">Processing</div><div class="metric-value">{{ parser_progress["processing"] }}</div></div>
+            <div class="metric"><div class="metric-label">Parsed</div><div class="metric-value">{{ overall_summary["parsed"] }}</div></div>
+        </div>
+
+        <div class="layout">
+            <div class="card">
+                <h2 style="margin-top:0;">Recent Reviewed Deals</h2>
+                {% for row in recent_reviewed %}
+                <div class="review-item">
+                    <div class="meta-row">
+                        <strong>{{ row["channel"] or row["channel_id"] }}</strong>
+                        <span class="small">{{ row["time"] }}</span>
+                        <span class="pill">{{ row["entry_kind"] or "unknown" }}</span>
+                        {% if row["amount_display"] %}<span class="pill">{{ row["amount_display"] }}</span>{% endif %}
+                    </div>
+                    <div class="small">{{ row["author"] or "" }}{% if row["reviewed_by"] %} | reviewed by {{ row["reviewed_by"] }}{% endif %}{% if row["reviewed_at"] %} on {{ row["reviewed_at"] }}{% endif %}</div>
+                    <div>{{ row["message"] or "(image-only message)" }}</div>
+                </div>
+                {% else %}
+                <div class="small">No reviewed deals yet.</div>
+                {% endfor %}
+            </div>
+
+            <div class="card">
+                <h2 style="margin-top:0;">Parser Health</h2>
+                <div class="review-item"><div class="metric-label">Completion</div><div>{{ parser_progress["completed"] }} / {{ parser_progress["total"] }} ({{ parser_progress["percent_complete"] }}%)</div></div>
+                <div class="review-item"><div class="metric-label">Images In Flight</div><div>{{ parser_progress["processing_with_images"] }}</div></div>
+                <div class="review-item"><div class="metric-label">Oldest In Flight</div><div>{{ parser_progress["oldest_processing_age_label"] }}</div></div>
+                <div class="review-item"><div class="metric-label">Recovered Stale</div><div>{{ parser_progress["recovered_stale"] }}</div></div>
+                <div class="review-item"><div class="metric-label">OpenAI Spend</div><div>${{ "%.4f"|format(parser_progress["usage"]["estimated_cost_usd"]) }}</div></div>
+                {% if current_user and current_user.role in ["admin","reviewer"] %}
+                <div class="top-actions" style="margin-top:14px;">
+                    <a class="button primary-button" href="/review">Continue Reviewing</a>
+                    <a class="button secondary-button" href="/review/history">Review History</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

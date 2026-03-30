@@ -4,464 +4,898 @@
     <meta charset="utf-8">
     <title>{{ title }}</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        h1 {
-            margin-bottom: 16px;
-        }
-        .banner {
-            padding: 12px 14px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            font-weight: 600;
-        }
-        .banner-success {
-            background: #ecfdf3;
-            border: 1px solid #a6f4c5;
-            color: #067647;
-        }
-        .banner-error {
-            background: #fef3f2;
-            border: 1px solid #fecdca;
-            color: #b42318;
-        }
-        .toolbar {
-            display: flex;
-            gap: 24px;
-            align-items: flex-start;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        .panel {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 12px;
-            background: #fafafa;
-            min-width: 320px;
-        }
-        .panel h2 {
-            margin-top: 0;
-            font-size: 18px;
-        }
-        .form-row {
-            margin-bottom: 10px;
-        }
-        label {
-            display: block;
-            font-size: 13px;
-            margin-bottom: 4px;
-        }
-        input, select, button {
-            padding: 8px;
-            font-size: 14px;
-        }
-        button {
-            cursor: pointer;
-        }
-        .danger-button {
-            background: #b42318;
-            color: white;
-            border: none;
-            border-radius: 6px;
-        }
-        .secondary-button {
-            background: #f2f4f7;
-            border: 1px solid #d0d5dd;
-            border-radius: 6px;
-        }
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(7, minmax(120px, 1fr));
-            gap: 12px;
-            margin-bottom: 18px;
-        }
-        .financial-grid {
-            display: grid;
-            grid-template-columns: repeat(6, minmax(120px, 1fr));
-            gap: 12px;
-            margin-bottom: 18px;
-        }
-        .summary-card {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 12px;
-            background: white;
-        }
-        .summary-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 6px;
-        }
-        .summary-value {
-            font-size: 24px;
-            font-weight: bold;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            vertical-align: top;
-            text-align: left;
-            word-wrap: break-word;
-        }
-        th {
-            background: #f5f5f5;
-        }
-        tr:nth-child(even) {
-            background: #fafafa;
-        }
-        .status-parsed {
-            color: green;
-            font-weight: bold;
-        }
-        .status-processing {
-            color: orange;
-            font-weight: bold;
-        }
-        .status-failed,
-        .status-needs_review {
-            color: red;
-            font-weight: bold;
-        }
-        .message-cell {
-            max-width: 320px;
-            white-space: pre-wrap;
-        }
-        .notes-cell {
-            max-width: 260px;
-            white-space: pre-wrap;
-        }
-        .image-cell {
-            width: 130px;
-        }
-        .thumb {
-            max-width: 110px;
-            max-height: 110px;
-            display: block;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-        }
-        .image-links {
-            margin-top: 6px;
-            font-size: 12px;
-        }
-        .image-links a {
-            display: block;
-            margin-bottom: 4px;
-        }
-        .small {
-            font-size: 12px;
-            color: #555;
-        }
-        .row-actions form {
-            margin-top: 8px;
-        }
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1660px; margin:0 auto; padding:22px; }
+        .page.compact-review { max-width:1520px; }
+        .banner { padding:12px 16px; border-radius:14px; margin-bottom:16px; font-weight:700; border:1px solid; box-shadow:var(--shadow); }
+        .banner-success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
+        .banner-error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
+        .hero, .card, details.panel { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero { display:grid; grid-template-columns:minmax(220px,300px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .logo-wrap img { width:100%; max-width:280px; display:block; margin:0 auto; filter:drop-shadow(0 18px 28px rgba(60,24,8,.2)); }
+        .eyebrow, .pill, .status-pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); width:fit-content; }
+        .pill { background:#f5eadc; color:var(--muted); }
+        .pill.active { background:#e7f5ee; color:#11543d; }
+        h1 { margin:10px 0 8px; font-size:clamp(30px,4vw,52px); line-height:.95; letter-spacing:-.04em; }
+        p, .helper, .muted, .subtle { color:var(--muted); }
+        p { margin:0 0 16px; max-width:900px; line-height:1.6; font-size:15px; }
+        .hero-actions, .inline-actions, .toolbar-actions, .pagination-controls, .row-actions, .progress-meta, .bulk-bar, .table-toolbar, .pagination-bar, .queue-strip, .queue-strip-actions, .table-meta, .row-flags, .message-meta, .bulk-status { display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+        .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; transition:transform .15s ease; }
+        .button:hover, button:hover { transform:translateY(-1px); }
+        .primary-button { background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; box-shadow:0 10px 18px rgba(212,83,56,.22); }
+        .secondary-button { background:#fff; color:var(--text); border:1px solid var(--line); }
+        .danger-button { background:linear-gradient(135deg,#942d23,#c03e33); color:#fff; box-shadow:0 10px 18px rgba(148,45,35,.2); }
+        .tiny-button { width:auto; min-width:0; padding:6px 10px; border-radius:10px; font-size:12px; }
+        .top-grid { display:grid; grid-template-columns:1.35fr .95fr; gap:18px; margin-bottom:18px; }
+        .dashboard { display:grid; grid-template-columns:340px minmax(0,1fr); gap:18px; align-items:start; }
+        .page.sidebar-collapsed .dashboard { grid-template-columns:minmax(0,1fr); }
+        .sidebar { display:flex; flex-direction:column; gap:16px; position:sticky; top:18px; }
+        .page.sidebar-collapsed .sidebar { display:none; }
+        .card { padding:18px; }
+        .summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+        .financial-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+        .metric { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; min-height:92px; }
+        .metric-label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; }
+        .metric-sub, .helper, .muted, .subtle { font-size:12px; line-height:1.5; }
+        .progress-track, .chart-track { overflow:hidden; border-radius:999px; background:#f1e5d8; }
+        .progress-track { height:12px; border:1px solid rgba(170,121,51,.16); }
+        .progress-fill, .chart-fill { height:100%; border-radius:999px; }
+        .progress-fill { background:linear-gradient(90deg,#d44b34,#f0c46b); transition:width .25s ease; }
+        .progress-text { margin-top:8px; font-size:12px; color:var(--muted); line-height:1.5; }
+        .health-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
+        .health-chip { padding:10px 12px; border-radius:14px; border:1px solid #eadfce; background:#fffdf9; }
+        .health-chip strong { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:4px; }
+        .health-chip span { display:block; font-size:18px; font-weight:800; letter-spacing:-.03em; }
+        .chart-fill { min-width:2px; background:linear-gradient(90deg,#c96d16,#d44b34); }
+        .chart-list { display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+        .chart-row { display:grid; grid-template-columns:120px 1fr 90px; gap:10px; align-items:center; }
+        .chart-label, .side-summary { font-size:13px; font-weight:700; color:var(--muted); }
+        summary { list-style:none; cursor:pointer; padding:16px 18px; font-size:15px; font-weight:800; display:flex; justify-content:space-between; align-items:center; }
+        summary::-webkit-details-marker { display:none; }
+        summary span { transition:transform .2s ease, color .2s ease; color:var(--muted); }
+        details.panel[open] > summary span { transform:rotate(45deg); color:var(--accent); }
+        details.panel > summary { transition:background .2s ease; }
+        details.panel[open] > summary { background:rgba(255,255,255,.55); }
+        .panel-body { padding:0 18px 18px; animation:panelFade .22s ease; }
+        .form-row { margin-bottom:12px; }
+        label { display:block; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+        input, select { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        .channel-item { border:1px solid #eadfce; background:#fff; border-radius:16px; padding:12px; margin-bottom:10px; }
+        .small-line { color:var(--muted); font-size:12px; line-height:1.5; }
+        .queue-strip { margin:0 0 14px; padding:14px 16px; border:1px solid #eadfce; border-radius:18px; background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,248,238,.86)); position:sticky; top:12px; z-index:5; box-shadow:0 14px 28px rgba(77,46,20,.08); }
+        .queue-strip strong { font-size:14px; }
+        .queue-strip .helper { max-width:760px; }
+        .queue-strip-actions { justify-content:flex-end; }
+        .toggle-pill { appearance:none; border:1px solid #e1d0bc; background:#fff; color:var(--muted); border-radius:999px; padding:7px 11px; font:inherit; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; cursor:pointer; }
+        .toggle-pill.is-active { background:#251c16; color:#fff8ee; border-color:#251c16; }
+        .table-meta { margin-bottom:12px; }
+        .scope-stack { display:flex; flex-direction:column; gap:4px; }
+        .scope-title { font-size:24px; margin:0; letter-spacing:-.03em; }
+        .table-scroll-top { overflow-x:auto; overflow-y:hidden; border:1px solid #eadfce; border-bottom:none; border-radius:20px 20px 0 0; background:rgba(255,255,255,.88); height:18px; }
+        .table-scroll-top-inner { height:1px; }
+        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:0 0 20px 20px; background:#fff; max-height:72vh; }
+        table { width:100%; border-collapse:separate; border-spacing:0; min-width:1520px; }
+        th, td { padding:10px 12px; border-bottom:1px solid #efe4d6; vertical-align:top; text-align:left; font-size:13px; line-height:1.35; }
+        thead th { position:sticky; top:0; z-index:2; background:#fff6ea; color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #e2d1bb; }
+        thead th a { display:inline-flex; gap:6px; align-items:center; color:inherit; }
+        tbody tr { transition:background .15s ease, box-shadow .15s ease; }
+        tbody tr:hover { background:#fff9f1; }
+        tbody tr.row-needs-review { box-shadow:inset 4px 0 0 #cf4b34; }
+        tbody tr.row-failed { box-shadow:inset 4px 0 0 #8e2722; }
+        tbody tr.row-grouped { background:rgba(255,248,236,.65); }
+        tbody tr.row-dirty { background:#fff5e8; }
+        tbody tr.row-focus { background:#fff2dc; }
+        .check-col{width:38px}.quick-col{width:130px}.time-col{width:156px}.channel-col{width:184px}.author-col{width:118px}.image-col{width:82px}.status-col{width:124px}.kind-col{width:154px}.amount-col{width:112px}.payment-col{width:144px}.category-col{width:120px}.bookkeeping-col{width:120px}.review-col{width:92px}.actions-col{width:320px}
+        th.check-col, td.check-col { position:sticky; left:0; z-index:3; background:inherit; }
+        th.quick-col, td.quick-col { position:sticky; left:38px; z-index:3; background:inherit; box-shadow:8px 0 14px -14px rgba(52, 33, 10, .45); }
+        thead th.check-col, thead th.quick-col { background:#fff6ea; z-index:4; }
+        tbody td.check-col, tbody td.quick-col { background:#fff; }
+        tbody tr:hover td.check-col, tbody tr:hover td.quick-col { background:#fff9f1; }
+        .message-cell { min-width:320px; }
+        .message-preview { display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; max-width:360px; font-size:13px; line-height:1.45; }
+        .message-meta { justify-content:flex-start; margin-bottom:8px; }
+        .meta-pill, .count-pill, .hotkey-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; border-radius:999px; font-size:11px; font-weight:800; letter-spacing:.04em; background:#f7efe2; color:var(--muted); }
+        .meta-pill.warn { background:#fff1d7; color:#8a580d; }
+        .meta-pill.danger { background:#fde8e6; color:#8e2722; }
+        .meta-pill.success { background:#e7f5ee; color:#11543d; }
+        .count-pill { background:#fff; border:1px solid #ead7c1; }
+        .hotkey-pill { background:#251c16; color:#fff8ee; }
+        .thumb { width:52px; height:68px; object-fit:cover; border-radius:10px; border:1px solid var(--line); display:block; background:#f9f2e9; }
+        .status-parsed{color:#11543d;background:#e7f5ee}.status-processing{color:#8a580d;background:#fff1d7}.status-needs_review,.status-failed{color:#8e2722;background:#fde8e6}.status-ignored{color:#5d6a77;background:#edf1f5}.status-queued{color:#30548c;background:#e7f0ff}
+        .notes-cell { display:flex; flex-direction:column; gap:10px; }
+        .quick-actions { display:flex; flex-direction:column; gap:6px; }
+        .quick-actions .tiny-button { width:100%; }
+        .row-flags { justify-content:flex-start; gap:6px; }
+        details.inline-details { border-top:1px dashed #ead7c1; padding-top:8px; }
+        details.inline-details summary { padding:0; font-size:12px; color:#a33b27; font-weight:700; }
+        details.quick-fix-panel { border-top:none; padding-top:0; }
+        details.quick-fix-panel summary { list-style:none; }
+        details.quick-fix-panel summary::-webkit-details-marker { display:none; }
+        .detail-grid { margin-top:10px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+        .detail-card { background:#fffbf6; border:1px solid #efdfcf; border-radius:12px; padding:10px; font-size:12px; color:var(--muted); }
+        .detail-card strong { display:block; margin-bottom:3px; color:var(--text); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+        .inline-review-form { margin-top:2px; display:grid; gap:8px; }
+        .inline-review-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+        .inline-review-form label { margin-bottom:0; }
+        .inline-review-form input, .inline-review-form select, .inline-review-form textarea { padding:8px 10px; border-radius:10px; font-size:12px; }
+        .inline-review-form textarea { min-height:72px; resize:vertical; }
+        .inline-review-form .field-wide { grid-column:1 / -1; }
+        .inline-review-actions { display:flex; gap:8px; flex-wrap:wrap; }
+        .review-input, .review-select, .review-textarea { width:100%; border:1px solid #e7d7c4; background:#fffdfa; border-radius:10px; color:var(--text); font:inherit; font-size:12px; transition:border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+        .review-input, .review-select { padding:7px 9px; }
+        .review-textarea { padding:8px 9px; min-height:84px; resize:vertical; }
+        .review-input:focus, .review-select:focus, .review-textarea:focus { outline:none; border-color:#d55338; box-shadow:0 0 0 3px rgba(213,83,56,.12); background:#fff; }
+        .review-input.is-dirty, .review-select.is-dirty, .review-textarea.is-dirty { border-color:#d55338; background:#fff2e9; }
+        .review-cell { min-width:112px; }
+        .review-cell.notes-col { min-width:220px; }
+        .review-col .pill { font-weight:800; }
+        .grouped-banner { margin-top:8px; padding:8px 10px; border-radius:12px; border:1px solid #ecd9bd; background:#fffaf2; }
+        .grouped-title { font-size:11px; font-weight:800; color:var(--accent-strong); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+        .grouped-list { display:flex; flex-direction:column; gap:6px; }
+        .grouped-item { font-size:12px; color:var(--muted); border-top:1px dashed #ead7c1; padding-top:6px; }
+        .grouped-item:first-child { border-top:none; padding-top:0; }
+        .grouped-item strong { color:var(--text); }
+        .page.compact-review .channel-col,
+        .page.compact-review .author-col,
+        .page.compact-review .bookkeeping-col { display:none; }
+        .page.compact-review .message-cell { min-width:280px; }
+        .page.compact-review .message-preview { max-width:300px; -webkit-line-clamp:3; }
+        .page.compact-review .actions-col { width:280px; }
+        .page.compact-review .review-cell.notes-col { min-width:180px; }
+        .page.compact-review .review-textarea { min-height:68px; }
+        .page.compact-review table { min-width:1260px; }
+        .bulk-bar { padding:12px 14px; margin-bottom:14px; border:1px solid #eadfce; border-radius:16px; background:rgba(255,252,247,.88); }
+        .bulk-status { justify-content:flex-start; }
+        .selection-count { font-weight:800; color:var(--text); }
+        .review-rail { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; margin-bottom:14px; }
+        .review-note { padding:12px 14px; border:1px solid #eadfce; border-radius:16px; background:#fffdf9; }
+        .review-note strong { display:block; margin-bottom:4px; }
+        .section-subtle { font-size:12px; color:var(--muted); }
+        @keyframes panelFade { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+        @media (max-width:1200px){.top-grid,.dashboard{grid-template-columns:1fr}.sidebar{position:static}}
+        @media (max-width:900px){.page{padding:16px 14px 28px}.hero{grid-template-columns:1fr;text-align:center}.eyebrow{margin:0 auto}.hero-actions{justify-content:center}.summary-grid,.financial-grid,.detail-grid,.chart-row,.review-rail{grid-template-columns:1fr}.inline-review-grid{grid-template-columns:1fr}.queue-strip{position:static}}
+        @media (max-width:640px){.summary-grid,.financial-grid,.detail-grid,.chart-row{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
-    <h1>{{ title }}</h1>
+    <div class="page{% if is_review_page %} review-page{% endif %}" id="messages-page">
+        {% if success %}<div class="banner banner-success">{{ success }}</div>{% endif %}
+        {% if error %}<div class="banner banner-error">{{ error }}</div>{% endif %}
 
-    {% if success %}
-        <div class="banner banner-success">{{ success }}</div>
-    {% endif %}
-    {% if error %}
-        <div class="banner banner-error">{{ error }}</div>
-    {% endif %}
-
-    <div class="summary-grid">
-        <div class="summary-card"><div class="summary-label">Total</div><div class="summary-value">{{ summary["total"] }}</div></div>
-        <div class="summary-card"><div class="summary-label">Parsed</div><div class="summary-value">{{ summary["parsed"] }}</div></div>
-        <div class="summary-card"><div class="summary-label">Queued</div><div class="summary-value">{{ summary["queued"] }}</div></div>
-        <div class="summary-card"><div class="summary-label">Processing</div><div class="summary-value">{{ summary["processing"] }}</div></div>
-        <div class="summary-card"><div class="summary-label">Needs Review</div><div class="summary-value">{{ summary["needs_review"] }}</div></div>
-        <div class="summary-card"><div class="summary-label">Failed</div><div class="summary-value">{{ summary["failed"] }}</div></div>
-        <div class="summary-card"><div class="summary-label">With Images</div><div class="summary-value">{{ summary["with_images"] }}</div></div>
-    </div>
-
-    <div class="financial-grid">
-        <div class="summary-card"><div class="summary-label">Sales</div><div class="summary-value">{{ financial_summary["totals"].get("sales", 0) }}</div></div>
-        <div class="summary-card"><div class="summary-label">Buys</div><div class="summary-value">{{ financial_summary["totals"].get("buys", 0) }}</div></div>
-        <div class="summary-card"><div class="summary-label">Expenses</div><div class="summary-value">{{ financial_summary["totals"].get("expenses", 0) }}</div></div>
-        <div class="summary-card"><div class="summary-label">Money In</div><div class="summary-value">{{ financial_summary["totals"].get("money_in", 0) }}</div></div>
-        <div class="summary-card"><div class="summary-label">Money Out</div><div class="summary-value">{{ financial_summary["totals"].get("money_out", 0) }}</div></div>
-        <div class="summary-card"><div class="summary-label">Net</div><div class="summary-value">{{ financial_summary["totals"].get("net", 0) }}</div></div>
-    </div>
-
-    <div class="toolbar">
-        <div class="panel">
-            <h2>Watched Channels</h2>
-
-            <form method="post" action="/admin/channels/add" style="margin-bottom: 16px;">
-                <div class="form-row">
-                    <label for="new_channel_id">Available Discord Channel</label>
-                    <select name="channel_id" id="new_channel_id" required>
-                        <option value="">Select a Discord channel</option>
-                        {% for ch in available_discord_channels %}
-                            <option value="{{ ch['channel_id'] }}">
-                                {{ ch["label"] }}
-                            </option>
-                        {% endfor %}
-                    </select>
+        <section class="hero">
+            <div class="logo-wrap"><img src="/static/degen-logo.png" alt="Degen Collectibles logo"></div>
+            <div>
+                <div class="eyebrow">Degen Collectibles Ledger Ops</div>
+                <h1>{{ title }}</h1>
+                <p>{% if is_review_page %}Move through the review queue with less clicking: scan the message, correct the parse inline, and approve without opening each row unless you need the full audit trail.{% else %}Use this as the admin-only power table for parser operations, watched channels, backfill, and deep ledger cleanup. Partner browsing and employee review now live on their own pages.{% endif %}</p>
+                <div class="hero-actions">
+                    {% if not is_review_page %}
+                    <a href="/admin" class="button primary-button" style="width:auto;">Back to Admin Hub</a>
+                    <a href="/bookkeeping" class="button secondary-button" style="width:auto;">Bookkeeping</a>
+                    <a href="/messages/export.csv?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}" class="button secondary-button" style="width:auto;">Export Table CSV</a>
+                    {% else %}
+                    <a href="/review" class="button primary-button" style="width:auto;">Open Reviewer Queue</a>
+                    <a href="/table" class="button secondary-button" style="width:auto;">Back to Main Table</a>
+                    <a href="/review/history" class="button secondary-button" style="width:auto;">Review History</a>
+                    {% endif %}
                 </div>
+            </div>
+        </section>
 
-                <div class="form-row">
-                    <label for="new_channel_name">Saved Name (optional)</label>
-                    <input type="text" name="channel_name" id="new_channel_name" placeholder="Optional custom label">
+        <section class="top-grid">
+            <div class="card">
+                <h2>Queue Snapshot</h2>
+                <div class="summary-grid">
+                    <div class="metric"><div class="metric-label">Total</div><div class="metric-value">{{ summary["total"] }}</div><div class="metric-sub">Visible rows in this view</div></div>
+                    <div class="metric"><div class="metric-label">Parsed</div><div class="metric-value">{{ summary["parsed"] }}</div><div class="metric-sub">Ready ledger rows</div></div>
+                    <div class="metric"><div class="metric-label">Review</div><div class="metric-value">{{ summary["needs_review"] }}</div><div class="metric-sub">Needs eyes on it</div></div>
+                    <div class="metric"><div class="metric-label">Failed</div><div class="metric-value">{{ summary["failed"] }}</div><div class="metric-sub">Needs retry</div></div>
+                    <div class="metric"><div class="metric-label">Queued</div><div class="metric-value">{{ summary["queued"] }}</div><div class="metric-sub">Waiting to parse</div></div>
+                    <div class="metric"><div class="metric-label">Processing</div><div class="metric-value">{{ summary["processing"] }}</div><div class="metric-sub">Running now</div></div>
+                    <div class="metric"><div class="metric-label">Ignored</div><div class="metric-value">{{ summary["ignored"] }}</div><div class="metric-sub">Non-transactions</div></div>
+                    <div class="metric"><div class="metric-label">Images</div><div class="metric-value">{{ summary["with_images"] }}</div><div class="metric-sub">Rows with attachments</div></div>
                 </div>
-
-                <div class="form-row">
-                    <label>
-                        <input type="checkbox" name="backfill_enabled" value="true" checked>
-                        Include this channel in batch backfill runs
-                    </label>
+                <div class="progress-meta"><strong>Parser Progress</strong><span id="parser-progress-status">{{ "Active" if parser_progress["is_active"] else "Idle" }}</span></div>
+                <div class="progress-track"><div class="progress-fill" id="parser-progress-fill" style="width: {{ parser_progress['percent_complete'] }}%;"></div></div>
+                <div class="progress-text" id="parser-progress-text">{{ parser_progress["completed"] }} / {{ parser_progress["total"] }} complete | queued: {{ parser_progress["queued"] }} | processing: {{ parser_progress["processing"] }} | review: {{ parser_progress["needs_review"] }} | failed: {{ parser_progress["failed"] }} | ignored: {{ parser_progress["ignored"] }}</div>
+                <div class="progress-text" id="parser-progress-scope">{% if selected_channel_id or selected_after or selected_before %}Scope: filtered view{% else %}Scope: all visible non-ignored messages{% endif %}</div>
+                <div class="health-strip">
+                    <div class="health-chip"><strong>Oldest In Flight</strong><span id="parser-health-oldest">{{ parser_progress["oldest_processing_age_label"] }}</span></div>
+                    <div class="health-chip"><strong>Image Rows In Flight</strong><span id="parser-health-images">{{ parser_progress["processing_with_images"] }}</span></div>
+                    <div class="health-chip"><strong>Stale In Flight</strong><span id="parser-health-stale">{{ parser_progress["stale_processing"] }}</span><div class="section-subtle">Older than {{ parser_progress["stale_threshold_minutes"] }}m</div></div>
+                    <div class="health-chip"><strong>Recovered</strong><span id="parser-health-recovered">{{ parser_progress["recovered_stale"] }}</span><div class="section-subtle">Rows rescued from stuck processing</div></div>
                 </div>
-
-                <button type="submit">Add Channel</button>
-            </form>
-
-            <div class="small" style="margin-bottom: 8px;">Live watched channels</div>
-
-            {% for group in watched_channel_groups %}
-                <div style="margin-bottom: 12px;">
-                    <div class="small" style="font-weight: bold; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
-                        {{ group["category_name"] }}
-                    </div>
-
-                    {% for ch in group["channels"] %}
-                        <div style="margin-bottom: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; background: white;">
-                            <div><strong>{{ ch.channel_name or ch.channel_id }}</strong></div>
-                            <div class="small">{{ ch.channel_id }}</div>
-                            <div class="small">Enabled: {{ "Yes" if ch.is_enabled else "No" }}</div>
-                            <div class="small">Backfill: {{ "Yes" if ch.backfill_enabled else "No" }}</div>
-
-                            <form method="post" action="/admin/channels/toggle" style="display:inline-block; margin-top:6px;">
-                                <input type="hidden" name="channel_id" value="{{ ch.channel_id }}">
-                                <button type="submit" class="secondary-button">
-                                    {{ "Disable" if ch.is_enabled else "Enable" }}
-                                </button>
-                            </form>
-
-                            <form method="post" action="/admin/channels/toggle-backfill" style="display:inline-block; margin-top:6px;">
-                                <input type="hidden" name="channel_id" value="{{ ch.channel_id }}">
-                                <button type="submit" class="secondary-button">
-                                    {{ "Disable Backfill" if ch.backfill_enabled else "Enable Backfill" }}
-                                </button>
-                            </form>
-
-                            <form method="post" action="/admin/channels/remove" style="display:inline-block; margin-top:6px;" onsubmit="return confirm('Remove this watched channel?');">
-                                <input type="hidden" name="channel_id" value="{{ ch.channel_id }}">
-                                <button type="submit" class="danger-button">Remove</button>
-                            </form>
+                <div class="health-strip">
+                    <div class="health-chip"><strong>OpenAI Spend</strong><span id="parser-usage-cost">${{ "%.4f"|format(parser_progress["usage"]["estimated_cost_usd"]) }}</span></div>
+                    <div class="health-chip"><strong>Total Tokens</strong><span id="parser-usage-total">{{ parser_progress["usage"]["total_tokens"] }}</span></div>
+                    <div class="health-chip"><strong>Input / Cached</strong><span id="parser-usage-input">{{ parser_progress["usage"]["input_tokens"] }} / {{ parser_progress["usage"]["cached_input_tokens"] }}</span></div>
+                    <div class="health-chip"><strong>Output / Attempts</strong><span id="parser-usage-output">{{ parser_progress["usage"]["output_tokens"] }} / {{ parser_progress["usage"]["attempts"] }}</span></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Financial Pulse</h2>
+                <div class="financial-grid">
+                    <div class="metric"><div class="metric-label">Sales</div><div class="metric-value">${{ "%.2f"|format(financial_summary["totals"].get("sales", 0)) }}</div></div>
+                    <div class="metric"><div class="metric-label">Buys</div><div class="metric-value">${{ "%.2f"|format(financial_summary["totals"].get("buys", 0)) }}</div></div>
+                    <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value">${{ "%.2f"|format(financial_summary["totals"].get("expenses", 0)) }}</div></div>
+                    <div class="metric"><div class="metric-label">Money In</div><div class="metric-value">${{ "%.2f"|format(financial_summary["totals"].get("money_in", 0)) }}</div></div>
+                    <div class="metric"><div class="metric-label">Money Out</div><div class="metric-value">${{ "%.2f"|format(financial_summary["totals"].get("money_out", 0)) }}</div></div>
+                    <div class="metric"><div class="metric-label">Net</div><div class="metric-value">${{ "%.2f"|format(financial_summary["totals"].get("net", 0)) }}</div></div>
+                </div>
+                <div class="chart-list">
+                    {% if financial_summary["expense_categories"] %}
+                        {% set max_expense = financial_summary["expense_categories"].values() | max %}
+                        {% for expense_name, expense_total in financial_summary["expense_categories"].items() %}
+                        <div class="chart-row">
+                            <div class="chart-label">{{ expense_name.replace("_", " ") }}</div>
+                            <div class="chart-track"><div class="chart-fill" style="width: {{ ((expense_total / max_expense) * 100) if max_expense else 0 }}%;"></div></div>
+                            <div class="chart-value">${{ "%.2f"|format(expense_total) }}</div>
                         </div>
-                    {% endfor %}
-                </div>
-            {% endfor %}
-        </div>
-
-        <div class="panel">
-            <h2>Filters</h2>
-            <form method="get" action="/table">
-                <div class="form-row">
-                    <label for="channel_id">Channel</label>
-                    <select name="channel_id" id="channel_id">
-                        <option value="">All channels</option>
-                        {% for ch in channels %}
-                            <option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>
-                                {{ ch["channel_name"] }}
-                            </option>
                         {% endfor %}
-                    </select>
+                    {% else %}
+                        <div class="helper">No expense rows in the current view yet.</div>
+                    {% endif %}
                 </div>
+            </div>
+        </section>
+        <section class="dashboard">
+            <aside class="sidebar">
+                <details class="panel" open>
+                    <summary>Filters<span>+</span></summary>
+                    <div class="panel-body">
+                        <form method="get" action="{{ return_path }}">
+                            <div class="form-row"><label for="channel_id">Channel</label><select name="channel_id" id="channel_id"><option value="">All channels</option>{% for ch in channels %}<option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>{% endfor %}</select></div>
+                            {% if is_review_page %}
+                            <input type="hidden" name="status" value="review_queue"><div class="form-row"><label>Scope</label><div class="helper">Needs review + failed</div></div>
+                            {% else %}
+                            <div class="form-row"><label for="status">Status</label><select name="status" id="status"><option value="" {% if selected_status == "" %}selected{% endif %}>All statuses</option><option value="queued" {% if selected_status == "queued" %}selected{% endif %}>queued</option><option value="processing" {% if selected_status == "processing" %}selected{% endif %}>processing</option><option value="parsed" {% if selected_status == "parsed" %}selected{% endif %}>parsed</option><option value="needs_review" {% if selected_status == "needs_review" %}selected{% endif %}>needs_review</option><option value="failed" {% if selected_status == "failed" %}selected{% endif %}>failed</option><option value="ignored" {% if selected_status == "ignored" %}selected{% endif %}>ignored</option></select></div>
+                            {% endif %}
+                            <div class="form-row"><label for="after_filter">After</label><input type="date" name="after" id="after_filter" value="{{ selected_after }}"></div>
+                            <div class="form-row"><label for="before_filter">Before</label><input type="date" name="before" id="before_filter" value="{{ selected_before }}"></div>
+                            <div class="form-row"><label for="sort_dir">Time Sort</label><select name="sort_dir" id="sort_dir"><option value="desc" {% if selected_sort_dir == "desc" %}selected{% endif %}>Newest first</option><option value="asc" {% if selected_sort_dir == "asc" %}selected{% endif %}>Oldest first</option></select></div>
+                            <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
+                            <div class="form-row"><label for="limit">Rows Per Page</label><select name="limit" id="limit"><option value="25" {% if selected_limit == 25 %}selected{% endif %}>25</option><option value="50" {% if selected_limit == 50 %}selected{% endif %}>50</option><option value="100" {% if selected_limit == 100 %}selected{% endif %}>100</option><option value="200" {% if selected_limit == 200 %}selected{% endif %}>200</option><option value="500" {% if selected_limit == 500 %}selected{% endif %}>500</option></select></div>
+                            <input type="hidden" name="page" value="1">
+                            <div class="inline-actions"><button type="submit" class="primary-button">Apply Filters</button><a href="{{ return_path }}" class="button secondary-button" style="width:auto;">Reset</a></div>
+                        </form>
+                        {% if selected_channel_id %}<form method="post" action="/admin/clear/channel" onsubmit="return confirm('Clear all stored messages for this selected channel?');" style="margin-top:10px;"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><button type="submit" class="danger-button">Clear Selected Channel</button></form>{% endif %}
+                    </div>
+                </details>
 
-                <div class="form-row">
-                    <label for="status">Status</label>
-                    <select name="status" id="status">
-                        <option value="" {% if selected_status == "" %}selected{% endif %}>All statuses</option>
-                        <option value="queued" {% if selected_status == "queued" %}selected{% endif %}>queued</option>
-                        <option value="processing" {% if selected_status == "processing" %}selected{% endif %}>processing</option>
-                        <option value="parsed" {% if selected_status == "parsed" %}selected{% endif %}>parsed</option>
-                        <option value="needs_review" {% if selected_status == "needs_review" %}selected{% endif %}>needs_review</option>
-                        <option value="failed" {% if selected_status == "failed" %}selected{% endif %}>failed</option>
-                    </select>
-                </div>
-
-                <div class="form-row">
-                    <label for="limit">Limit</label>
-                    <input type="number" name="limit" id="limit" value="{{ selected_limit }}">
-                </div>
-
-                <button type="submit">Apply Filters</button>
-                <a href="/table"><button type="button" class="secondary-button">Reset Filters</button></a>
-            </form>
-            {% if selected_channel_id %}
-            <form method="post" action="/admin/clear/channel" onsubmit="return confirm('Clear all stored messages for this selected channel?');" style="margin-top: 10px;">
-                <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
-                <button type="submit" class="danger-button">Clear Selected Channel</button>
-            </form>
-            {% endif %}
-        </div>
-
-        <div class="panel">
-            <h2>Manual Backfill</h2>
-            <form method="post" action="/admin/backfill/form">
-                <div class="form-row">
-                    <label for="backfill_channel_id">Channel</label>
-                    <select name="channel_id" id="backfill_channel_id">
-                        <option value="">All backfill-enabled watched channels</option>
-                        {% for ch in available_discord_channels %}
-                            <option value="{{ ch['channel_id'] }}">
-                                {{ ch["label"] }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="form-row">
-                    <label for="after">After</label>
-                    <input type="text" name="after" id="after" placeholder="2026-03-01">
-                </div>
-
-                <div class="form-row">
-                    <label for="before">Before</label>
-                    <input type="text" name="before" id="before" placeholder="2026-03-31">
-                </div>
-
-                <div class="form-row">
-                    <label for="backfill_limit">Limit per run</label>
-                    <input type="number" name="limit" id="backfill_limit" placeholder="500">
-                </div>
-
-                <div class="form-row">
-                    <label for="oldest_first">Order</label>
-                    <select name="oldest_first" id="oldest_first">
-                        <option value="true">Oldest first</option>
-                        <option value="false">Newest first</option>
-                    </select>
-                </div>
-
-                <button type="submit">Run Backfill</button>
-            </form>
-        </div>
-
-    </div>
-
-    <div class="panel" style="margin-bottom: 20px;">
-        <h2>Danger Zone</h2>
-        <form method="post" action="/admin/clear/form" onsubmit="return confirm('Are you sure you want to clear all stored messages?');">
-            <button type="submit" class="danger-button">Clear Everything</button>
-        </form>
-    </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Time</th>
-                <th>Channel</th>
-                <th>Author</th>
-                <th>Image</th>
-                <th>Message</th>
-                <th>Status</th>
-                <th>Entry Kind</th>
-                <th>Type</th>
-                <th>Amount</th>
-                <th>Money In</th>
-                <th>Money Out</th>
-                <th>Payment</th>
-                <th>Cash Dir</th>
-                <th>Category</th>
-                <th>Expense Category</th>
-                <th>Items In</th>
-                <th>Items Out</th>
-                <th>Trade Summary</th>
-                <th>Confidence</th>
-                <th>Review</th>
-                <th>Attempts</th>
-                <th>Notes / Actions</th>
-                <th>Grouped</th>
-                <th>Group Size</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rows %}
-            <tr>
-                <td>{{ row["id"] }}</td>
-                <td>{{ row["time"] or "" }}</td>
-                <td>{{ row["channel"] or "" }}<br><span class="small">{{ row["channel_id"] }}</span></td>
-                <td>{{ row["author"] or "" }}</td>
-                <td class="image-cell">
-                    {% if row["first_image_url"] %}
-                        <a href="{{ row['first_image_url'] }}" target="_blank" rel="noopener noreferrer">
-                            <img class="thumb" src="{{ row['first_image_url'] }}" alt="attachment image">
-                        </a>
-                        {% if row["image_urls"]|length > 1 %}
-                        <div class="image-links">
-                            {% for url in row["image_urls"][1:] %}
-                                <a href="{{ url }}" target="_blank" rel="noopener noreferrer">extra image {{ loop.index }}</a>
+                <details class="panel" open>
+                    <summary>Watched Channels<span>+</span></summary>
+                    <div class="panel-body">
+                        <form method="post" action="/admin/channels/add" style="margin-bottom:14px;">
+                            <div class="form-row"><label for="available_channel_sort">Channel Sort</label><select id="available_channel_sort"><option value="last_message_desc">Last message (newest)</option><option value="created_desc">Date created (newest)</option><option value="name_asc">Name</option></select></div>
+                            <div class="form-row"><label for="new_channel_id">Available Discord Channels</label><select name="channel_ids" id="new_channel_id" required multiple size="6">{% for ch in available_discord_channels %}<option value="{{ ch['channel_id'] }}" data-label="{{ ch['label'] }}" data-created-at="{{ ch['created_at'] or '' }}" data-last-message-at="{{ ch['last_message_at'] or '' }}">{{ ch["label"] }}</option>{% endfor %}</select></div>
+                            <div class="helper" style="margin-top:-4px; margin-bottom:10px;">Hold Ctrl or Shift to select multiple channels.</div>
+                            <div class="form-row"><label for="new_channel_name">Saved Name (optional)</label><input type="text" name="channel_name" id="new_channel_name" placeholder="Only used when one channel is selected"></div>
+                            <div class="form-row"><label for="new_channel_backfill_after">Initial Backfill After (optional)</label><input type="date" name="backfill_after" id="new_channel_backfill_after"></div>
+                            <div class="form-row"><label for="new_channel_backfill_before">Initial Backfill Before (optional)</label><input type="date" name="backfill_before" id="new_channel_backfill_before"></div>
+                            <div class="form-row"><label><input type="checkbox" name="backfill_enabled" value="true" style="width:auto; margin-right:8px;">Include this channel in future batch/startup backfill runs using the saved range</label></div>
+                            <div class="helper" style="margin-bottom:10px;">Leave dates blank for live-only watching. If you enter a range here, that same range is backfilled immediately for every selected channel.</div>
+                            <button type="submit" class="primary-button">Add Channel(s)</button>
+                        </form>
+                        {% for group in watched_channel_groups %}
+                        <div style="margin-bottom:14px;">
+                            <div class="side-summary" style="text-transform:uppercase; letter-spacing:.08em;">{{ group["category_name"] }}</div>
+                            {% for ch in group["channels"] %}
+                            <div class="channel-item">
+                                <strong>{{ ch.channel_name or ch.channel_id }}</strong>
+                                <div class="small-line">{{ ch.channel_id }}</div>
+                                <div class="small-line">Enabled: {{ "Yes" if ch.is_enabled else "No" }}</div>
+                                <div class="small-line">Backfill: {{ "Yes" if ch.backfill_enabled else "No" }}</div>
+                            <div class="small-line">Range: {{ ch.backfill_after|pacific_datetime if ch.backfill_after else "no start" }} to {{ ch.backfill_before|pacific_datetime if ch.backfill_before else "no end" }}</div>
+                                <div class="inline-actions" style="margin-top:10px;">
+                                    <form method="post" action="/admin/channels/toggle"><input type="hidden" name="channel_id" value="{{ ch.channel_id }}"><button type="submit" class="secondary-button tiny-button">{{ "Disable" if ch.is_enabled else "Enable" }}</button></form>
+                                    <form method="post" action="/admin/channels/toggle-backfill"><input type="hidden" name="channel_id" value="{{ ch.channel_id }}"><button type="submit" class="secondary-button tiny-button">{{ "Disable Backfill" if ch.backfill_enabled else "Enable Backfill" }}</button></form>
+                                    <form method="post" action="/admin/channels/remove" onsubmit="return confirm('Remove this watched channel?');"><input type="hidden" name="channel_id" value="{{ ch.channel_id }}"><button type="submit" class="danger-button tiny-button">Remove</button></form>
+                                </div>
+                            </div>
                             {% endfor %}
                         </div>
-                        {% endif %}
-                    {% else %}
-                        -
-                    {% endif %}
-                </td>
-                <td class="message-cell">
-                    {{ row["message"] or "" }}
-                    {% if row["is_deleted"] %}
-                        <div class="small" style="color: #b42318; font-weight: bold;">Deleted in Discord</div>
-                    {% endif %}
-                    {% if row["edited_at"] %}
-                        <div class="small">Edited: {{ row["edited_at"] }}</div>
-                    {% endif %}
-                </td>
-                <td class="status-{{ row['status'] }}">{{ row["status"] or "" }}</td>
-                <td>{{ row["entry_kind"] or "" }}</td>
-                <td>{{ row["type"] or "" }}</td>
-                <td>{{ row["amount"] if row["amount"] is not none else "" }}</td>
-                <td>{{ row["money_in"] if row["money_in"] is not none else "" }}</td>
-                <td>{{ row["money_out"] if row["money_out"] is not none else "" }}</td>
-                <td>{{ row["payment"] or "" }}</td>
-                <td>{{ row["cash_direction"] or "" }}</td>
-                <td>{{ row["category"] or "" }}</td>
-                <td>{{ row["expense_category"] or "" }}</td>
-                <td>{{ ", ".join(row["items_in"]) if row["items_in"] else "" }}</td>
-                <td>{{ ", ".join(row["items_out"]) if row["items_out"] else "" }}</td>
-                <td>{{ row["trade_summary"] or "" }}</td>
-                <td>{{ row["confidence"] if row["confidence"] is not none else "" }}</td>
-                <td>{{ "Yes" if row["needs_review"] else "No" }}</td>
-                <td>{{ row["parse_attempts"] }}</td>
-                <td class="notes-cell">
-                    {{ row["notes"] or "" }}
-                    <div class="row-actions">
-                        <form method="post" action="/messages/{{ row['id'] }}/retry-form">
-                            <input type="hidden" name="status" value="{{ selected_status }}">
-                            <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
-                            <input type="hidden" name="limit" value="{{ selected_limit }}">
-                            <button type="submit" class="secondary-button">Retry</button>
-                        </form>
+                        {% endfor %}
                     </div>
-                </td>
-                <td>
-                    {% if row["stitched_group_id"] %}
-                        {% if row["stitched_primary"] %}
-                            Primary
-                        {% else %}
-                            Child
-                        {% endif %}
-                    {% else %}
-                        -
-                    {% endif %}
-                </td>
-                <td>{{ row["stitched_count"] if row["stitched_count"] else "" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                </details>
+            </aside>
+
+            <main>
+                <div class="card">
+                    <div class="table-toolbar">
+                        <div class="scope-stack"><h2 class="scope-title">{% if is_review_page %}Review Queue{% else %}Transaction Feed{% endif %}</h2><div class="muted">Showing {{ pagination["start_row"] }}-{{ pagination["end_row"] }} of {{ pagination["total_rows"] }}{% if selected_after or selected_before %} for the selected date range{% endif %}</div></div>
+                        <div class="toolbar-actions"><span class="pill">{{ selected_status if selected_status else "all visible statuses" }}</span><span class="pill">{{ selected_limit }} rows/page</span><button type="button" id="auto-refresh-toggle" class="pill active" style="border:none; cursor:pointer;">Auto Refresh On</button>{% if is_review_page %}<span class="hotkey-pill">Ctrl/Cmd+S saves focused row</span>{% endif %}</div>
+                    </div>
+
+                    <div class="pagination-bar">
+                        <div>{% if is_review_page %}Review flagged rows and failures without the admin clutter taking over the page.{% else %}The main table stays lean; deeper parse and money details live behind each row.{% endif %}</div>
+                        <div class="pagination-controls">{% if pagination["has_previous"] %}<a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&limit={{ selected_limit }}&page={{ pagination['previous_page'] }}" class="button secondary-button" style="width:auto;">Previous</a>{% endif %}<span>Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>{% if pagination["has_next"] %}<a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&limit={{ selected_limit }}&page={{ pagination['next_page'] }}" class="button secondary-button" style="width:auto;">Next</a>{% endif %}</div>
+                    </div>
+
+                    <div class="queue-strip">
+                        <div>
+                            <strong>{% if is_review_page %}Fast review mode{% else %}Table mode{% endif %}</strong>
+                            <div class="helper">{% if is_review_page %}The message text stays visible while you change financial kind, type, amount, payment, category, and notes inline. Dirty rows highlight automatically so it is easier to see what still needs saving.{% else %}Use this table to monitor ingest and parsing. Open a row only when you need the full correction form and audit context.{% endif %}</div>
+                        </div>
+                        <div class="queue-strip-actions">
+                            <span class="count-pill">Visible {{ pagination["total_rows"] }}</span>
+                            {% if is_review_page %}<span class="count-pill">Needs review {{ summary["needs_review"] }}</span><span class="count-pill">Failed {{ summary["failed"] }}</span><span class="count-pill" id="dirty-count">Changed 0</span>{% endif %}
+                            {% if is_review_page %}<button type="button" class="toggle-pill" id="compact-review-toggle">Compact Columns</button><button type="button" class="toggle-pill" id="sidebar-toggle">Hide Sidebar</button>{% endif %}
+                        </div>
+                    </div>
+
+                    <details class="panel" style="margin-bottom:14px; box-shadow:none; background:rgba(255,255,255,.68);">
+                        <summary>Backfill & Admin<span>+</span></summary>
+                        <div class="panel-body">
+                            <form method="post" action="/admin/backfill/form" style="margin-bottom:14px;">
+                                <div class="form-row"><label for="backfill_channel_id">Channel</label><select name="channel_id" id="backfill_channel_id"><option value="">All backfill-enabled watched channels</option>{% for ch in available_discord_channels %}<option value="{{ ch['channel_id'] }}">{{ ch["label"] }}</option>{% endfor %}</select></div>
+                                <div class="form-row"><label for="after">After</label><input type="text" name="after" id="after" placeholder="2026-03-01"></div>
+                                <div class="form-row"><label for="before">Before</label><input type="text" name="before" id="before" placeholder="2026-03-31"></div>
+                                <div class="form-row"><label for="backfill_limit">Limit per run</label><input type="number" name="limit" id="backfill_limit" placeholder="500"></div>
+                                <div class="form-row"><label for="oldest_first">Order</label><select name="oldest_first" id="oldest_first"><option value="true">Oldest first</option><option value="false">Newest first</option></select></div>
+                                <button type="submit" class="primary-button">Run Backfill</button>
+                            </form>
+                            <div class="inline-actions">
+                                <form method="post" action="/admin/recompute-financials/form" onsubmit="return confirm('Recompute financial fields for all parsed messages?');"><button type="submit" class="secondary-button tiny-button">Recompute Financials</button></form>
+                                <form method="post" action="/admin/rebuild-transactions/form" onsubmit="return confirm('Rebuild normalized transactions from current parsed messages?');"><button type="submit" class="secondary-button tiny-button">Rebuild Transactions</button></form>
+                                <form method="post" action="/admin/clear/form" onsubmit="return confirm('Are you sure you want to clear all stored messages?');"><button type="submit" class="danger-button tiny-button">Clear Everything</button></form>
+                            </div>
+                        </div>
+                    </details>
+
+                    <form id="bulk-retry-form" method="post" action="/messages/bulk/retry-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"></form>
+                    <form id="bulk-approve-form" method="post" action="/messages/bulk/approve-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"></form>
+                    <div class="bulk-bar">
+                        <div class="bulk-status">
+                            <span class="selection-count" id="selected-count">0 selected</span>
+                            <span class="helper">{% if is_review_page %}Select review rows and approve or re-queue them together.{% else %}Select rows and re-queue them together when you want another parsing pass.{% endif %}</span>
+                        </div>
+                        <div class="inline-actions">{% if is_review_page %}<button type="submit" form="bulk-approve-form" class="secondary-button tiny-button">Approve Selected</button>{% endif %}<button type="submit" form="bulk-retry-form" class="secondary-button tiny-button">Retry Selected</button></div>
+                    </div>
+
+                    <div class="table-scroll-top" id="table-scroll-top" aria-label="Horizontal table scrollbar">
+                        <div class="table-scroll-top-inner" id="table-scroll-top-inner"></div>
+                    </div>
+                    <div class="table-shell" id="table-shell">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="check-col"><input type="checkbox" id="select-all-rows" style="width:auto;"></th>
+                                    <th class="quick-col">Quick Actions</th>
+                                    <th class="time-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=time&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'time') }}&limit={{ selected_limit }}&page=1">Time {{ sort_indicator(selected_sort_by, selected_sort_dir, 'time') }}</a></th>
+                                    <th class="channel-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=channel&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'channel') }}&limit={{ selected_limit }}&page=1">Channel {{ sort_indicator(selected_sort_by, selected_sort_dir, 'channel') }}</a></th>
+                                    <th class="author-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=author&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'author') }}&limit={{ selected_limit }}&page=1">Author {{ sort_indicator(selected_sort_by, selected_sort_dir, 'author') }}</a></th>
+                                    <th class="image-col">Image</th><th>Message</th>
+                                    <th class="status-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=status&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'status') }}&limit={{ selected_limit }}&page=1">Status {{ sort_indicator(selected_sort_by, selected_sort_dir, 'status') }}</a></th>
+                                    <th class="kind-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=entry_kind&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'entry_kind') }}&limit={{ selected_limit }}&page=1">Financial Kind {{ sort_indicator(selected_sort_by, selected_sort_dir, 'entry_kind') }}</a></th>
+                                    <th class="amount-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=amount&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'amount') }}&limit={{ selected_limit }}&page=1">Cash {{ sort_indicator(selected_sort_by, selected_sort_dir, 'amount') }}</a></th>
+                                      <th class="payment-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=payment&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'payment') }}&limit={{ selected_limit }}&page=1">Payment {{ sort_indicator(selected_sort_by, selected_sort_dir, 'payment') }}</a></th>
+                                      <th class="category-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=category&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'category') }}&limit={{ selected_limit }}&page=1">Category {{ sort_indicator(selected_sort_by, selected_sort_dir, 'category') }}</a></th>
+                                      <th class="bookkeeping-col">Bookkeeping</th>
+                                      <th class="review-col"><a href="{{ return_path }}?status={{ selected_status }}&channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by=review&sort_dir={{ next_sort_direction(selected_sort_by, selected_sort_dir, 'review') }}&limit={{ selected_limit }}&page=1">Review {{ sort_indicator(selected_sort_by, selected_sort_dir, 'review') }}</a></th>
+                                      <th class="actions-col">Notes & Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in rows %}
+                                <tr class="{% if row['needs_review'] %}row-needs-review {% endif %}{% if row['status'] == 'failed' %}row-failed {% endif %}{% if row['stitched_count'] and row['stitched_count'] > 1 %}row-grouped{% endif %}" data-row-id="{{ row['id'] }}">
+                                    <td class="check-col"><input type="checkbox" name="message_ids" value="{{ row['id'] }}" class="row-selector" form="bulk-retry-form" style="width:auto;"></td>
+                                    <td class="quick-col">
+                                        {% if is_review_page %}
+                                        <form id="inline-edit-{{ row['id'] }}" method="post" action="/messages/{{ row['id'] }}/edit-form" style="display:none;">
+                                            <input type="hidden" name="return_path" value="{{ return_path }}">
+                                            <input type="hidden" name="status" value="{{ selected_status }}">
+                                            <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
+                                            <input type="hidden" name="after" value="{{ selected_after }}">
+                                            <input type="hidden" name="before" value="{{ selected_before }}">
+                                            <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
+                                            <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
+                                            <input type="hidden" name="page" value="{{ pagination['page'] }}">
+                                            <input type="hidden" name="limit" value="{{ selected_limit }}">
+                                            <input type="hidden" name="parse_status" value="needs_review">
+                                            <input type="hidden" name="needs_review" value="true">
+                                        </form>
+                                        {% endif %}
+                                        <div class="quick-actions">
+                                            <form method="get" action="/table/messages/{{ row['id'] }}"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Open</button></form>
+                                            {% if not is_review_page %}<form method="get" action="/table/messages/{{ row['id'] }}"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><input type="hidden" name="success" value=""><button type="submit" class="secondary-button tiny-button">Correct</button></form>{% endif %}
+                                            {% if not is_review_page %}<form method="post" action="/messages/{{ row['id'] }}/mark-incorrect-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Mark Incorrect</button></form>{% endif %}
+                                            {% if is_review_page %}<form method="post" action="/messages/{{ row['id'] }}/approve-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Approve</button></form>{% endif %}
+                                            {% if is_review_page %}<button type="submit" form="inline-edit-{{ row['id'] }}" class="secondary-button tiny-button">Save</button><button type="submit" form="inline-edit-{{ row['id'] }}" name="approve_after_save" value="true" class="primary-button tiny-button">Save & Approve</button>{% endif %}
+                                            <form method="post" action="/messages/{{ row['id'] }}/retry-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Retry</button></form>
+                                            {% if is_review_page %}<button type="button" class="secondary-button tiny-button focus-row-button" data-focus-row="{{ row['id'] }}">Focus</button>{% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="time-col">{{ row["time"] or "" }}{% if row["edited_at"] %}<div class="subtle">Edited {{ row["edited_at"] }}</div>{% endif %}</td>
+                                    <td class="channel-col"><strong>{{ row["channel"] or "" }}</strong><div class="subtle">{{ row["channel_id"] }}</div></td>
+                                    <td class="author-col">{{ row["author"] or "" }}</td>
+                                    <td class="image-col">
+                                        {% if row["first_image_url"] %}
+                                        <a href="{{ row['first_image_url'] }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ row['first_image_url'] }}" alt="attachment image"></a>
+                                        {% elif row["nearby_image"] %}
+                                        <a href="{{ row['nearby_image']['image_url'] }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ row['nearby_image']['image_url'] }}" alt="nearby attachment candidate" style="border-style:dashed;"></a>
+                                        <div class="subtle" style="margin-top:4px;">nearby</div>
+                                        {% else %}
+                                        <span class="subtle">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="message-cell">
+                                        <div class="message-meta">
+                                            {% if row["first_image_url"] %}<span class="meta-pill success">image</span>{% endif %}
+                                            {% if row["possible_missing_image"] %}<span class="meta-pill warn">possible missing image</span>{% endif %}
+                                            {% if row["stitched_count"] and row["stitched_count"] > 1 %}<span class="meta-pill warn">group {{ row["stitched_count"] }}</span>{% endif %}
+                                            {% if row["confidence"] is not none %}<span class="meta-pill">confidence {{ row["confidence"] }}</span>{% endif %}
+                                            {% if row["parse_attempts"] %}<span class="meta-pill">attempts {{ row["parse_attempts"] }}</span>{% endif %}
+                                            {% if row["learning"]["promoted_rule"] %}<span class="meta-pill success">promoted rule</span>{% elif row["learning"]["exact_match"] %}<span class="meta-pill success">learned exact</span>{% elif row["learning"]["similar_count"] %}<span class="meta-pill">memory {{ row["learning"]["similar_count"] }}</span>{% endif %}
+                                            {% if row["is_deleted"] %}<span class="meta-pill danger">deleted</span>{% endif %}
+                                        </div>
+                                        <div class="message-preview">{{ row["message"] or "" }}</div>
+                                        {% if row["grouped_messages"] and row["stitched_count"] > 1 %}
+                                        <div class="grouped-banner">
+                                            <div class="grouped-title">
+                                                {% if row["stitched_primary"] %}Grouped deal: {{ row["stitched_count"] }} stitched messages{% else %}Part of grouped deal: {{ row["stitched_count"] }} stitched messages{% endif %}
+                                            </div>
+                                            <div class="grouped-list">
+                                                {% for grouped in row["grouped_messages"] %}
+                                                <div class="grouped-item">
+                                                    <strong>{% if grouped["is_self"] %}This row{% else %}Sibling message{% endif %}</strong>
+                                                    {% if grouped["time"] %} | {{ grouped["time"] }}{% endif %}
+                                                    {% if grouped["has_image"] %} | image{% endif %}
+                                                    {% if grouped["message"] %}<div>{{ grouped["message"] }}</div>{% else %}<div class="subtle">(image-only message)</div>{% endif %}
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                        {% if row["nearby_image"] %}
+                                        <div class="grouped-banner">
+                                            <div class="grouped-title">Possible missing image</div>
+                                            <div class="grouped-item" style="border-top:none; padding-top:0;">
+                                                <strong>Nearby same-author image</strong> | {{ row["nearby_image"]["time"] }} | {{ row["nearby_image"]["delta_seconds"] }}s apart
+                                                {% if row["nearby_image"]["message"] %}<div>{{ row["nearby_image"]["message"] }}</div>{% else %}<div class="subtle">(image-only message)</div>{% endif %}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                        {% if row["is_deleted"] %}<div class="subtle" style="color:#b6312f; font-weight:700;">Deleted in Discord</div>{% endif %}
+                                    </td>
+                                    <td class="status-col"><span class="status-pill status-{{ row['status'] }}">{{ row["status"] or "" }}</span></td>
+                                    <td class="kind-col review-cell">
+                                        {% if is_review_page %}
+                                        <select name="entry_kind" form="inline-edit-{{ row['id'] }}" class="review-select">
+                                            {% for option in entry_kind_options %}
+                                            <option value="{{ option }}" {% if (row["entry_kind"] or "") == option %}selected{% endif %}>{{ option or "auto" }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        {% if row["type"] and row["type"] != row["entry_kind"] and not (row["type"] == "sell" and row["entry_kind"] == "sale") %}
+                                        <div class="subtle" style="margin-top:6px;">parsed as {{ row["type"] }}</div>
+                                        {% endif %}
+                                        {% else %}
+                                        {{ row["entry_kind"] or "" }}
+                                        {% if row["type"] and row["type"] != row["entry_kind"] and not (row["type"] == "sell" and row["entry_kind"] == "sale") %}
+                                        <div class="subtle">parsed as {{ row["type"] }}</div>
+                                        {% endif %}
+                                        {% endif %}
+                                    </td>
+                                    <td class="amount-col review-cell">
+                                        {% if is_review_page %}
+                                        <input type="text" name="amount" form="inline-edit-{{ row['id'] }}" value="{{ row['amount'] if row['amount'] is not none else '' }}" class="review-input">
+                                        {% else %}
+                                        {{ row["amount_display"] or "" }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="payment-col review-cell">
+                                        {% if is_review_page %}
+                                        <select name="payment_method" form="inline-edit-{{ row['id'] }}" class="review-select">
+                                            {% for option in payment_method_options %}
+                                            <option value="{{ option }}" {% if (row["payment_method"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        {% else %}
+                                        {{ row["payment_display"] or "" }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="category-col review-cell">
+                                        {% if is_review_page %}
+                                        <select name="category" form="inline-edit-{{ row['id'] }}" class="review-select">
+                                            {% for option in category_options %}
+                                            <option value="{{ option }}" {% if (row["category"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        {% else %}
+                                        {{ row["category"] or "" }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="bookkeeping-col">
+                                        {% if row["bookkeeping"]["status"] == "matched_exact" %}
+                                        <span class="meta-pill success">Matched</span>
+                                        {% elif row["bookkeeping"]["status"] == "matched_amount_only" %}
+                                        <span class="meta-pill warn">Partial</span>
+                                        {% else %}
+                                        <span class="meta-pill">Unmatched</span>
+                                        {% endif %}
+                                        {% if row["bookkeeping"]["sheet_name"] %}<div class="subtle">{{ row["bookkeeping"]["sheet_name"] }}</div>{% endif %}
+                                    </td>
+                                    <td class="review-col">
+                                        <div class="row-flags">
+                                            {% if row["needs_review"] %}<span class="pill" style="background:#fde8e6; color:#8e2722;">Yes</span>{% else %}<span class="pill">No</span>{% endif %}
+                                            {% if row["cash_direction"] %}<span class="meta-pill">{{ row["cash_direction"] }}</span>{% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="actions-col review-cell notes-col">
+                                        <div class="notes-cell">
+                                            {% if is_review_page %}
+                                            <textarea name="notes" form="inline-edit-{{ row['id'] }}" class="review-textarea">{{ row["notes"] or "" }}</textarea>
+                                            {% else %}
+                                            <div>{{ row["notes"] or "" }}</div>
+                                            {% endif %}
+                                            <details class="inline-details"><summary>More details</summary><div class="detail-grid"><div class="detail-card"><strong>Money In</strong>{{ "$%.2f"|format(row["money_in"]) if row["money_in"] is not none else "" }}</div><div class="detail-card"><strong>Money Out</strong>{{ "$%.2f"|format(row["money_out"]) if row["money_out"] is not none else "" }}</div><div class="detail-card"><strong>Cash Direction</strong>{{ row["cash_direction"] or "" }}</div><div class="detail-card"><strong>Expense Category</strong>{{ row["expense_category"] or "" }}</div><div class="detail-card"><strong>Items In</strong>{{ ", ".join(row["items_in"]) if row["items_in"] else "" }}</div><div class="detail-card"><strong>Items Out</strong>{{ ", ".join(row["items_out"]) if row["items_out"] else "" }}</div><div class="detail-card"><strong>Trade Summary</strong>{{ row["trade_summary"] or "" }}</div><div class="detail-card"><strong>Confidence</strong>{{ row["confidence"] if row["confidence"] is not none else "" }}</div><div class="detail-card"><strong>Attempts</strong>{{ row["parse_attempts"] }}</div><div class="detail-card"><strong>Grouped</strong>{% if row["stitched_group_id"] %}{% if row["stitched_primary"] %}Primary{% else %}Child{% endif %}{% else %}-{% endif %}</div><div class="detail-card"><strong>Group Size</strong>{{ row["stitched_count"] if row["stitched_count"] else "" }}</div></div></details>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </section>
+    </div>
+    <script>
+        async function refreshParserProgress() {
+            try {
+                const params = new URLSearchParams({ status: "{{ selected_status }}", channel_id: "{{ selected_channel_id }}", after: "{{ selected_after }}", before: "{{ selected_before }}" });
+                const response = await fetch(`/admin/parser-progress?${params.toString()}`, { cache: "no-store" });
+                if (!response.ok) return null;
+                const data = await response.json();
+                const fill = document.getElementById("parser-progress-fill");
+                const text = document.getElementById("parser-progress-text");
+                const status = document.getElementById("parser-progress-status");
+                const oldest = document.getElementById("parser-health-oldest");
+                const images = document.getElementById("parser-health-images");
+                const stale = document.getElementById("parser-health-stale");
+                const recovered = document.getElementById("parser-health-recovered");
+                const usageCost = document.getElementById("parser-usage-cost");
+                const usageTotal = document.getElementById("parser-usage-total");
+                const usageInput = document.getElementById("parser-usage-input");
+                const usageOutput = document.getElementById("parser-usage-output");
+                if (fill) fill.style.width = `${data.percent_complete}%`;
+                if (text) text.textContent = `${data.completed} / ${data.total} complete | queued: ${data.queued} | processing: ${data.processing} | review: ${data.needs_review} | failed: ${data.failed} | ignored: ${data.ignored}`;
+                if (status) status.textContent = data.is_active ? "Active" : "Idle";
+                if (oldest) oldest.textContent = data.oldest_processing_age_label;
+                if (images) images.textContent = data.processing_with_images;
+                if (stale) stale.textContent = data.stale_processing;
+                if (recovered) recovered.textContent = data.recovered_stale;
+                if (usageCost) usageCost.textContent = `$${Number(data.usage.estimated_cost_usd || 0).toFixed(4)}`;
+                if (usageTotal) usageTotal.textContent = `${data.usage.total_tokens || 0}`;
+                if (usageInput) usageInput.textContent = `${data.usage.input_tokens || 0} / ${data.usage.cached_input_tokens || 0}`;
+                if (usageOutput) usageOutput.textContent = `${data.usage.output_tokens || 0} / ${data.usage.attempts || 0}`;
+                return data;
+            } catch (error) { console.error("Failed to refresh parser progress", error); }
+            return null;
+        }
+        const selectAllRows = document.getElementById("select-all-rows");
+        const bulkApproveForm = document.getElementById("bulk-approve-form");
+        const availableChannelSort = document.getElementById("available_channel_sort");
+        const availableChannelSelect = document.getElementById("new_channel_id");
+        const selectedCount = document.getElementById("selected-count");
+        const dirtyCount = document.getElementById("dirty-count");
+        const autoRefreshToggle = document.getElementById("auto-refresh-toggle");
+        const compactReviewToggle = document.getElementById("compact-review-toggle");
+        const sidebarToggle = document.getElementById("sidebar-toggle");
+        const messagesPage = document.getElementById("messages-page");
+        const tableShell = document.getElementById("table-shell");
+        const tableScrollTop = document.getElementById("table-scroll-top");
+        const tableScrollTopInner = document.getElementById("table-scroll-top-inner");
+        let focusedRowId = null;
+        const AUTO_REFRESH_STORAGE_KEY = "degen_auto_refresh_enabled";
+        const COMPACT_REVIEW_STORAGE_KEY = "degen_compact_review_enabled";
+        const SIDEBAR_COLLAPSED_STORAGE_KEY = "degen_review_sidebar_collapsed";
+        let autoRefreshEnabled = true;
+        let compactReviewEnabled = {{ "true" if is_review_page else "false" }};
+        let sidebarCollapsed = false;
+        let syncingTopScroll = false;
+        let syncingMainScroll = false;
+        let lastProgressSnapshot = {
+            total: {{ parser_progress["total"] }},
+            completed: {{ parser_progress["completed"] }},
+            queued: {{ parser_progress["queued"] }},
+            processing: {{ parser_progress["processing"] }},
+            needs_review: {{ parser_progress["needs_review"] }},
+            failed: {{ parser_progress["failed"] }},
+            ignored: {{ parser_progress["ignored"] }},
+        };
+
+        function sortAvailableChannels(mode) {
+            if (!availableChannelSelect) return;
+            const options = Array.from(availableChannelSelect.options);
+            const parseTime = (value) => value ? new Date(value).getTime() : 0;
+
+            options.sort((left, right) => {
+                if (mode === "created_desc") {
+                    return parseTime(right.dataset.createdAt) - parseTime(left.dataset.createdAt);
+                }
+                if (mode === "last_message_desc") {
+                    return parseTime(right.dataset.lastMessageAt) - parseTime(left.dataset.lastMessageAt);
+                }
+                return (left.dataset.label || left.text).localeCompare(right.dataset.label || right.text);
+            });
+
+            options.forEach((option) => availableChannelSelect.appendChild(option));
+        }
+
+        if (availableChannelSort && availableChannelSelect) {
+            sortAvailableChannels(availableChannelSort.value);
+            availableChannelSort.addEventListener("change", (event) => {
+                sortAvailableChannels(event.target.value);
+            });
+        }
+
+        function updateSelectedCount() {
+            if (!selectedCount) return;
+            const checked = document.querySelectorAll(".row-selector:checked").length;
+            selectedCount.textContent = `${checked} selected`;
+        }
+
+        function updateDirtyCount() {
+            if (!dirtyCount) return;
+            const dirtyRows = document.querySelectorAll("tr.row-dirty").length;
+            dirtyCount.textContent = `Changed ${dirtyRows}`;
+        }
+
+        function hasUnsavedReviewChanges() {
+            return document.querySelectorAll("tr.row-dirty").length > 0;
+        }
+
+        function updateAutoRefreshLabel() {
+            if (!autoRefreshToggle) return;
+            autoRefreshToggle.textContent = autoRefreshEnabled ? "Auto Refresh On" : "Auto Refresh Off";
+            autoRefreshToggle.classList.toggle("active", autoRefreshEnabled);
+        }
+
+        function loadAutoRefreshPreference() {
+            try {
+                const stored = window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY);
+                if (stored === "false") autoRefreshEnabled = false;
+                if (stored === "true") autoRefreshEnabled = true;
+            } catch (error) {
+                console.warn("Unable to load auto refresh preference", error);
+            }
+        }
+
+        function applyReviewLayoutState() {
+            if (!messagesPage) return;
+            messagesPage.classList.toggle("compact-review", Boolean(compactReviewEnabled));
+            messagesPage.classList.toggle("sidebar-collapsed", Boolean(sidebarCollapsed));
+            if (compactReviewToggle) compactReviewToggle.classList.toggle("is-active", Boolean(compactReviewEnabled));
+            if (sidebarToggle) sidebarToggle.classList.toggle("is-active", Boolean(sidebarCollapsed));
+            if (compactReviewToggle) compactReviewToggle.textContent = compactReviewEnabled ? "Compact Columns On" : "Compact Columns Off";
+            if (sidebarToggle) sidebarToggle.textContent = sidebarCollapsed ? "Sidebar Hidden" : "Hide Sidebar";
+            syncTopScrollbarWidth();
+        }
+
+        function loadReviewLayoutPreference() {
+            if (!messagesPage?.classList.contains("review-page")) return;
+            try {
+                const compactStored = window.localStorage.getItem(COMPACT_REVIEW_STORAGE_KEY);
+                const sidebarStored = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+                if (compactStored === null) {
+                    compactReviewEnabled = true;
+                } else {
+                    compactReviewEnabled = compactStored === "true";
+                }
+                if (sidebarStored !== null) {
+                    sidebarCollapsed = sidebarStored === "true";
+                }
+            } catch (error) {
+                console.warn("Unable to load review layout preference", error);
+                compactReviewEnabled = true;
+            }
+        }
+
+        function saveReviewLayoutPreference() {
+            try {
+                window.localStorage.setItem(COMPACT_REVIEW_STORAGE_KEY, String(compactReviewEnabled));
+                window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
+            } catch (error) {
+                console.warn("Unable to save review layout preference", error);
+            }
+        }
+
+        function saveAutoRefreshPreference() {
+            try {
+                window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, String(autoRefreshEnabled));
+            } catch (error) {
+                console.warn("Unable to save auto refresh preference", error);
+            }
+        }
+
+        function syncTopScrollbarWidth() {
+            if (!tableShell || !tableScrollTopInner) return;
+            const table = tableShell.querySelector("table");
+            if (!table) return;
+            tableScrollTopInner.style.width = `${table.scrollWidth}px`;
+        }
+
+        function shouldPauseAutoRefresh() {
+            const active = document.activeElement;
+            const editingField = active?.matches?.(".review-input, .review-select, .review-textarea");
+            return hasUnsavedReviewChanges() || Boolean(editingField);
+        }
+
+        async function refreshTableIfChanged() {
+            if (!autoRefreshEnabled || shouldPauseAutoRefresh() || document.hidden) {
+                return;
+            }
+
+            const data = await refreshParserProgress();
+            if (!data) return;
+
+            const hasChanged = (
+                data.total !== lastProgressSnapshot.total ||
+                data.completed !== lastProgressSnapshot.completed ||
+                data.queued !== lastProgressSnapshot.queued ||
+                data.processing !== lastProgressSnapshot.processing ||
+                data.needs_review !== lastProgressSnapshot.needs_review ||
+                data.failed !== lastProgressSnapshot.failed ||
+                data.ignored !== lastProgressSnapshot.ignored
+            );
+
+            lastProgressSnapshot = {
+                total: data.total,
+                completed: data.completed,
+                queued: data.queued,
+                processing: data.processing,
+                needs_review: data.needs_review,
+                failed: data.failed,
+                ignored: data.ignored,
+            };
+
+            if (hasChanged) {
+                window.location.reload();
+            }
+        }
+
+        function markFieldDirty(field) {
+            const formId = field.getAttribute("form");
+            if (!formId) return;
+            const form = document.getElementById(formId);
+            if (!form) return;
+
+            const defaultValue = field.dataset.initialValue ?? "";
+            const currentValue = field.type === "checkbox" ? String(field.checked) : field.value;
+            const isDirty = currentValue !== defaultValue;
+            field.classList.toggle("is-dirty", isDirty);
+
+            const row = form.closest("tr");
+            if (!row) return;
+            const hasDirtyField = row.querySelector(".is-dirty");
+            row.classList.toggle("row-dirty", Boolean(hasDirtyField));
+            updateDirtyCount();
+        }
+
+        function focusRow(rowId) {
+            focusedRowId = rowId;
+            document.querySelectorAll("tr.row-focus").forEach((row) => row.classList.remove("row-focus"));
+            const row = document.querySelector(`tr[data-row-id="${rowId}"]`);
+            if (!row) return;
+            row.classList.add("row-focus");
+            row.scrollIntoView({ block: "center", behavior: "smooth" });
+            const firstInput = row.querySelector(".review-select, .review-input, .review-textarea");
+            if (firstInput) firstInput.focus();
+        }
+
+        document.querySelectorAll(".review-input, .review-select, .review-textarea").forEach((field) => {
+            field.dataset.initialValue = field.type === "checkbox" ? String(field.checked) : field.value;
+            field.addEventListener("input", () => markFieldDirty(field));
+            field.addEventListener("change", () => markFieldDirty(field));
+            field.addEventListener("focus", () => {
+                const row = field.closest("tr");
+                if (row?.dataset.rowId) focusRow(row.dataset.rowId);
+            });
+        });
+
+        document.querySelectorAll(".focus-row-button").forEach((button) => {
+            button.addEventListener("click", () => focusRow(button.dataset.focusRow));
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+                const active = document.activeElement;
+                const row = active?.closest?.("tr[data-row-id]") || (focusedRowId ? document.querySelector(`tr[data-row-id="${focusedRowId}"]`) : null);
+                const form = row?.querySelector("form[id^='inline-edit-']");
+                if (form) {
+                    event.preventDefault();
+                    form.requestSubmit();
+                }
+            }
+        });
+
+        document.querySelectorAll("form[id^='inline-edit-']").forEach((form) => {
+            form.addEventListener("submit", () => {
+                const row = form.closest("tr");
+                if (!row) return;
+                row.querySelectorAll(".is-dirty").forEach((field) => field.classList.remove("is-dirty"));
+                row.classList.remove("row-dirty");
+                updateDirtyCount();
+            });
+        });
+
+        document.querySelectorAll(".row-selector").forEach((checkbox) => {
+            checkbox.addEventListener("change", updateSelectedCount);
+        });
+
+        if (selectAllRows) selectAllRows.addEventListener("change", (event) => {
+            document.querySelectorAll(".row-selector").forEach((checkbox) => {
+                checkbox.checked = event.target.checked;
+            });
+            updateSelectedCount();
+        });
+        if (bulkApproveForm) bulkApproveForm.addEventListener("submit", () => {
+            bulkApproveForm.querySelectorAll(".bulk-approve-id").forEach((input) => input.remove());
+            document.querySelectorAll(".row-selector:checked").forEach((checkbox) => {
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = "message_ids";
+                input.value = checkbox.value;
+                input.className = "bulk-approve-id";
+                bulkApproveForm.appendChild(input);
+            });
+        });
+        if (tableShell && tableScrollTop) {
+            syncTopScrollbarWidth();
+            tableScrollTop.addEventListener("scroll", () => {
+                if (syncingMainScroll) {
+                    syncingMainScroll = false;
+                    return;
+                }
+                syncingTopScroll = true;
+                tableShell.scrollLeft = tableScrollTop.scrollLeft;
+            });
+            tableShell.addEventListener("scroll", () => {
+                if (syncingTopScroll) {
+                    syncingTopScroll = false;
+                    return;
+                }
+                syncingMainScroll = true;
+                tableScrollTop.scrollLeft = tableShell.scrollLeft;
+            });
+            window.addEventListener("resize", syncTopScrollbarWidth);
+        }
+        if (autoRefreshToggle) {
+            loadAutoRefreshPreference();
+            updateAutoRefreshLabel();
+            autoRefreshToggle.addEventListener("click", () => {
+                autoRefreshEnabled = !autoRefreshEnabled;
+                saveAutoRefreshPreference();
+                updateAutoRefreshLabel();
+            });
+        }
+        if (messagesPage?.classList.contains("review-page")) {
+            loadReviewLayoutPreference();
+            applyReviewLayoutState();
+        }
+        if (compactReviewToggle) {
+            compactReviewToggle.addEventListener("click", () => {
+                compactReviewEnabled = !compactReviewEnabled;
+                saveReviewLayoutPreference();
+                applyReviewLayoutState();
+            });
+        }
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener("click", () => {
+                sidebarCollapsed = !sidebarCollapsed;
+                saveReviewLayoutPreference();
+                applyReviewLayoutState();
+            });
+        }
+        updateSelectedCount();
+        updateDirtyCount();
+        syncTopScrollbarWidth();
+        setInterval(refreshTableIfChanged, 5000);
+    </script>
 </body>
 </html>

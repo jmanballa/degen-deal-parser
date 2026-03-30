@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Trebuchet MS","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1400px; margin:0 auto; padding:20px; }
+        .hero, .card, .review-card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
+        .eyebrow, .pill, .stat-label { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:var(--muted); width:fit-content; }
+        .pill { background:#f5eadc; color:var(--muted); }
+        .pill-danger { background:#fde8e6; color:#8e2722; }
+        .pill-warn { background:#fff1d7; color:#8a580d; }
+        .pill-success { background:#e7f5ee; color:#11543d; }
+        h1 { margin:10px 0 8px; font-size:clamp(30px,4vw,48px); line-height:.95; letter-spacing:-.04em; }
+        p, .small { color:var(--muted); line-height:1.5; }
+        .actions, .topbar, .meta-row, .group-list, .pagination { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .topbar { justify-content:space-between; margin-bottom:18px; }
+        .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; }
+        .primary-button { background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; box-shadow:0 10px 18px rgba(212,83,56,.22); }
+        .secondary-button { background:#fff; color:var(--text); border:1px solid var(--line); }
+        .ghost-button { background:rgba(255,255,255,.72); color:var(--text); border:1px solid var(--line); }
+        .card { padding:18px; margin-bottom:18px; }
+        .filters { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+        label { display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        .summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+        .stat { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; }
+        .stat-value { font-size:28px; font-weight:800; letter-spacing:-.04em; }
+        .review-list { display:grid; gap:16px; }
+        .review-card { padding:18px; display:grid; grid-template-columns:160px 1fr 340px; gap:16px; align-items:start; }
+        .thumb { width:100%; max-height:150px; object-fit:cover; border-radius:16px; border:1px solid #e2d7c7; background:#fff; }
+        .thumb-placeholder { min-height:120px; border-radius:16px; border:1px dashed #d8c7b3; display:grid; place-items:center; color:var(--muted); background:#fffdf9; }
+        .message-box, .group-box { background:#fff; border:1px solid #eadfce; border-radius:16px; padding:12px; }
+        .message-box { white-space:pre-wrap; line-height:1.5; margin-top:10px; }
+        .group-box { margin-top:10px; }
+        .group-item { padding:8px 0; border-top:1px solid #f0e7da; }
+        .group-item:first-child { border-top:none; padding-top:0; }
+        .edit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+        .field-wide { grid-column:1 / -1; }
+        textarea { min-height:80px; resize:vertical; }
+        .action-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+        .flash { margin-bottom:12px; padding:12px 14px; border-radius:14px; border:1px solid; font-weight:700; }
+        .flash.success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
+        .flash.error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
+        @media (max-width:1250px){ .review-card { grid-template-columns:140px 1fr; } .review-card form { grid-column:1 / -1; } }
+        @media (max-width:960px){ .hero { grid-template-columns:1fr; text-align:center; } .eyebrow { margin:0 auto; } .filters, .summary-grid, .edit-grid, .review-card { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="topbar">
+            <div class="meta-row">
+                <span class="pill">{{ current_user.display_name if current_user else "Team member" }}</span>
+                <span class="pill">{{ current_user.role if current_user else "" }}</span>
+            </div>
+            <div class="actions">
+                <a class="button secondary-button" href="/dashboard">Dashboard</a>
+                {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/table">Admin Table</a>{% endif %}
+                <a class="button secondary-button" href="/review/history">Review History</a>
+                <a class="button secondary-button" href="/reports">Reports</a>
+                <form method="post" action="/logout" style="display:inline;"><button type="submit" class="button ghost-button">Log Out</button></form>
+            </div>
+        </div>
+
+        {% if success %}<div class="flash success">{{ success }}</div>{% endif %}
+        {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+        <section class="hero">
+            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
+            <div>
+                <div class="eyebrow">Employee Review Queue</div>
+                <h1>{{ title }}</h1>
+                <p>Review one deal at a time, fix the core financial fields quickly, and approve rows without digging through the admin tools.</p>
+                <div class="meta-row">
+                    <span class="pill">Needs review {{ summary["needs_review"] }}</span>
+                    <span class="pill">Failed {{ summary["failed"] }}</span>
+                    <span class="pill">With images {{ summary["with_images"] }}</span>
+                </div>
+            </div>
+        </section>
+
+        <div class="card">
+            <form method="get" action="/review" class="filters">
+                <label>Channel<select name="channel_id"><option value="">All review channels</option>{% for ch in channels %}<option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>{% endfor %}</select></label>
+                <label>After<input type="date" name="after" value="{{ selected_after }}"></label>
+                <label>Before<input type="date" name="before" value="{{ selected_before }}"></label>
+                <label>Rows<select name="limit">{% for option in [10,25,50,100] %}<option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
+                <label style="justify-content:end;"><span>&nbsp;</span><button type="submit" class="secondary-button">Apply Filters</button></label>
+            </form>
+        </div>
+
+        <div class="summary-grid" style="margin-bottom:18px;">
+            <div class="stat"><div class="stat-label">Queue Size</div><div class="stat-value">{{ summary["needs_review"] + summary["failed"] }}</div></div>
+            <div class="stat"><div class="stat-label">Current Page</div><div class="stat-value">{{ pagination["page"] }}</div></div>
+            <div class="stat"><div class="stat-label">Showing</div><div class="stat-value">{{ pagination["start_row"] }}-{{ pagination["end_row"] }}</div></div>
+            <div class="stat"><div class="stat-label">Total Rows</div><div class="stat-value">{{ pagination["total_rows"] }}</div></div>
+        </div>
+
+        <div class="review-list">
+            {% for row in rows %}
+            <div class="review-card">
+                <div>
+                    {% if row["first_image_url"] %}
+                    <a href="{{ row['first_image_url'] }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ row['first_image_url'] }}" alt="deal image"></a>
+                    {% else %}
+                    <div class="thumb-placeholder">No image</div>
+                    {% endif %}
+                    <div class="meta-row" style="margin-top:10px;">
+                        <span class="pill {% if row['status'] == 'failed' %}pill-danger{% elif row['status'] == 'needs_review' %}pill-warn{% else %}pill-success{% endif %}">{{ row["status"] }}</span>
+                        {% if row["learning"]["promoted_rule"] %}<span class="pill pill-success">promoted rule</span>{% elif row["learning"]["exact_match"] %}<span class="pill pill-success">learned exact</span>{% elif row["learning"]["similar_count"] %}<span class="pill">memory {{ row["learning"]["similar_count"] }}</span>{% endif %}
+                    </div>
+                </div>
+
+                <div>
+                    <div class="meta-row">
+                        <strong>{{ row["channel"] or row["channel_id"] }}</strong>
+                        <span class="small">{{ row["time"] }}</span>
+                    </div>
+                    <div class="small">{{ row["author"] or "" }}</div>
+                    {% if row["reviewed_by"] or row["reviewed_at"] %}<div class="small">Last reviewed{% if row["reviewed_by"] %} by {{ row["reviewed_by"] }}{% endif %}{% if row["reviewed_at"] %} on {{ row["reviewed_at"] }}{% endif %}</div>{% endif %}
+                    <div class="message-box">{{ row["message"] or "(image-only message)" }}</div>
+                    {% if row["grouped_messages"] %}
+                    <div class="group-box">
+                        <div class="small" style="font-weight:800; text-transform:uppercase; letter-spacing:.08em;">Grouped messages</div>
+                        {% for grouped in row["grouped_messages"] %}
+                        <div class="group-item">
+                            <div class="small">{{ grouped["time"] }}{% if grouped["has_image"] %} | image{% endif %}{% if grouped["is_self"] %} | this row{% endif %}</div>
+                            <div>{{ grouped["message"] or "(image-only message)" }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <form method="post" action="/messages/{{ row['id'] }}/edit-form">
+                    <input type="hidden" name="return_path" value="/review">
+                    <input type="hidden" name="status" value="review_queue">
+                    <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
+                    <input type="hidden" name="after" value="{{ selected_after }}">
+                    <input type="hidden" name="before" value="{{ selected_before }}">
+                    <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
+                    <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
+                    <input type="hidden" name="page" value="{{ pagination['page'] }}">
+                    <input type="hidden" name="limit" value="{{ selected_limit }}">
+                    <input type="hidden" name="parse_status" value="needs_review">
+                    <input type="hidden" name="needs_review" value="true">
+                    <div class="edit-grid">
+                        <label>Financial Kind<select name="entry_kind">{% for option in entry_kind_options %}<option value="{{ option }}" {% if (row["entry_kind"] or "") == option %}selected{% endif %}>{{ option or "auto" }}</option>{% endfor %}</select></label>
+                        <label>Parsed Type<select name="deal_type">{% for option in deal_type_options %}<option value="{{ option }}" {% if (row["type"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                        <label>Cash<input type="text" name="amount" value="{{ row['amount'] if row['amount'] is not none else '' }}"></label>
+                        <label>Payment<select name="payment_method">{% for option in payment_method_options %}<option value="{{ option }}" {% if (row["payment"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                        <label>Cash Direction<select name="cash_direction">{% for option in cash_direction_options %}<option value="{{ option }}" {% if (row["cash_direction"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                        <label>Category<select name="category">{% for option in category_options %}<option value="{{ option }}" {% if (row["category"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
+                        <label class="field-wide">Notes<textarea name="notes">{{ row["notes"] or "" }}</textarea></label>
+                    </div>
+                    <div class="action-row">
+                        <form method="post" action="/messages/{{ row['id'] }}/approve-form" style="display:inline;">
+                            <input type="hidden" name="return_path" value="/review">
+                            <input type="hidden" name="status" value="review_queue">
+                            <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
+                            <input type="hidden" name="after" value="{{ selected_after }}">
+                            <input type="hidden" name="before" value="{{ selected_before }}">
+                            <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
+                            <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
+                            <input type="hidden" name="page" value="{{ pagination['page'] }}">
+                            <input type="hidden" name="limit" value="{{ selected_limit }}">
+                            <button type="submit" class="ghost-button">Approve</button>
+                        </form>
+                        <button type="submit" class="secondary-button">Save</button>
+                        <button type="submit" name="approve_after_save" value="true" class="primary-button">Save & Approve</button>
+                        <a class="button ghost-button" href="/review/focus/{{ row['id'] }}?channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Focus</a>
+                        {% if pagination["has_next"] or pagination["page"] > 0 %}<a class="button ghost-button" href="/review?channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Skip</a>{% endif %}
+                    </div>
+                </form>
+            </div>
+            {% else %}
+            <div class="card"><div class="small">No review rows match the current filters.</div></div>
+            {% endfor %}
+        </div>
+
+        <div class="card">
+            <div class="pagination">
+                {% if pagination["has_previous"] %}
+                <a class="button secondary-button" href="/review?channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['previous_page'] }}&limit={{ selected_limit }}">Previous</a>
+                {% endif %}
+                <span class="small">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
+                {% if pagination["has_next"] %}
+                <a class="button secondary-button" href="/review?channel_id={{ selected_channel_id }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['next_page'] }}&limit={{ selected_limit }}">Next</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

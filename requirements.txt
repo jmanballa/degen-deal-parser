@@ -6,3 +6,5 @@ openai
 httpx
 pydantic-settings
 python-dotenv
+openpyxl
+itsdangerous

@@ -79,38 +79,55 @@ def detect_expense_category(message_text: str) -> Optional[str]:
     return None
 
 
+def is_inventory_transaction(parsed_type: Optional[str], parsed_category: Optional[str], message_text: str) -> bool:
+    if parsed_type in {"buy", "sell", "trade"}:
+        if parsed_category in {"slabs", "singles", "sealed", "packs", "mixed"}:
+            return True
+        lower = (message_text or "").lower()
+        if any(token in lower for token in INVENTORY_HINTS):
+            return True
+    return False
+
+
 def derive_entry_kind(
     parsed_type: Optional[str],
+    parsed_category: Optional[str],
     cash_direction: Optional[str],
     message_text: str,
 ) -> tuple[str, Optional[str]]:
     expense_category = detect_expense_category(message_text)
+    if is_inventory_transaction(parsed_type, parsed_category, message_text):
+        inventory_category = "inventory"
+    else:
+        inventory_category = None
 
     if expense_category and parsed_type in {None, "unknown", "buy"}:
         return "expense", expense_category
 
     if parsed_type == "sell":
-        return "sale", None
+        return "sale", inventory_category
     if parsed_type == "buy":
-        return "buy", None
+        return "buy", inventory_category
     if parsed_type == "trade":
-        return "trade", None
+        return "trade", inventory_category
 
     if expense_category and cash_direction == "from_store":
         return "expense", expense_category
 
-    return "unknown", expense_category
+    return "unknown", expense_category or inventory_category
 
 
 def compute_financials(
     *,
     parsed_type: Optional[str],
+    parsed_category: Optional[str],
     amount: Optional[float],
     cash_direction: Optional[str],
     message_text: str,
 ) -> FinancialSummary:
     entry_kind, expense_category = derive_entry_kind(
         parsed_type=parsed_type,
+        parsed_category=parsed_category,
         cash_direction=cash_direction,
         message_text=message_text,
     )
