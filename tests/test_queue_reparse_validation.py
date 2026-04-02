@@ -13,9 +13,9 @@ from app.main import (
     admin_parser_learned_rule_log_page,
     admin_parser_reparse_range,
     admin_queue_state_counts,
-    bulk_requeue_filtered_messages_form,
+    bulk_reparse_filtered_messages_form,
     build_debug_snapshot,
-    retry_message_form,
+    reparse_message_form,
 )
 from app.models import (
     DiscordMessage,
@@ -331,47 +331,6 @@ class QueueReparseValidationTests(unittest.TestCase):
             self.assertEqual(result["counts"]["needs_review"], 1)
             self.assertEqual(ignored_result["counts"]["ignored"], 1)
 
-    def test_retry_message_form_resets_attempts_and_removes_transaction_until_reparsed(self) -> None:
-        with self.session() as session, patch("app.main.require_role_response", return_value=None):
-            reviewed_at = utcnow()
-            row = self.make_message(
-                discord_message_id="retry-row",
-                parse_status=PARSE_PARSED,
-                parse_attempts=3,
-                reviewed_by="reviewer",
-                reviewed_at=reviewed_at,
-                amount=20.0,
-                entry_kind="sale",
-                payment_method="zelle",
-                cash_direction="to_store",
-                money_in=20.0,
-            )
-            session.add(row)
-            session.commit()
-            session.refresh(row)
-            sync_transaction_from_message(session, row)
-            session.commit()
-
-            response = retry_message_form(
-                make_request(f"/messages/{row.id}/retry-form"),
-                message_id=row.id,
-                page=1,
-                limit=100,
-                session=session,
-            )
-
-            session.refresh(row)
-            transaction = session.exec(
-                select(Transaction).where(Transaction.source_message_id == row.id)
-            ).first()
-
-            self.assertEqual(response.status_code, 303)
-            self.assertEqual(row.parse_status, PARSE_PENDING)
-            self.assertEqual(row.parse_attempts, 0)
-            self.assertIsNone(row.reviewed_by)
-            self.assertIsNone(row.reviewed_at)
-            self.assertIsNone(transaction)
-
     def test_grouped_child_ignored_row_does_not_keep_transaction(self) -> None:
         with self.session() as session:
             row = self.make_message(
@@ -543,7 +502,7 @@ class QueueReparseValidationTests(unittest.TestCase):
             sync_transaction_from_message(session, other_category)
             session.commit()
 
-            response = bulk_requeue_filtered_messages_form(
+            response = bulk_reparse_filtered_messages_form(
                 make_request("/messages/bulk/requeue-filtered-form"),
                 return_path="/review",
                 status="review_queue",
@@ -565,7 +524,7 @@ class QueueReparseValidationTests(unittest.TestCase):
 
             self.assertEqual(matching.parse_status, PARSE_PENDING)
             self.assertEqual(matching.parse_attempts, 0)
-            self.assertIsNone(matching.last_error)
+            self.assertEqual(matching.last_error, "manual filtered reparse")
             self.assertFalse(matching.needs_review)
             self.assertIsNone(matching.reviewed_by)
             self.assertIsNone(matching.reviewed_at)
@@ -582,6 +541,47 @@ class QueueReparseValidationTests(unittest.TestCase):
             self.assertEqual(len(matching_tx), 0)
             self.assertEqual(len(other_channel_tx), 1)
             self.assertEqual(len(other_category_tx), 0)
+
+    def test_retry_message_form_resets_attempts_and_removes_transaction_until_reparsed(self) -> None:
+        with self.session() as session, patch("app.main.require_role_response", return_value=None):
+            reviewed_at = utcnow()
+            row = self.make_message(
+                discord_message_id="retry-row",
+                parse_status=PARSE_PARSED,
+                parse_attempts=3,
+                reviewed_by="reviewer",
+                reviewed_at=reviewed_at,
+                amount=20.0,
+                entry_kind="sale",
+                payment_method="zelle",
+                cash_direction="to_store",
+                money_in=20.0,
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            sync_transaction_from_message(session, row)
+            session.commit()
+
+            response = reparse_message_form(
+                make_request(f"/messages/{row.id}/retry-form"),
+                message_id=row.id,
+                page=1,
+                limit=100,
+                session=session,
+            )
+
+            session.refresh(row)
+            transaction = session.exec(
+                select(Transaction).where(Transaction.source_message_id == row.id)
+            ).first()
+
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(row.parse_status, PARSE_PENDING)
+            self.assertEqual(row.parse_attempts, 0)
+            self.assertIsNone(row.reviewed_by)
+            self.assertIsNone(row.reviewed_at)
+            self.assertIsNone(transaction)
 
 
 if __name__ == "__main__":

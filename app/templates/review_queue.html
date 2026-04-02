@@ -88,16 +88,16 @@
         <section class="hero">
             <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
             <div>
-                <div class="eyebrow">Employee Review Queue</div>
+                <div class="eyebrow">Primary Review Queue</div>
                 <h1>{{ title }}</h1>
-                <p>Review one deal at a time, fix the core financial fields quickly, and approve rows without digging through the admin tools.</p>
+                <p>This is the main review path. Review one deal at a time, fix the core financial fields quickly, and approve rows without digging through the admin tools.</p>
                 <div class="queue-meta">
                     <span class="pill">Review required {{ summary["needs_review"] }}</span>
                     <span class="pill">Failed {{ summary["failed"] }}</span>
                     <span class="pill">With images {{ summary["with_images"] }}</span>
                 </div>
                 <div style="margin-top:10px;">
-                    <a class="muted-link" href="/review-table">Need to review in bulk? &rarr; Open Bulk Review</a>
+                    <a class="muted-link" href="/review-table">Advanced: open the bulk admin review table &rarr;</a>
                 </div>
             </div>
         </section>
@@ -112,8 +112,8 @@
                 <label style="justify-content:end;"><span>&nbsp;</span><button type="submit" class="secondary-button">Apply Filters</button></label>
             </form>
             <div class="action-row" style="margin-top:12px; justify-content:space-between;">
-                <div class="small">Requeue the currently filtered review rows so the worker reparses them with the latest deterministic rules, learned corrections, and stitch heuristics.</div>
-                <form method="post" action="/messages/bulk/requeue-filtered-form" onsubmit="return confirm('Requeue all currently filtered review rows for reparsing?');">
+                <div class="small">Reparse the currently filtered review rows with the latest deterministic rules, learned corrections, and stitch heuristics.</div>
+                <form method="post" action="/messages/bulk/reparse-filtered-form" onsubmit="return confirm('Reparse all currently filtered review rows?');">
                     <input type="hidden" name="return_path" value="/review">
                     <input type="hidden" name="status" value="review_queue">
                     <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
@@ -124,7 +124,7 @@
                     <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
                     <input type="hidden" name="page" value="{{ pagination['page'] }}">
                     <input type="hidden" name="limit" value="{{ selected_limit }}">
-                    <button type="submit" class="secondary-button">Requeue Filtered Review Rows</button>
+                    <button type="submit" class="secondary-button">Reparse Filtered Review Rows</button>
                 </form>
             </div>
         </div>
@@ -139,7 +139,7 @@
         <div class="section-header">
             <div>
                 <h2 class="section-title">Rows To Review</h2>
-                <p class="section-subtitle">Each card keeps the message context on the left and the decision panel on the right.</p>
+                <p class="section-subtitle">Each card keeps the message context on the left and the decision panel on the right. Use this page for the normal review flow.</p>
             </div>
         </div>
 
@@ -209,9 +209,9 @@
                             <button type="submit" class="ghost-button" formaction="/messages/{{ row['id'] }}/approve-form" formmethod="post">Approve</button>
                             <button type="submit" class="secondary-button">Save</button>
                             <button type="submit" name="approve_after_save" value="true" class="primary-button">Save & Approve</button>
-                            <button type="submit" class="ghost-button" formaction="/messages/{{ row['id'] }}/disregard-form" formmethod="post">Disregard</button>
-                            <a class="button ghost-button" href="/review/focus/{{ row['id'] }}?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Focus</a>
-                            {% if pagination["has_next"] or pagination["page"] > 0 %}<a class="button ghost-button" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Skip</a>{% endif %}
+                            <button type="submit" class="ghost-button" formaction="/messages/{{ row['id'] }}/disregard-form" formmethod="post">Ignore Message</button>
+                            <a class="button ghost-button" href="/review/focus/{{ row['id'] }}?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Open Focus View</a>
+                            {% if pagination["has_next"] or pagination["page"] > 0 %}<a class="button ghost-button" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Next in Queue</a>{% endif %}
                         </div>
                     </form>
                 </div>

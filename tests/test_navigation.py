@@ -126,7 +126,6 @@ class NavigationValidationTests(unittest.TestCase):
             "review_required",
             "processing",
             "worker",
-            "queue",
             "backfill",
             "reparse",
             "heartbeat",
@@ -155,8 +154,9 @@ class NavigationValidationTests(unittest.TestCase):
 
         self.assertNotIn('href="/review-table"', nav_source)
         self.assertIn('href="/review-table"', review_source)
-        self.assertIn("Open Bulk Review", review_source)
+        self.assertIn("Advanced: open the bulk admin review table", review_source)
         self.assertIn('href="/review"', review_table_source)
+        self.assertIn("Open Primary Review Queue", review_table_source)
         self.assertIn("Review Queue", review_table_source)
         self.assertIn("Operator View", review_table_source)
 
@@ -324,6 +324,31 @@ class NavigationValidationTests(unittest.TestCase):
                     response = call(make_request(path))
                     self.assertEqual(response.status_code, 301, path)
                     self.assertEqual(response.headers.get("location"), expected_location, path)
+
+    def test_primary_review_page_exposes_reparse_and_ignore_workflow_copy(self) -> None:
+        with Session(self.engine) as session, patch("app.main.require_role_response", return_value=None), patch(
+            "app.main.get_available_channel_choices",
+            return_value=([], False),
+        ):
+            response = main_module.reviewer_queue_page(
+                make_request("/review"),
+                channel_id=None,
+                expense_category=None,
+                after=None,
+                before=None,
+                sort_by="time",
+                sort_dir="desc",
+                page=1,
+                limit=25,
+                success=None,
+                error=None,
+                session=session,
+            )
+
+        body = response.body.decode("utf-8")
+        self.assertIn("Reparse Filtered Review Rows", body)
+        self.assertIn("Primary Review Queue", body)
+        self.assertIn("Advanced: open the bulk admin review table", body)
 
 
 if __name__ == "__main__":

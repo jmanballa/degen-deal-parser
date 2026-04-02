@@ -38,6 +38,16 @@ class ParserStoreRulesTests(unittest.TestCase):
         self.assertIsNotNone(parsed)
         self.assertEqual(parsed["parsed_type"], "buy")
         self.assertEqual(parsed["parsed_amount"], 3183.0)
+        self.assertFalse(parsed["needs_review"])
+
+    def test_reimburse_us_phrase_counts_as_buy_and_skips_review(self):
+        message_text = "reimburse us 145"
+        self.assertEqual(infer_explicit_buy_sell_type(message_text), "buy")
+        parsed = parse_by_rules(message_text, channel_name="║store-buys")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["parsed_type"], "buy")
+        self.assertEqual(parsed["parsed_amount"], 145.0)
+        self.assertFalse(parsed["needs_review"])
 
     def test_cash_direction_only_changes_trade_financials(self):
         buy_financials = compute_financials(

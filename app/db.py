@@ -125,6 +125,7 @@ SQLITE_ADDITIVE_MIGRATIONS = {
         "financial_status": "TEXT DEFAULT ''",
         "fulfillment_status": "TEXT",
         "line_items_json": "TEXT DEFAULT '[]'",
+        "line_items_summary_json": "TEXT DEFAULT '[]'",
         "raw_payload": "TEXT DEFAULT '{}'",
         "source": "TEXT DEFAULT 'webhook'",
         "received_at": "TIMESTAMP",
@@ -174,6 +175,7 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
         "financial_status": "TEXT DEFAULT ''",
         "fulfillment_status": "TEXT",
         "line_items_json": "TEXT DEFAULT '[]'",
+        "line_items_summary_json": "TEXT DEFAULT '[]'",
         "raw_payload": "TEXT DEFAULT '{}'",
         "source": "TEXT DEFAULT 'webhook'",
         "received_at": "TIMESTAMP",
@@ -482,13 +484,19 @@ def init_db() -> None:
         print(f"[db] backfill request state repair skipped: {exc}")
     try:
         from .shopify_ingest import repair_shopify_tax_fields
+        from .shopify_ingest import repair_shopify_line_item_summaries
 
         with Session(engine) as session:
             updated = repair_shopify_tax_fields(session)
             if updated:
                 print(f"[db] repaired Shopify tax fields for {updated} order rows")
+            updated_line_items = repair_shopify_line_item_summaries(session)
+            if updated_line_items:
+                print(
+                    f"[db] repaired Shopify line-item summaries for {updated_line_items} order rows"
+                )
     except Exception as exc:
-        print(f"[db] Shopify tax field repair skipped: {exc}")
+        print(f"[db] Shopify repair skipped: {exc}")
 
 
 def get_session():

@@ -77,6 +77,63 @@ def json_dumps(value: Any) -> str:
     return json.dumps(value, default=str, sort_keys=True, separators=(",", ":"))
 
 
+def _safe_json_list(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if not value:
+        return []
+    try:
+        loaded = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(loaded, list):
+        return []
+    return [item for item in loaded if isinstance(item, dict)]
+
+
+def normalize_shopify_line_items(line_items: Any) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for item in _safe_json_list(line_items):
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+
+        quantity_raw = item.get("quantity")
+        try:
+            quantity = int(quantity_raw or 0)
+        except (TypeError, ValueError):
+            quantity = 0
+
+        normalized.append(
+            {
+                "title": title,
+                "quantity": quantity if quantity > 0 else 1,
+                "sku": str(item.get("sku") or "").strip() or None,
+                "product_id": str(item.get("product_id") or "").strip() or None,
+                "variant_id": str(item.get("variant_id") or "").strip() or None,
+                "unit_price": money_to_float(item.get("price")),
+            }
+        )
+    return normalized
+
+
+def build_shopify_reconciliation_snapshot(record: dict[str, Any]) -> dict[str, Any]:
+    normalized_line_items = normalize_shopify_line_items(record.get("line_items_json"))
+    return {
+        "shopify_order_id": record.get("shopify_order_id"),
+        "order_number": record.get("order_number"),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "customer_name": record.get("customer_name"),
+        "customer_email": record.get("customer_email"),
+        "financial_status": record.get("financial_status"),
+        "total_price": record.get("total_price"),
+        "subtotal_ex_tax": record.get("subtotal_ex_tax"),
+        "line_item_count": len(normalized_line_items),
+        "line_items": normalized_line_items,
+    }
+
+
 def normalize_customer_name(payload: dict[str, Any]) -> Optional[str]:
     customer = payload.get("customer") or {}
     billing_address = payload.get("billing_address") or {}
@@ -182,6 +239,9 @@ def order_record_from_payload(
         "financial_status": str(payload.get("financial_status") or "").strip(),
         "fulfillment_status": str(payload.get("fulfillment_status") or "").strip() or None,
         "line_items_json": json_dumps(payload.get("line_items") or []),
+        "line_items_summary_json": json_dumps(
+            normalize_shopify_line_items(payload.get("line_items") or [])
+        ),
         "raw_payload": json_dumps(payload),
         "source": source,
         "received_at": received_at or utcnow(),
@@ -402,6 +462,27 @@ def repair_shopify_tax_fields(session: Session) -> int:
             continue
         row.total_tax = total_tax
         row.subtotal_ex_tax = subtotal_ex_tax
+        session.add(row)
+        updated += 1
+    if updated:
+        session.commit()
+    return updated
+
+
+def repair_shopify_line_item_summaries(session: Session) -> int:
+    rows = session.exec(
+        select(ShopifyOrder).where(ShopifyOrder.line_items_summary_json == "[]")
+    ).all()
+    updated = 0
+    for row in rows:
+        try:
+            payload = json.loads(row.raw_payload or "{}")
+        except json.JSONDecodeError:
+            continue
+        normalized = normalize_shopify_line_items(payload.get("line_items") or row.line_items_json)
+        if not normalized:
+            continue
+        row.line_items_summary_json = json_dumps(normalized)
         session.add(row)
         updated += 1
     if updated:

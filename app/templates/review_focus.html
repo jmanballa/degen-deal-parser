@@ -51,17 +51,17 @@
         <div class="focus-strip">
             <div>
                 <strong>Focus review</strong>
-                <div class="small">Use this mode when a row needs full attention and more visual space.</div>
+                <div class="small">Use this detail view when a row needs full attention and more visual space.</div>
             </div>
             <div class="focus-actions">
-                <a class="button secondary-button" href="{{ back_url }}">Back to Queue</a>
+                <a class="button secondary-button" href="{{ back_url }}">Back to Review</a>
                 <a class="button secondary-button" href="/dashboard">Dashboard</a>
-                {% if next_url %}<a class="button secondary-button" href="{{ next_url }}">Next Deal</a>{% endif %}
+                {% if next_url %}<a class="button secondary-button" href="{{ next_url }}">Next in Queue</a>{% endif %}
             </div>
         </div>
         <div class="nav">
             <div class="action-row">
-                <a class="button secondary-button" href="{{ back_url }}">Back to Queue</a>
+                <a class="button secondary-button" href="{{ back_url }}">Back to Review</a>
                 <a class="button secondary-button" href="/dashboard">Dashboard</a>
                 {% if previous_url %}<a class="button secondary-button" href="{{ previous_url }}">Previous</a>{% endif %}
                 {% if next_url %}<a class="button secondary-button" href="{{ next_url }}">Next</a>{% endif %}
@@ -119,7 +119,7 @@
             <div class="card sticky-form">
                 <div class="content-header">
                     <div>
-                        <h2 class="section-title">Decision Panel</h2>
+                        <h2 class="section-title">Review Decision</h2>
                         <div class="small">Save if you need a draft correction. Use Save & Approve when the row is done.</div>
                     </div>
                 </div>

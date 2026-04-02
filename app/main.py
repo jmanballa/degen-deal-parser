@@ -101,6 +101,7 @@ from .models import (
 )
 from .ops_log import list_operations_logs, list_operations_logs_for_backfill_request, parse_operations_log_details
 from .reparse_runs import list_recent_reparse_runs, safe_create_reparse_run, safe_finalize_reparse_run_queue
+from .reparse import reparse_message_row, reparse_message_rows
 from .reporting import (
     build_financial_summary,
     build_reporting_periods,
@@ -1978,6 +1979,7 @@ async def attach_current_user(request: Request, call_next):
 def health():
     try:
         with managed_session() as session:
+            db_health = get_database_health(session)
             local_runtime = get_runtime_heartbeat_status(
                 session,
                 APP_HEARTBEAT_RUNTIME_NAME,
@@ -1985,8 +1987,8 @@ def health():
                 updated_at_formatter=format_pacific_datetime,
             )
         return HealthOut(
-            ok=True,
-            db_ok=True,
+            ok=bool(db_health["ok"]),
+            db_ok=bool(db_health["ok"]),
             local_runtime_status=local_runtime["status"],
             local_runtime_label=local_runtime["label"],
             local_runtime_needs_attention=local_runtime["needs_attention"],
@@ -2729,6 +2731,54 @@ def get_runtime_status_pair(session: Session) -> tuple[dict, dict]:
     return app_runtime, worker_runtime
 
 
+def get_database_health(session: Session) -> dict:
+    checked_at = utcnow()
+    health = {
+        "ok": True,
+        "status": "healthy",
+        "label": "Healthy",
+        "needs_attention": False,
+        "alert_message": "",
+        "checked_at": checked_at.isoformat(),
+        "checked_at_label": format_pacific_datetime(checked_at),
+    }
+
+    try:
+        session.exec(select(1)).one()
+    except OperationalError as exc:
+        error_text = str(exc)
+        health["ok"] = False
+        health["needs_attention"] = True
+        health["status"] = "busy" if "database is locked" in error_text.lower() else "down"
+        health["label"] = "Busy" if health["status"] == "busy" else "Down"
+        if health["status"] == "busy":
+            health["alert_message"] = (
+                "SQLite is currently busy handling another write. "
+                "The database is reachable, but some updates may retry briefly."
+            )
+        else:
+            health["alert_message"] = f"Database probe failed: {error_text}"
+        return health
+    except Exception as exc:
+        health["ok"] = False
+        health["needs_attention"] = True
+        health["status"] = "down"
+        health["label"] = "Down"
+        health["alert_message"] = f"Database probe failed: {exc}"
+        return health
+
+    if recent_db_failure():
+        health["status"] = "degraded"
+        health["label"] = "Busy"
+        health["needs_attention"] = True
+        health["alert_message"] = (
+            "SQLite recently reported write contention. "
+            "The database is reachable, but writes may still be retrying."
+        )
+
+    return health
+
+
 def serialize_backfill_request_detail(row: BackfillRequest) -> dict:
     result = {}
     try:
@@ -3071,6 +3121,7 @@ def get_parser_progress(
 
 def build_status_snapshot(session: Session) -> dict:
     app_runtime, worker_runtime = get_runtime_status_pair(session)
+    db_health = get_database_health(session)
     parser_progress = get_parser_progress(session)
     latest_ingested_row = session.exec(
         select(DiscordMessage)
@@ -3172,7 +3223,8 @@ def build_status_snapshot(session: Session) -> dict:
         stitch_status_tone = "bad"
 
     return {
-        "db_ok": True,
+        "db_ok": db_health["ok"] and not db_health["needs_attention"],
+        "db_health": db_health,
         "local_runtime": worker_runtime,
         "app_runtime": app_runtime,
         "worker_runtime": worker_runtime,
@@ -3197,6 +3249,15 @@ def build_status_snapshot(session: Session) -> dict:
             "window_label": stitch_window_label,
             "limit_label": stitch_limit_label,
         },
+        "alert_messages": [
+            message
+            for message in (
+                db_health.get("alert_message"),
+                app_runtime.get("alert_message"),
+                worker_runtime.get("alert_message"),
+            )
+            if message
+        ],
         "recent_activity": {
             "latest_ingested_label": format_pacific_datetime(latest_ingested_row.ingested_at if latest_ingested_row else None),
             "latest_ingested_links": build_row_action_links(
@@ -4659,8 +4720,9 @@ def bulk_approve_messages_form(
     return RedirectResponse(url=f"{redirect_url}{separator}success=Approved+{updated}+messages", status_code=303)
 
 
+@app.post("/messages/bulk/reparse-form")
 @app.post("/messages/bulk/retry-form")
-def bulk_retry_messages_form(
+def bulk_reparse_messages_form(
     request: Request,
     message_ids: list[int] = Form(default=[]),
     return_path: str = Form(default="/table"),
@@ -4678,20 +4740,15 @@ def bulk_retry_messages_form(
 ):
     if denial := require_role_response(request, "reviewer"):
         return denial
-    updated = 0
-    for message_id in message_ids:
-        row = session.get(DiscordMessage, message_id)
-        if not row:
-            continue
-        row.parse_status = PARSE_PENDING
-        row.parse_attempts = 0
-        row.last_error = None
-        row.reviewed_by = None
-        row.reviewed_at = None
-        session.add(row)
-        sync_transaction_from_message(session, row)
-        updated += 1
-    session.commit()
+    rows = [
+        row
+        for row in (
+            session.get(DiscordMessage, message_id)
+            for message_id in message_ids
+        )
+        if row is not None
+    ]
+    updated = reparse_message_rows(session, rows, reason="manual bulk reparse", reset_attempts=True)
 
     selected_expense_category = filter_expense_category or expense_category
     redirect_url = build_return_url(
@@ -4707,11 +4764,12 @@ def bulk_retry_messages_form(
         limit=limit,
     )
     separator = "&" if "?" in redirect_url else "?"
-    return RedirectResponse(url=f"{redirect_url}{separator}success=Re-queued+{updated}+messages", status_code=303)
+    return RedirectResponse(url=f"{redirect_url}{separator}success=Reparsed+{updated}+messages", status_code=303)
 
 
+@app.post("/messages/bulk/reparse-filtered-form")
 @app.post("/messages/bulk/requeue-filtered-form")
-def bulk_requeue_filtered_messages_form(
+def bulk_reparse_filtered_messages_form(
     request: Request,
     return_path: str = Form(default="/review"),
     status: Optional[str] = Form(default="review_queue"),
@@ -4741,29 +4799,16 @@ def bulk_requeue_filtered_messages_form(
         if row_id is not None
     ]
 
-    def requeue_chunk(chunk_ids: list[int]) -> int:
+    def reparse_chunk(chunk_ids: list[int]) -> int:
         rows = session.exec(
             select(DiscordMessage).where(DiscordMessage.id.in_(chunk_ids))
         ).all()
-        updated_rows = 0
-        for row in rows:
-            row.parse_status = PARSE_PENDING
-            row.parse_attempts = 0
-            row.last_error = None
-            row.needs_review = False
-            row.reviewed_by = None
-            row.reviewed_at = None
-            row.active_reparse_run_id = None
-            session.add(row)
-            sync_transaction_from_message(session, row)
-            updated_rows += 1
-        session.commit()
-        return updated_rows
+        return reparse_message_rows(session, rows, reason="manual filtered reparse", reset_attempts=True)
 
     updated = 0
     chunk_size = 25
     for start_index in range(0, len(row_ids), chunk_size):
-        updated += requeue_chunk(row_ids[start_index:start_index + chunk_size])
+        updated += reparse_chunk(row_ids[start_index:start_index + chunk_size])
 
     redirect_url = build_return_url(
         return_path,
@@ -4779,13 +4824,14 @@ def bulk_requeue_filtered_messages_form(
     )
     separator = "&" if "?" in redirect_url else "?"
     return RedirectResponse(
-        url=f"{redirect_url}{separator}success=Re-queued+{updated}+filtered+review+rows+for+reparse",
+        url=f"{redirect_url}{separator}success=Reparsed+{updated}+filtered+review+rows",
         status_code=303,
     )
 
 
+@app.post("/messages/{message_id}/reparse-form")
 @app.post("/messages/{message_id}/retry-form")
-def retry_message_form(
+def reparse_message_form(
     request: Request,
     message_id: int,
     return_path: str = Form(default="/table"),
@@ -4803,16 +4849,7 @@ def retry_message_form(
 ):
     if denial := require_role_response(request, "reviewer"):
         return denial
-    row = session.get(DiscordMessage, message_id)
-    if row:
-        row.parse_status = PARSE_PENDING
-        row.parse_attempts = 0
-        row.last_error = None
-        row.reviewed_by = None
-        row.reviewed_at = None
-        session.add(row)
-        sync_transaction_from_message(session, row)
-        session.commit()
+    reparse_message_row(session, message_id, reason="manual row reparse", reset_attempts=True)
 
     selected_expense_category = filter_expense_category or expense_category
     redirect_url = build_return_url(
@@ -4828,7 +4865,7 @@ def retry_message_form(
         limit=limit,
     )
     separator = "&" if "?" in redirect_url else "?"
-    return RedirectResponse(url=f"{redirect_url}{separator}success=Re-queued+message+{message_id}", status_code=303)
+    return RedirectResponse(url=f"{redirect_url}{separator}success=Reparsed+message+{message_id}", status_code=303)
 
 
 @app.post("/messages/{message_id}/mark-incorrect-form")

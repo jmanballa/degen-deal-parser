@@ -96,10 +96,14 @@
         <div class="banner">{{ snapshot["split_runtime_notice"] }}</div>
         {% endif %}
 
+        {% for alert_message in snapshot["alert_messages"] %}
+        <div class="banner">{{ alert_message }}</div>
+        {% endfor %}
+
         <div class="grid">
             <div class="metric">
                 <div class="metric-label">Database</div>
-                <div class="metric-value">{{ "Healthy" if snapshot["db_ok"] else "Down" }}</div>
+                <div class="metric-value">{{ snapshot["db_health"]["label"] }}</div>
             </div>
             <div class="metric">
                 <div class="metric-label">Web UI</div>
@@ -128,8 +132,18 @@
                     </div>
                 </div>
                 <div class="list">
+                    <div class="item"><strong>Database:</strong> <span class="pill {% if snapshot['db_health']['needs_attention'] %}warn{% else %}ok{% endif %}">{{ snapshot["db_health"]["label"] }}</span> | {{ snapshot["db_health"]["checked_at_label"] }}</div>
+                    {% if snapshot["db_health"]["alert_message"] %}
+                    <div class="item small warn-text">{{ snapshot["db_health"]["alert_message"] }}</div>
+                    {% endif %}
                     <div class="item"><strong>Web UI:</strong> <span class="pill {% if snapshot['app_runtime']['needs_attention'] %}warn{% else %}ok{% endif %}">{{ snapshot["app_runtime"]["label"] }}</span> | {{ snapshot["app_runtime"]["updated_at_label"] }}</div>
+                    {% if snapshot["app_runtime"]["alert_message"] %}
+                    <div class="item small warn-text">{{ snapshot["app_runtime"]["alert_message"] }}</div>
+                    {% endif %}
                     <div class="item"><strong>Worker process:</strong> <span class="pill {% if snapshot['worker_runtime']['needs_attention'] %}warn{% else %}ok{% endif %}">{{ snapshot["worker_runtime"]["label"] }}</span> | {{ snapshot["worker_runtime"]["updated_at_label"] }}</div>
+                    {% if snapshot["worker_runtime"]["alert_message"] %}
+                    <div class="item small warn-text">{{ snapshot["worker_runtime"]["alert_message"] }}</div>
+                    {% endif %}
                     <div class="item"><strong>Web host:</strong> {{ snapshot["app_runtime"]["host_name"] or "unknown" }}</div>
                     <div class="item"><strong>Worker host:</strong> {{ snapshot["worker_runtime"]["host_name"] or "unknown" }}</div>
                     <div class="item"><strong>Web process flags:</strong> Discord ingest {{ "enabled" if snapshot["runtime_flags"]["discord_ingest_enabled"] else "disabled" }}, parser worker {{ "enabled" if snapshot["runtime_flags"]["parser_worker_enabled"] else "disabled" }}</div>

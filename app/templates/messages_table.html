@@ -190,9 +190,9 @@
             <div class="logo-wrap"><img src="/static/degen-logo.png" alt="Degen Collectibles logo"></div>
             <div>
                 <div class="eyebrow">Degen Collectibles Ledger Ops</div>
-                <h1>{% if is_review_page %}Bulk Review (Operator){% else %}Message Queue{% endif %}</h1>
+                <h1>{% if is_review_page %}Bulk Review (Admin){% else %}Message Queue{% endif %}</h1>
                 <div style="margin-bottom:10px;"><span class="pill">Operator View</span></div>
-                <p>{% if is_review_page %}Move through bulk review with less clicking: scan the message, correct the parse inline, and approve without opening each row unless you need the full audit trail.{% else %}Use this operator-only queue for ingest, parsing, backfills, and deep ledger cleanup. Partner browsing and employee review now live on their own pages.{% endif %}</p>
+                <p>{% if is_review_page %}Use this when you need spreadsheet-style bulk edits as an admin. Normal review lives on the main review page, which is the better starting point for most users.{% else %}Use this operator-only queue for ingest, parsing, backfills, and deep ledger cleanup. Partner browsing and employee review now live on their own pages.{% endif %}</p>
                 <div class="hero-actions">
                     {% if not is_review_page %}
                     <a href="/admin" class="button primary-button" style="width:auto;">Back to Admin Hub</a>
@@ -204,10 +204,10 @@
                         <button type="submit" name="force" value="true" class="button secondary-button" style="width:auto;">Force Recheck</button>
                     </form>
                     <div class="subtle" style="flex-basis:100%; margin-top:2px;">
-                        Reparse checks messages that are already in the system again with today's parser rules. Use the normal button for a safe pass; use force only if you also want to include rows that were already reviewed by a person.
+                        Reparse reruns messages that are already in the system with today's parser rules. Use the normal button for a safe pass; use force only if you also want to include rows that were already reviewed by a person.
                     </div>
                     {% else %}
-                    <a href="/review" class="button primary-button" style="width:auto;">Open Reviewer Queue</a>
+                    <a href="/review" class="button primary-button" style="width:auto;">Open Primary Review Queue</a>
                     <a href="/table" class="button secondary-button" style="width:auto;">Back to Main Table</a>
                     <a href="/review/history" class="button secondary-button" style="width:auto;">Review History</a>
                     {% endif %}
@@ -224,8 +224,8 @@
         {% if is_review_page %}
         <div class="review-rail" style="margin-top:-4px;">
             <div class="review-note">
-                <strong>This is the bulk review view for operators.</strong>
-                <div class="section-subtle">For standard review, go to <a href="/review">Review Queue &rarr;</a></div>
+                <strong>This is the bulk review view for admins.</strong>
+                <div class="section-subtle">For normal review, go to <a href="/review">Primary Review Queue &rarr;</a></div>
             </div>
         </div>
         {% endif %}
@@ -238,7 +238,7 @@
                     <div class="metric"><div class="metric-label">Total</div><div class="metric-value">{{ summary["total"] }}</div><div class="metric-sub">Visible rows in this view</div></div>
                     <div class="metric"><div class="metric-label">Parsed</div><div class="metric-value">{{ summary["parsed"] }}</div><div class="metric-sub">Ready ledger rows</div></div>
                     <div class="metric"><div class="metric-label">Review Required</div><div class="metric-value">{{ summary["needs_review"] }}</div><div class="metric-sub">Needs eyes on it</div></div>
-                    <div class="metric"><div class="metric-label">Failed</div><div class="metric-value">{{ summary["failed"] }}</div><div class="metric-sub">Needs retry</div></div>
+                    <div class="metric"><div class="metric-label">Failed</div><div class="metric-value">{{ summary["failed"] }}</div><div class="metric-sub">Needs reparse</div></div>
                     <div class="metric"><div class="metric-label">Pending</div><div class="metric-value">{{ summary["queued"] }}</div><div class="metric-sub">Waiting to parse</div></div>
                     <div class="metric"><div class="metric-label">Processing</div><div class="metric-value">{{ summary["processing"] }}</div><div class="metric-sub">Running now</div></div>
                     <div class="metric"><div class="metric-label">Ignored</div><div class="metric-value">{{ summary["ignored"] }}</div><div class="metric-sub">Non-transactions</div></div>
@@ -412,7 +412,7 @@
                             {% for shortcut in review_shortcuts %}
                             <button type="button" class="toggle-pill shortcut-focus-button{% if shortcut.enabled %} is-active{% endif %}" data-shortcut-key="{{ shortcut['key'] }}" {% if not shortcut.enabled %}disabled{% endif %}>{{ shortcut["label"] }} ({{ shortcut["count"] }})</button>
                             {% endfor %}
-                            <form method="post" action="/messages/bulk/requeue-filtered-form" onsubmit="return confirm('Requeue all currently filtered review rows for reparsing?');" style="display:inline-flex;">
+                            <form method="post" action="/messages/bulk/reparse-filtered-form" onsubmit="return confirm('Reparse all currently filtered review rows?');" style="display:inline-flex;">
                                 <input type="hidden" name="return_path" value="{{ return_path }}">
                                 <input type="hidden" name="status" value="{{ selected_status }}">
                                 <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
@@ -423,7 +423,7 @@
                                 <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
                                 <input type="hidden" name="page" value="{{ pagination['page'] }}">
                                 <input type="hidden" name="limit" value="{{ selected_limit }}">
-                                <button type="submit" class="secondary-button" style="width:auto;">Requeue Filtered Review Rows</button>
+                                <button type="submit" class="secondary-button" style="width:auto;">Reparse Filtered Review Rows</button>
                             </form>
                         </div>
                     </div>
@@ -483,14 +483,14 @@
                     </details>
 
                     {% if not shopify_source_notice %}
-                    <form id="bulk-retry-form" method="post" action="/messages/bulk/retry-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="expense_category" value="{{ selected_expense_category }}"><input type="hidden" name="source" value="{{ selected_source }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"></form>
+                    <form id="bulk-reparse-form" method="post" action="/messages/bulk/reparse-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="expense_category" value="{{ selected_expense_category }}"><input type="hidden" name="source" value="{{ selected_source }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"></form>
                     <form id="bulk-approve-form" method="post" action="/messages/bulk/approve-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="expense_category" value="{{ selected_expense_category }}"><input type="hidden" name="source" value="{{ selected_source }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"></form>
                     <div class="bulk-bar">
                         <div class="bulk-status">
                             <span class="selection-count" id="selected-count">0 selected</span>
                             <span class="helper">{% if is_review_page %}Select review rows and approve or re-queue them together.{% else %}Select rows and re-queue them together when you want another parsing pass.{% endif %}</span>
                         </div>
-                        <div class="inline-actions">{% if is_review_page %}<button type="submit" form="bulk-approve-form" class="secondary-button tiny-button">Approve Selected</button>{% endif %}<button type="submit" form="bulk-retry-form" class="secondary-button tiny-button">Retry Selected</button></div>
+                        <div class="inline-actions">{% if is_review_page %}<button type="submit" form="bulk-approve-form" class="secondary-button tiny-button">Approve Selected</button>{% endif %}<button type="submit" form="bulk-reparse-form" class="secondary-button tiny-button">Reparse Selected</button></div>
                     </div>
                     
                     <div class="table-scroll-top" id="table-scroll-top" aria-label="Horizontal table scrollbar">
@@ -519,7 +519,7 @@
                             <tbody>
                                 {% for row in rows %}
                                 <tr class="{% if row['needs_review'] %}row-needs-review {% endif %}{% if row['status'] == 'failed' %}row-failed {% endif %}{% if row['stitched_count'] and row['stitched_count'] > 1 %}row-grouped{% endif %}" data-row-id="{{ row['id'] }}" data-shortcut-failed="{{ 'true' if row['attention']['is_failed'] else 'false' }}" data-shortcut-image="{{ 'true' if row['attention']['has_image_clue'] else 'false' }}" data-shortcut-grouped="{{ 'true' if row['attention']['is_grouped'] else 'false' }}" data-shortcut-bookkeeping="{{ 'true' if row['attention']['has_bookkeeping_mismatch'] else 'false' }}">
-                                    <td class="check-col"><input type="checkbox" name="message_ids" value="{{ row['id'] }}" class="row-selector" form="bulk-retry-form" style="width:auto;"></td>
+                                    <td class="check-col"><input type="checkbox" name="message_ids" value="{{ row['id'] }}" class="row-selector" form="bulk-reparse-form" style="width:auto;"></td>
                                     <td class="quick-col">
                                         {% if is_review_page %}
                                         <form id="inline-edit-{{ row['id'] }}" method="post" action="/messages/{{ row['id'] }}/edit-form" style="display:none;">
@@ -544,7 +544,7 @@
                                             {% if is_review_page %}<form method="post" action="/messages/{{ row['id'] }}/approve-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="expense_category" value="{{ selected_expense_category }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Approve</button></form>{% endif %}
                                             {% if is_review_page %}<button type="submit" form="inline-edit-{{ row['id'] }}" class="secondary-button tiny-button">Save</button><button type="submit" form="inline-edit-{{ row['id'] }}" name="approve_after_save" value="true" class="primary-button tiny-button">Save & Approve</button>{% endif %}
                                             {% if is_review_page %}<form method="post" action="/messages/{{ row['id'] }}/disregard-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="expense_category" value="{{ selected_expense_category }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Disregard</button></form>{% endif %}
-                                            <form method="post" action="/messages/{{ row['id'] }}/retry-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="expense_category" value="{{ selected_expense_category }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Retry</button></form>
+                                            <form method="post" action="/messages/{{ row['id'] }}/reparse-form"><input type="hidden" name="return_path" value="{{ return_path }}"><input type="hidden" name="status" value="{{ selected_status }}"><input type="hidden" name="channel_id" value="{{ selected_channel_id }}"><input type="hidden" name="expense_category" value="{{ selected_expense_category }}"><input type="hidden" name="after" value="{{ selected_after }}"><input type="hidden" name="before" value="{{ selected_before }}"><input type="hidden" name="sort_by" value="{{ selected_sort_by }}"><input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}"><input type="hidden" name="page" value="{{ pagination['page'] }}"><input type="hidden" name="limit" value="{{ selected_limit }}"><button type="submit" class="secondary-button tiny-button">Reparse</button></form>
                                             {% if is_review_page %}<button type="button" class="secondary-button tiny-button focus-row-button" data-focus-row="{{ row['id'] }}">Focus</button>{% endif %}
                                         </div>
                                     </td>

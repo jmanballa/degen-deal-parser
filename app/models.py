@@ -344,6 +344,7 @@ class ShopifyOrder(SQLModel, table=True):
     financial_status: str = Field(default="", index=True)
     fulfillment_status: Optional[str] = Field(default=None, index=True)
     line_items_json: str = "[]"
+    line_items_summary_json: str = "[]"
     raw_payload: str = "{}"
     source: str = Field(default="webhook", index=True)
     received_at: datetime = Field(default_factory=utcnow, index=True)

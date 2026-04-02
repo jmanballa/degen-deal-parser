@@ -580,11 +580,11 @@ def has_reimbursement_buy_signal(message_text: str) -> bool:
     if not lower:
         return False
     reimbursement_patterns = [
-        r"\bowe me\b",
-        r"\bpay me back\b",
-        r"\breimburse(?: me)?\b",
-        r"\bfront(?:ed|ing)?(?: me)?\b",
-        r"\bspot me\b",
+        r"\bowe (?:me|us)\b",
+        r"\bpay (?:me|us) back\b",
+        r"\breimburse(?: me| us)?\b",
+        r"\bfront(?:ed|ing)?(?: me| us)?\b",
+        r"\bspot(?: me| us)?\b",
     ]
     return any(re.search(pattern, lower, re.I) for pattern in reimbursement_patterns)
 
@@ -659,8 +659,8 @@ def parse_by_rules(message_text: str, channel_name: str | None = None) -> Dict[s
                 "parsed_trade_summary": "",
                 "parsed_notes": f"rule-based explicit {explicit_type} with inferred amount",
                 "image_summary": "no image used",
-                "confidence": 0.88,
-                "needs_review": True,
+                "confidence": 0.92,
+                "needs_review": False,
             }
 
     amount_first_match = re.fullmatch(

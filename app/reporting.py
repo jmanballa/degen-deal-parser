@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -93,6 +94,56 @@ def get_shopify_reporting_rows(
     return session.exec(stmt).all()
 
 
+def _safe_json_list(value: Optional[str]) -> list[dict[str, object]]:
+    try:
+        loaded = json.loads(value or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(loaded, list):
+        return []
+    return [item for item in loaded if isinstance(item, dict)]
+
+
+def build_shopify_line_item_summary(rows: list[ShopifyOrder]) -> dict:
+    total_orders_with_items = 0
+    total_line_items = 0
+    title_counts: defaultdict[str, int] = defaultdict(int)
+
+    for row in rows:
+        summaries = _safe_json_list(
+            row.line_items_summary_json if row.line_items_summary_json != "[]" else row.line_items_json
+        )
+        if not summaries:
+            continue
+
+        total_orders_with_items += 1
+        for item in summaries:
+            title = str(item.get("title") or "").strip()
+            if not title:
+                continue
+            quantity_raw = item.get("quantity")
+            try:
+                quantity = int(quantity_raw or 0)
+            except (TypeError, ValueError):
+                quantity = 0
+            if quantity <= 0:
+                quantity = 1
+            total_line_items += quantity
+            title_counts[title] += quantity
+
+    return {
+        "orders_with_items": total_orders_with_items,
+        "line_items_total": total_line_items,
+        "avg_line_items_per_order": (
+            round(total_line_items / total_orders_with_items, 2) if total_orders_with_items else 0.0
+        ),
+        "top_item_titles": [
+            {"title": title, "quantity": quantity}
+            for title, quantity in sorted(title_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+        ],
+    }
+
+
 def build_shopify_reporting_summary(rows: list[ShopifyOrder]) -> dict:
     status_counts = {"paid": 0, "pending": 0, "refunded": 0, "other": 0}
     paid_order_count = 0
@@ -101,6 +152,7 @@ def build_shopify_reporting_summary(rows: list[ShopifyOrder]) -> dict:
     paid_tax = 0.0
     paid_net = 0.0
     paid_known_tax_orders = 0
+    line_item_summary = build_shopify_line_item_summary(rows)
 
     for row in rows:
         status = (row.financial_status or "").strip().lower()
@@ -148,6 +200,7 @@ def build_shopify_reporting_summary(rows: list[ShopifyOrder]) -> dict:
             if tax_unknown_count
             else ""
         ),
+        "line_item_summary": line_item_summary,
     }
 
 

@@ -166,6 +166,47 @@ def rebuild_transactions(session: Session) -> int:
     return synced
 
 
+def _transaction_item_names(session: Session, transaction_id: int) -> list[str]:
+    items = session.exec(
+        select(TransactionItem).where(TransactionItem.transaction_id == transaction_id)
+    ).all()
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        name = str(item.item_name or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names
+
+
+def build_transaction_reconciliation_snapshot(session: Session, transaction: Transaction) -> dict:
+    item_names = _transaction_item_names(session, transaction.id)
+    return {
+        "source_message_id": transaction.source_message_id,
+        "discord_message_id": transaction.discord_message_id,
+        "occurred_at": transaction.occurred_at,
+        "entry_kind": transaction.entry_kind,
+        "deal_type": transaction.deal_type,
+        "amount": normalize_money_value(transaction.amount),
+        "money_in": normalize_money_value(transaction.money_in),
+        "money_out": normalize_money_value(transaction.money_out),
+        "payment_method": transaction.payment_method,
+        "cash_direction": transaction.cash_direction,
+        "category": transaction.category,
+        "expense_category": transaction.expense_category,
+        "channel_id": transaction.channel_id,
+        "channel_name": transaction.channel_name,
+        "author_name": transaction.author_name,
+        "item_count": len(item_names),
+        "item_names": item_names,
+    }
+
+
 def transaction_base_query(
     *,
     start: Optional[datetime] = None,

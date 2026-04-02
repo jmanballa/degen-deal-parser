@@ -3,10 +3,47 @@ from __future__ import annotations
 import argparse
 import asyncio
 
+from sqlmodel import Session
+
 from .db import managed_session
+from .models import DiscordMessage
 from .reparse_runs import safe_create_reparse_run, safe_finalize_reparse_run_queue
 from .reporting import parse_report_datetime
-from .worker import process_once, queue_reparse_range
+from .transactions import sync_transaction_from_message
+from .worker import process_once, queue_reparse_range, reset_for_reprocess
+
+
+def reparse_message_rows(
+    session: Session,
+    rows: list[DiscordMessage],
+    *,
+    reason: str,
+    reset_attempts: bool = True,
+) -> int:
+    updated = 0
+    for row in rows:
+        reset_for_reprocess(row, reason=reason, reset_attempts=reset_attempts)
+        row.active_reparse_run_id = None
+        session.add(row)
+        sync_transaction_from_message(session, row)
+        updated += 1
+    if updated:
+        session.commit()
+    return updated
+
+
+def reparse_message_row(
+    session: Session,
+    message_id: int,
+    *,
+    reason: str,
+    reset_attempts: bool = True,
+) -> bool:
+    row = session.get(DiscordMessage, message_id)
+    if not row:
+        return False
+    reparse_message_rows(session, [row], reason=reason, reset_attempts=reset_attempts)
+    return True
 
 
 def build_parser() -> argparse.ArgumentParser:

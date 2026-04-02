@@ -104,11 +104,11 @@
             {% if current_user and current_user.role in ["admin","reviewer"] %}
             <div class="workspace-card">
                 <span class="workspace-kicker">Primary workflow</span>
-                <h3>Needs Review</h3>
-                <p>Clear the rows that still need judgment, with the fastest path to approve good records and correct weak ones.</p>
+                <h3>Review Queue</h3>
+                <p>Start here for the normal human review flow. Approve good records, correct weak ones, and leave the bulk admin table for advanced cleanup.</p>
                 <div class="workspace-card-footer">
                     <span class="small">{{ review_summary["needs_review"] }} waiting for review</span>
-                    <a class="button primary-button" href="/review">Start Reviewing</a>
+                    <a class="button primary-button" href="/review">Open Review</a>
                 </div>
             </div>
             {% endif %}
@@ -195,7 +195,7 @@
                     <div class="action-row">
                         <div>
                             <strong>Needs review</strong>
-                            <div class="small">{{ review_summary["needs_review"] }} rows still require human review.</div>
+                            <div class="small">{{ review_summary["needs_review"] }} rows still require human review in the primary review queue.</div>
                         </div>
                         {% if current_user and current_user.role in ["admin","reviewer"] %}
                         <a class="button primary-button" href="/review">Review Now</a>

@@ -84,12 +84,25 @@ def get_runtime_heartbeat_status(
         is_running = False
         needs_attention = True
         alert_message = f"{runtime_label} heartbeat is stale. Hosted pages may still load, but new Discord messages might not be ingesting."
-    elif heartbeat.status not in {"running", "ready"}:
+    elif heartbeat.status in {"running", "ready"}:
+        label = "Running"
+    elif heartbeat.status == "degraded":
+        label = "Degraded"
+        needs_attention = True
+        alert_message = (
+            f"{runtime_label} is running but reporting a degraded state. "
+            "Parser and Discord ingest may be delayed."
+        )
+    elif heartbeat.status in {"rate_limited", "error"}:
         label = heartbeat.status.replace("_", " ").title()
-        is_running = heartbeat.status in {"degraded"}
-        if heartbeat.status in {"rate_limited", "error"}:
-            needs_attention = True
-            alert_message = f"{runtime_label} is reporting {label.lower()}. Parser and Discord ingest may be delayed."
+        is_running = False
+        needs_attention = True
+        alert_message = f"{runtime_label} is reporting {label.lower()}. Parser and Discord ingest may be delayed."
+    else:
+        label = heartbeat.status.replace("_", " ").title()
+        is_running = False
+        if heartbeat.status == "starting":
+            alert_message = f"{runtime_label} is still starting up."
 
     details = {}
     if heartbeat.details_json:
