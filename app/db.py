@@ -53,13 +53,8 @@ engine_kwargs = {
     "echo": False,
     "connect_args": connect_args,
     "pool_pre_ping": True,
+    "poolclass": NullPool,
 }
-if database_url.startswith("sqlite"):
-    engine_kwargs["pool_recycle"] = -1
-else:
-    # Render-hosted Postgres is more reliable here when we avoid reusing
-    # long-lived pooled SSL connections from local worker/web processes.
-    engine_kwargs["poolclass"] = NullPool
 
 engine = create_engine(database_url, **engine_kwargs)
 
