@@ -159,11 +159,15 @@ details.card,
 .workflow-strip,
 .queue-strip,
 .bulk-bar,
-.table-shell,
 details.panel,
 details.card {
     position: relative;
     overflow: hidden;
+}
+
+.table-shell {
+    position: relative;
+    overflow: auto;
 }
 
 .hero::before,
