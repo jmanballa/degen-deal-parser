@@ -5,8 +5,13 @@ __pycache__/
 old/
 
 data/*.db
+data/*.db-shm
+data/*.db-wal
 data/*.sqlite
 data/*.sqlite3
+data/attachments/
+
+logs/
 
 .pytest_cache/
 .mypy_cache/
