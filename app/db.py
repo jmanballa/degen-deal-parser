@@ -6,7 +6,7 @@ from pathlib import Path
 import psycopg
 from sqlalchemy import event, text
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, QueuePool
 from sqlmodel import SQLModel, Session, create_engine
 
 from .config import get_settings
@@ -50,11 +50,19 @@ connect_args = {"check_same_thread": False} if database_url.startswith("sqlite")
     "options": "-c timezone=UTC",
 }
 
+if database_url.startswith("sqlite"):
+    _poolclass = NullPool
+    _pool_kwargs: dict = {}
+else:
+    _poolclass = QueuePool
+    _pool_kwargs = {"pool_size": 5, "max_overflow": 10}
+
 engine_kwargs = {
     "echo": False,
     "connect_args": connect_args,
     "pool_pre_ping": True,
-    "poolclass": NullPool,
+    "poolclass": _poolclass,
+    **_pool_kwargs,
 }
 
 engine = create_engine(database_url, **engine_kwargs)
@@ -550,8 +558,13 @@ def postgres_schema_ready() -> bool:
         return False
 
     required_tables = set(SQLModel.metadata.tables.keys())
+    psycopg_url = settings.database_url
+    for prefix in ("postgresql+psycopg://", "postgresql://"):
+        if psycopg_url.startswith(prefix):
+            psycopg_url = "postgresql://" + psycopg_url[len(prefix):]
+            break
     try:
-        with psycopg.connect(settings.database_url, connect_timeout=15) as conn:
+        with psycopg.connect(psycopg_url, connect_timeout=15) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -564,7 +577,8 @@ def postgres_schema_ready() -> bool:
                 )
                 existing = {row[0] for row in cur.fetchall()}
         return required_tables.issubset(existing)
-    except Exception:
+    except Exception as exc:
+        print(f"[db] postgres_schema_ready check failed: {exc}")
         return False
 
 
@@ -632,7 +646,7 @@ def clear_db_failure() -> None:
         _db_failure_state["failed_at"] = 0.0
 
 
-def recent_db_failure(window_seconds: float = 8.0) -> bool:
+def recent_db_failure(window_seconds: float = 2.0) -> bool:
     with _db_failure_state_lock:
         failed_at = float(_db_failure_state["failed_at"])
     return failed_at > 0 and (time.monotonic() - failed_at) < window_seconds
@@ -666,7 +680,6 @@ def managed_session():
                 continue
             if not sqlite_mode:
                 mark_db_failure()
-                dispose_engine()
             if attempt >= attempts:
                 raise
             time.sleep(delay_seconds)

@@ -68,6 +68,13 @@ class OfflineRecoveryWindowTests(unittest.TestCase):
         with Session(self.engine) as session:
             yield session
 
+    def run_write_with_retry_sqlite(self, operation, *, attempts=4, initial_delay_seconds=0.35):
+        """Use isolated SQLite; real run_write_with_retry uses global DATABASE_URL (e.g. Postgres)."""
+        with Session(self.engine) as session:
+            result = operation(session)
+            session.commit()
+            return result
+
     def make_message(
         self,
         *,
@@ -176,6 +183,8 @@ class OfflineRecoveryWindowTests(unittest.TestCase):
         client = SimpleNamespace(get_channel=lambda _channel_id: fake_channel)
 
         with patch.object(discord_ingest_module, "managed_session", self.managed_session_override), patch.object(
+            discord_ingest_module, "run_write_with_retry", self.run_write_with_retry_sqlite
+        ), patch.object(
             discord_ingest_module, "get_enabled_channel_ids", return_value={channel_id}
         ):
             result = asyncio.run(
@@ -225,6 +234,8 @@ class OfflineRecoveryWindowTests(unittest.TestCase):
         client = SimpleNamespace(get_channel=lambda _channel_id: fake_channel)
 
         with patch.object(discord_ingest_module, "managed_session", self.managed_session_override), patch.object(
+            discord_ingest_module, "run_write_with_retry", self.run_write_with_retry_sqlite
+        ), patch.object(
             discord_ingest_module, "get_enabled_channel_ids", return_value={channel_id}
         ):
             result = asyncio.run(

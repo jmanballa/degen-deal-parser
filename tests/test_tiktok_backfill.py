@@ -74,6 +74,7 @@ class TikTokBackfillTests(unittest.TestCase):
                 access_token=None,
                 refresh_token=None,
                 auth_code=None,
+                products=False,
             ),
         ), patch.object(
             backfill_module,

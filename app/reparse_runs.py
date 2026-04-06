@@ -134,7 +134,8 @@ def safe_create_reparse_run(**kwargs) -> str | None:
         with managed_session() as session:
             row = create_reparse_run_record(session, **kwargs)
             return row.run_id
-    except Exception:
+    except Exception as exc:
+        print(f"[reparse_runs] safe_create_reparse_run failed: {exc}")
         return None
 
 
@@ -142,7 +143,8 @@ def safe_finalize_reparse_run_queue(**kwargs) -> None:
     try:
         with managed_session() as session:
             finalize_reparse_run_queue_record(session, **kwargs)
-    except Exception:
+    except Exception as exc:
+        print(f"[reparse_runs] safe_finalize_reparse_run_queue failed: {exc}")
         return None
 
 
@@ -157,5 +159,6 @@ def safe_record_reparse_run_outcome(*, run_id: str | None, success: bool, error_
                 success=success,
                 error_message=error_message,
             )
-    except Exception:
+    except Exception as exc:
+        print(f"[reparse_runs] safe_record_reparse_run_outcome failed: {exc}")
         return None

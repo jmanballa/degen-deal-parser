@@ -451,6 +451,7 @@ def close_or_recover_unfinished_attempts(session: Session) -> None:
         select(ParseAttempt)
         .where(ParseAttempt.finished_at == None)  # noqa: E711
         .order_by(ParseAttempt.started_at)
+        .limit(5000)
     ).all()
     unfinished_attempt_message_ids = {attempt.message_id for attempt in attempts}
 
@@ -940,34 +941,52 @@ def queue_reparse_range(
         )
         stmt = stmt.where(DiscordMessage.reviewed_at == None)  # noqa: E711
 
-    rows = session.exec(stmt).all()
-
+    chunk_size = 500
+    offset = 0
     result = {
-        "matched": len(rows),
+        "matched": 0,
         "queued": 0,
         "already_queued": 0,
         "skipped_reviewed": skipped_reviewed_count,
-        "first_message_id": rows[0].id if rows else None,
-        "last_message_id": rows[-1].id if rows else None,
-        "first_message_created_at": rows[0].created_at if rows else None,
-        "last_message_created_at": rows[-1].created_at if rows else None,
+        "first_message_id": None,
+        "last_message_id": None,
+        "first_message_created_at": None,
+        "last_message_created_at": None,
     }
 
-    for row in rows:
-        if canonical_status(row) == PARSE_PENDING:
-            set_row_status(row, PARSE_PENDING, error=reason)
+    while True:
+        batch = session.exec(stmt.offset(offset).limit(chunk_size)).all()
+        if not batch:
+            break
+        result["matched"] += len(batch)
+        if result["first_message_id"] is None:
+            result["first_message_id"] = batch[0].id
+            result["first_message_created_at"] = batch[0].created_at
+        result["last_message_id"] = batch[-1].id
+        result["last_message_created_at"] = batch[-1].created_at
+
+        chunk_touched = False
+        for row in batch:
+            if canonical_status(row) == PARSE_PENDING:
+                set_row_status(row, PARSE_PENDING, error=reason)
+                row.active_reparse_run_id = reparse_run_id
+                session.add(row)
+                result["already_queued"] += 1
+                chunk_touched = True
+                continue
+
+            reset_for_reprocess(row, reason=reason, reset_attempts=reset_attempts)
             row.active_reparse_run_id = reparse_run_id
             session.add(row)
-            result["already_queued"] += 1
-            continue
+            result["queued"] += 1
+            chunk_touched = True
 
-        reset_for_reprocess(row, reason=reason, reset_attempts=reset_attempts)
-        row.active_reparse_run_id = reparse_run_id
-        session.add(row)
-        result["queued"] += 1
+        if chunk_touched:
+            session.commit()
 
-    if result["queued"] or result["already_queued"]:
-        session.commit()
+        offset += chunk_size
+        if len(batch) < chunk_size:
+            break
 
     return result
 
@@ -1398,6 +1417,7 @@ def build_stitch_group(
     start_time = row.created_at - timedelta(seconds=window_seconds)
     end_time = row.created_at + timedelta(seconds=window_seconds)
 
+    candidate_cap = max(200, max_messages * 30)
     candidates = session.exec(
         select(DiscordMessage)
         .where(DiscordMessage.channel_id == row.channel_id)
@@ -1405,6 +1425,7 @@ def build_stitch_group(
         .where(DiscordMessage.created_at >= start_time)
         .where(DiscordMessage.created_at <= end_time)
         .order_by(DiscordMessage.created_at)
+        .limit(candidate_cap)
     ).all()
 
     if not candidates:

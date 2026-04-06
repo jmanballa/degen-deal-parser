@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import hmac
 import json
 import os
@@ -359,6 +360,21 @@ def raise_for_tiktok_error(payload: Any, *, path: str) -> None:
     raise RuntimeError(f"{path}: {code} {message}")
 
 
+def redact_http_log_text(text: str, max_len: int = 500) -> str:
+    """Truncate and redact tokens from text logged on HTTP errors."""
+    if not text:
+        return "(empty)"
+    redacted = re.sub(
+        r"(access_token|refresh_token|auth_code|Authorization)[=:]\s*[^\s&\"']+",
+        r"\1=REDACTED",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if len(redacted) > max_len:
+        return redacted[:max_len] + "…"
+    return redacted
+
+
 def request_json(
     client: httpx.Client,
     *,
@@ -381,15 +397,41 @@ def request_json(
         request_kwargs["json"] = json_body
     if headers:
         request_kwargs["headers"] = headers
-    response = client.request(method, url, **request_kwargs)
-    if not response.is_success:
-        body_text = response.text[:2000] if response.text else "(empty)"
-        print(f"[tiktok_backfill] HTTP {response.status_code} response body: {body_text}", file=sys.stderr)
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"Unexpected TikTok response payload type: {type(payload).__name__}")
-    return payload
+    max_attempts = 3
+    backoff = 0.5
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.request(method, url, **request_kwargs)
+            if response.status_code == 429 or response.status_code >= 500:
+                retry_after_hdr = response.headers.get("Retry-After")
+                wait_s = backoff
+                if retry_after_hdr:
+                    try:
+                        wait_s = max(wait_s, float(retry_after_hdr))
+                    except ValueError:
+                        pass
+                if attempt < max_attempts:
+                    time.sleep(wait_s)
+                    backoff *= 2
+                    continue
+            if not response.is_success:
+                body_text = redact_http_log_text(response.text or "")
+                print(
+                    f"[tiktok_backfill] HTTP {response.status_code} response body: {body_text}",
+                    file=sys.stderr,
+                )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"Unexpected TikTok response payload type: {type(payload).__name__}")
+            return payload
+        except (httpx.TimeoutException, httpx.TransportError):
+            if attempt < max_attempts:
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            raise
+    raise RuntimeError("request_json: exhausted retries without response")
 
 
 def exchange_authorized_code(
@@ -1634,7 +1676,6 @@ def main() -> int:
                     app_key=app_key,
                     app_secret=app_secret,
                     redirect_uri=redirect_uri,
-                    api_base_url=base_url,
                     runtime_name="tiktok_backfill",
                 )
                 access_token = str(token_result.access_token or access_token or "").strip()

@@ -32,7 +32,10 @@ def parse_report_datetime(value: Optional[str], *, end_of_day: bool = False) -> 
     if not value:
         return None
 
-    dt = datetime.fromisoformat(value)
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
     if len(value) == 10:
         if end_of_day:
             dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)

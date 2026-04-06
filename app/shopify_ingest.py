@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -345,8 +346,34 @@ def fetch_shopify_orders_page(
     elif since:
         params["created_at_min"] = since
 
-    response = client.get(build_shopify_orders_url(store_domain), headers=headers, params=params)
-    response.raise_for_status()
+    url = build_shopify_orders_url(store_domain)
+    max_attempts = 3
+    backoff = 0.5
+    response: httpx.Response | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.get(url, headers=headers, params=params)
+            if response.status_code == 429 or response.status_code >= 500:
+                wait_s = backoff
+                ra = response.headers.get("Retry-After")
+                if ra:
+                    try:
+                        wait_s = max(wait_s, float(ra))
+                    except ValueError:
+                        pass
+                if attempt < max_attempts:
+                    time.sleep(wait_s)
+                    backoff *= 2
+                    continue
+            response.raise_for_status()
+            break
+        except (httpx.TimeoutException, httpx.TransportError):
+            if attempt >= max_attempts:
+                raise
+            time.sleep(backoff)
+            backoff *= 2
+    if response is None:
+        raise RuntimeError("Shopify fetch failed without response")
     payload = response.json()
     orders = payload.get("orders") or []
     if not isinstance(orders, list):

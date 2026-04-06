@@ -6,7 +6,6 @@ import json
 import os
 import socket
 import threading
-from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
@@ -22,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-from sqlmodel import Session, select
+from sqlmodel import Session, delete, select
 
 from .auth import authenticate_user, has_role, seed_default_users
 from .attachment_storage import attachment_cache_path, write_attachment_cache_file
@@ -39,6 +38,7 @@ from .backfill_requests import (
     cancel_backfill_request,
     enqueue_backfill_request,
     list_recent_backfill_requests,
+    requeue_interrupted_backfill_requests,
     trigger_backfill_claim_attempt,
 )
 from .channels import (
@@ -768,6 +768,40 @@ def build_shopify_order_summary(
 
     return {
         "totals": totals,
+        "status_breakdown": dict(sorted(status_breakdown.items(), key=lambda item: (-item[1], item[0]))),
+        "source_breakdown": dict(sorted(source_breakdown.items(), key=lambda item: (-item[1], item[0]))),
+    }
+
+
+def merge_shopify_order_summaries(
+    left: dict[str, object], right: dict[str, object]
+) -> dict[str, object]:
+    lt = left["totals"]  # type: ignore[index]
+    rt = right["totals"]  # type: ignore[index]
+    orders = int(lt["orders"]) + int(rt["orders"])
+    gross = float(lt["gross_revenue"]) + float(rt["gross_revenue"])
+    tax = float(lt["total_tax"]) + float(rt["total_tax"])
+    net = float(lt["net_revenue"]) + float(rt["net_revenue"])
+    paid = int(lt["paid_orders"]) + int(rt["paid_orders"])
+    refunded = int(lt["refunded_orders"]) + int(rt["refunded_orders"])
+    status_breakdown: dict[str, int] = dict(left["status_breakdown"])  # type: ignore[arg-type]
+    for k, v in dict(right["status_breakdown"]).items():  # type: ignore[arg-type]
+        status_breakdown[k] = status_breakdown.get(k, 0) + int(v)
+    source_breakdown: dict[str, int] = dict(left["source_breakdown"])  # type: ignore[arg-type]
+    for k, v in dict(right["source_breakdown"]).items():  # type: ignore[arg-type]
+        source_breakdown[k] = source_breakdown.get(k, 0) + int(v)
+    avg = round(gross / orders, 2) if orders else 0.0
+    merged_totals = {
+        "orders": orders,
+        "gross_revenue": round(gross, 2),
+        "total_tax": round(tax, 2),
+        "net_revenue": round(net, 2),
+        "paid_orders": paid,
+        "refunded_orders": refunded,
+        "avg_order_value": avg,
+    }
+    return {
+        "totals": merged_totals,
         "status_breakdown": dict(sorted(status_breakdown.items(), key=lambda item: (-item[1], item[0]))),
         "source_breakdown": dict(sorted(source_breakdown.items(), key=lambda item: (-item[1], item[0]))),
     }
@@ -1869,10 +1903,14 @@ def _refresh_tiktok_auth_if_needed(
             refresh_token=refresh_token,
         )
 
+    token_data = refreshed
+    if isinstance(refreshed, dict) and isinstance(refreshed.get("data"), dict):
+        token_data = refreshed["data"]
+
     status, auth_record = upsert_tiktok_auth_from_callback(
         session,
         TikTokAuth,
-        token_result=refreshed,
+        token_result=token_data,
         app_key=app_key,
         redirect_uri=(auth_row.redirect_uri or settings.tiktok_redirect_uri or "").strip(),
         fallback_shop_id=(settings.tiktok_shop_id or auth_row.tiktok_shop_id or "").strip(),
@@ -3316,7 +3354,6 @@ def build_watched_channel_groups(
     ]
 
 
-@asynccontextmanager
 def _load_stream_range() -> None:
     """Load persisted stream range from DB into memory."""
     try:
@@ -3329,8 +3366,8 @@ def _load_stream_range() -> None:
                         dt = dt.replace(tzinfo=timezone.utc)
                     field = "start" if "start" in key else "end"
                     _stream_range[field] = dt
-    except Exception:
-        pass
+    except Exception as exc:
+        print(structured_log_line(runtime="app", action="stream_range.load_failed", success=False, error=str(exc)))
 
 
 def _save_stream_range() -> None:
@@ -3348,8 +3385,8 @@ def _save_stream_range() -> None:
         session.commit()
     try:
         run_write_with_retry(_do)
-    except Exception:
-        pass
+    except Exception as exc:
+        print(structured_log_line(runtime="app", action="stream_range.save_failed", success=False, error=str(exc)))
 
 
 async def lifespan(app: FastAPI):
@@ -3357,6 +3394,7 @@ async def lifespan(app: FastAPI):
     _load_stream_range()
     with managed_session() as session:
         seed_default_users(session)
+        requeue_interrupted_backfill_requests(session)
     seed_channels_from_env()
     reset_background_task_failures()
 
@@ -3724,7 +3762,9 @@ def app_home_for_role(role: str) -> str:
 
 
 def require_role_response(request: Request, minimum_role: str) -> Optional[Response]:
-    user = get_request_user(request)
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        user = get_request_user(request)
     if not user:
         return redirect_to_login(request)
     if not has_role(user, minimum_role):
@@ -4146,6 +4186,8 @@ def admin_debug_page(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     return RedirectResponse(url="/status", status_code=301)
 
 
@@ -4212,6 +4254,8 @@ def admin_health_page(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     return RedirectResponse(url="/status", status_code=301)
 
 
@@ -4805,12 +4849,18 @@ def serialize_backfill_request_detail(row: BackfillRequest) -> dict:
 
 
 def build_backfill_queue_snapshot(session: Session) -> dict:
-    rows = session.exec(select(BackfillRequest)).all()
-    queued = sum(1 for row in rows if row.status == "queued")
-    processing = sum(1 for row in rows if row.status == "processing")
-    completed = sum(1 for row in rows if row.status == "completed")
-    failed = sum(1 for row in rows if row.status == "failed")
-    cancelled = sum(1 for row in rows if row.status == "cancelled")
+    def _count_status(st: str) -> int:
+        return int(
+            session.exec(
+                select(func.count()).select_from(BackfillRequest).where(BackfillRequest.status == st)
+            ).one()
+        )
+
+    queued = _count_status("queued")
+    processing = _count_status("processing")
+    completed = _count_status("completed")
+    failed = _count_status("failed")
+    cancelled = _count_status("cancelled")
     backlog = queued + processing
     if processing > 0 and queued > 0:
         queue_health_label = f"{processing} running, {queued} waiting"
@@ -5640,6 +5690,7 @@ def get_message(message_id: int, session: Session = Depends(get_session)):
 
 @app.get("/admin/parser-progress")
 def admin_parser_progress(
+    request: Request,
     status: Optional[str] = Query(default=None),
     channel_id: Optional[str] = Query(default=None),
     entry_kind: Optional[str] = Query(default=None),
@@ -5648,6 +5699,8 @@ def admin_parser_progress(
     before: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     return get_parser_progress(
         session,
         status=status,
@@ -5661,6 +5714,7 @@ def admin_parser_progress(
 
 @app.get("/admin/queue-state-counts")
 def admin_queue_state_counts(
+    request: Request,
     status: Optional[str] = None,
     channel_id: Optional[str] = None,
     entry_kind: Optional[str] = None,
@@ -5669,6 +5723,8 @@ def admin_queue_state_counts(
     before: Optional[str] = None,
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     return {
         "counts": get_summary(
             session,
@@ -5735,10 +5791,13 @@ def message_detail_page(
 
 @app.post("/admin/corrections/promote-form")
 def promote_correction_form(
+    request: Request,
     normalized_text: str = Form(...),
     return_to: str = Form(default="/table"),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     promoted_count = promote_correction_pattern(session, normalized_text)
     session.commit()
     separator = "&" if "?" in return_to else "?"
@@ -6277,7 +6336,7 @@ async def tiktok_orders_webhook(request: Request):
             app_secret=primary_secret,
             headers=request.headers,
             request_path=str(request.url.path),
-            strict_signature=False,
+            strict_signature=True,
         )
     except Exception as exc:
         update_tiktok_integration_state(
@@ -6363,7 +6422,6 @@ async def tiktok_orders_webhook(request: Request):
 
             order_upsert_status, order_record = run_write_with_retry(persist_tiktok_order)
         except Exception as exc:
-            order_record = {}
             print(
                 structured_log_line(
                     runtime=runtime_name,
@@ -6375,6 +6433,7 @@ async def tiktok_orders_webhook(request: Request):
                     body_sha256=body_hash,
                 )
             )
+            return Response(status_code=500)
         else:
             print(
                 structured_log_line(
@@ -6507,15 +6566,31 @@ def shopify_orders_page(
         page=pagination["page"],
         limit=pagination["limit"],
     )
-    summary_rows = get_shopify_order_rows(
-        session,
-        start=start_dt,
-        end=end_dt,
-        financial_status=financial_status,
-        source=source,
-        search=search,
-    )
-    summary = build_shopify_order_summary(summary_rows)
+    summary: dict[str, object] = {}
+    summary_chunk_size = 1000
+    summary_page = 1
+    while True:
+        chunk = get_shopify_order_rows(
+            session,
+            start=start_dt,
+            end=end_dt,
+            financial_status=financial_status,
+            source=source,
+            search=search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            page=summary_page,
+            limit=summary_chunk_size,
+        )
+        if not chunk:
+            break
+        part = build_shopify_order_summary(chunk)
+        summary = merge_shopify_order_summaries(summary, part) if summary else part
+        summary_page += 1
+        if len(chunk) < summary_chunk_size:
+            break
+    if not summary:
+        summary = build_shopify_order_summary([])
     status_rows = session.exec(select(ShopifyOrder.financial_status)).all()
     financial_statuses = sorted(
         {
@@ -6944,7 +7019,8 @@ def _get_tiktok_filter_options(session: Session) -> dict[str, list[str]]:
     def _distinct(col):
         try:
             return sorted({v for v in session.exec(select(col).distinct()).all() if v not in (None, "")})
-        except Exception:
+        except Exception as exc:
+            print(structured_log_line(runtime="app", action="tiktok.filter_options.distinct_failed", success=False, error=str(exc)))
             return []
     return {
         "financial_statuses": _distinct(TikTokOrder.financial_status),
@@ -7552,9 +7628,12 @@ def tiktok_streamer_page(
 
 @app.get("/tiktok/streamer/poll")
 def tiktok_streamer_poll(
+    request: Request,
     since: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     created_at_floor = datetime.now(timezone.utc) - timedelta(hours=24)
 
     query = (
@@ -8241,8 +8320,8 @@ async def tiktok_products_create(
                 source="created", dry_run=False,
             )
             session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(structured_log_line(runtime="app", action="tiktok.product_detail_upsert_failed", success=False, error=str(exc)))
 
     return RedirectResponse(url="/tiktok/products?success=Product+created+successfully", status_code=303)
 
@@ -8841,7 +8920,9 @@ def disregard_message_form(
 
 
 @app.post("/admin/clear")
-def clear_all_messages():
+def clear_all_messages(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
     with managed_session() as session:
         attempts = session.exec(select(ParseAttempt)).all()
         rows = session.exec(select(DiscordMessage)).all()
@@ -8854,7 +8935,9 @@ def clear_all_messages():
 
     return {"ok": True, "deleted": count}
 @app.post("/admin/clear/form")
-def clear_all_messages_form():
+def clear_all_messages_form(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
     with managed_session() as session:
         attempts = session.exec(select(ParseAttempt)).all()
         rows = session.exec(select(DiscordMessage)).all()
@@ -8872,13 +8955,17 @@ def clear_all_messages_form():
 
 
 @app.post("/admin/recompute-financials")
-def admin_recompute_financials(session: Session = Depends(get_session)):
+def admin_recompute_financials(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "admin"):
+        return denial
     updated = recompute_financial_fields(session)
     return {"ok": True, "updated": updated}
 
 
 @app.post("/admin/recompute-financials/form")
-def admin_recompute_financials_form(session: Session = Depends(get_session)):
+def admin_recompute_financials_form(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "admin"):
+        return denial
     updated = recompute_financial_fields(session)
     return RedirectResponse(
         url=f"/table?success=Recomputed+financial+fields+for+{updated}+messages",
@@ -8887,13 +8974,17 @@ def admin_recompute_financials_form(session: Session = Depends(get_session)):
 
 
 @app.post("/admin/rebuild-transactions")
-def admin_rebuild_transactions(session: Session = Depends(get_session)):
+def admin_rebuild_transactions(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "admin"):
+        return denial
     rebuilt = rebuild_transactions(session)
     return {"ok": True, "rebuilt": rebuilt}
 
 
 @app.post("/admin/rebuild-transactions/form")
-def admin_rebuild_transactions_form(session: Session = Depends(get_session)):
+def admin_rebuild_transactions_form(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "admin"):
+        return denial
     rebuilt = rebuild_transactions(session)
     return RedirectResponse(
         url=f"/table?success=Rebuilt+{rebuilt}+normalized+transactions",
@@ -9137,21 +9228,18 @@ def admin_parser_learned_rule_log_page(
     )
 
 @app.post("/admin/clear/channel/{channel_id}")
-def clear_channel_messages(channel_id: str):
+def clear_channel_messages(request: Request, channel_id: str):
+    if denial := require_role_response(request, "admin"):
+        return denial
     with managed_session() as session:
         rows = session.exec(
             select(DiscordMessage).where(DiscordMessage.channel_id == channel_id)
         ).all()
 
         count = len(rows)
-
-        for row in rows:
-            attempts = session.exec(
-                select(ParseAttempt).where(ParseAttempt.message_id == row.id)
-            ).all()
-            for attempt in attempts:
-                session.delete(attempt)
-
+        row_ids = [row.id for row in rows if row.id is not None]
+        if row_ids:
+            session.exec(delete(ParseAttempt).where(ParseAttempt.message_id.in_(row_ids)))
         for row in rows:
             session.delete(row)
 
@@ -9164,8 +9252,11 @@ def clear_channel_messages(channel_id: str):
     }
 @app.post("/admin/clear/channel")
 def clear_channel_messages_form(
+    request: Request,
     channel_id: str = Form(...),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     with managed_session() as session:
         rows = session.exec(
             select(DiscordMessage).where(DiscordMessage.channel_id == channel_id)
@@ -9173,14 +9264,10 @@ def clear_channel_messages_form(
 
         count = len(rows)
         channel_name = rows[0].channel_name if rows else channel_id
-
+        row_ids = [row.id for row in rows if row.id is not None]
+        if row_ids:
+            session.exec(delete(ParseAttempt).where(ParseAttempt.message_id.in_(row_ids)))
         for row in rows:
-            attempts = session.exec(
-                select(ParseAttempt).where(ParseAttempt.message_id == row.id)
-            ).all()
-            for attempt in attempts:
-                session.delete(attempt)
-
             session.delete(row)
 
         session.commit()
@@ -9200,6 +9287,8 @@ async def admin_backfill(
     oldest_first: bool = Form(default=True),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     _, _, after_dt, before_dt = validate_backfill_range(after, before)
     target_channel_ids = get_backfill_target_channel_ids(session, channel_id=channel_id)
     if not target_channel_ids:
@@ -9233,6 +9322,8 @@ async def admin_backfill_form(
     oldest_first: bool = Form(default=True),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     try:
         _, _, after_dt, before_dt = validate_backfill_range(after, before)
         target_channel_ids = get_backfill_target_channel_ids(session, channel_id=channel_id)
@@ -9708,7 +9799,9 @@ def reviewer_history_page(
         },
     )
 @app.get("/admin/channels")
-def admin_list_channels(session: Session = Depends(get_session)):
+def admin_list_channels(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "admin"):
+        return denial
     rows = get_watched_channels(session)
     return [
         {
@@ -9733,6 +9826,8 @@ async def admin_add_channel(
     backfill_enabled: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     manual_ids = []
     if manual_channel_ids:
         manual_ids = [
@@ -9822,9 +9917,12 @@ async def admin_add_channel(
 
 @app.post("/admin/channels/toggle")
 def admin_toggle_channel(
+    request: Request,
     channel_id: str = Form(...),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     row = session.exec(
         select(WatchedChannel).where(WatchedChannel.channel_id == channel_id)
     ).first()
@@ -9849,9 +9947,12 @@ def admin_toggle_channel(
 
 @app.post("/admin/channels/toggle-backfill")
 def admin_toggle_channel_backfill(
+    request: Request,
     channel_id: str = Form(...),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     row = session.exec(
         select(WatchedChannel).where(WatchedChannel.channel_id == channel_id)
     ).first()
@@ -9876,9 +9977,12 @@ def admin_toggle_channel_backfill(
 
 @app.post("/admin/channels/remove")
 def admin_remove_channel(
+    request: Request,
     channel_id: str = Form(...),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     row = session.exec(
         select(WatchedChannel).where(WatchedChannel.channel_id == channel_id)
     ).first()
@@ -9897,6 +10001,8 @@ def admin_remove_channel(
         status_code=303,
     )
 @app.get("/admin/discord/channels")
-def admin_list_discord_channels():
+def admin_list_discord_channels(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
     channels = list_available_discord_channels()
     return channels

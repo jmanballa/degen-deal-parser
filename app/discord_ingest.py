@@ -277,6 +277,38 @@ def get_cached_available_discord_channels() -> list[dict]:
     ]
 
 
+def _download_missing_attachments(missing_payloads: list[dict], message_id: int) -> list[dict]:
+    """Download attachment files synchronously (intended to run in a thread)."""
+    downloaded: list[dict] = []
+    if not missing_payloads:
+        return downloaded
+    with httpx.Client(follow_redirects=True, timeout=20.0) as client:
+        for payload in missing_payloads:
+            try:
+                response = client.get(payload["url"])
+                response.raise_for_status()
+            except Exception as exc:
+                ingest_log(
+                    action="attachment_cache_failed",
+                    level="error",
+                    success=False,
+                    error=str(exc),
+                    message_id=message_id,
+                    attachment_url=payload["url"],
+                )
+                continue
+            downloaded.append(
+                {
+                    "source_url": payload["url"],
+                    "filename": payload.get("filename"),
+                    "content_type": payload.get("content_type") or response.headers.get("content-type"),
+                    "is_image": bool(payload.get("is_image")),
+                    "data": response.content,
+                }
+            )
+    return downloaded
+
+
 def sync_attachment_assets(message_id: int, attachment_payloads: list[dict]) -> None:
     with managed_session() as session:
         existing_urls = {
@@ -292,34 +324,8 @@ def sync_attachment_assets(message_id: int, attachment_payloads: list[dict]) -> 
         for payload in attachment_payloads
         if payload["url"] not in existing_urls
     ]
-    downloaded_payloads: list[dict] = []
 
-    if missing_payloads:
-        with httpx.Client(follow_redirects=True, timeout=20.0) as client:
-            for payload in missing_payloads:
-                try:
-                    response = client.get(payload["url"])
-                    response.raise_for_status()
-                except Exception as exc:
-                    ingest_log(
-                        action="attachment_cache_failed",
-                        level="error",
-                        success=False,
-                        error=str(exc),
-                        message_id=message_id,
-                        attachment_url=payload["url"],
-                    )
-                    continue
-
-                downloaded_payloads.append(
-                    {
-                        "source_url": payload["url"],
-                        "filename": payload.get("filename"),
-                        "content_type": payload.get("content_type") or response.headers.get("content-type"),
-                        "is_image": bool(payload.get("is_image")),
-                        "data": response.content,
-                    }
-                )
+    downloaded_payloads = _download_missing_attachments(missing_payloads, message_id)
 
     def write_assets(session: Session) -> tuple[list[tuple[int, str | None, str | None]], list[tuple[int, str | None, str | None, bytes]]]:
         existing_assets = session.exec(
@@ -463,7 +469,7 @@ async def recover_attachment_assets_for_message(
         )
         return False
 
-    sync_attachment_assets(message_row_id, get_attachment_payloads(message))
+    await asyncio.to_thread(sync_attachment_assets, message_row_id, get_attachment_payloads(message))
     return True
 
 
@@ -1468,6 +1474,7 @@ async def run_discord_bot(stop_event: asyncio.Event):
                         status_code=status_code,
                         retry_delay_seconds=retry_delay,
                     )
+                retry_delay = min(retry_delay * 2, DISCORD_RETRY_MAX_SECONDS)
             except Exception as exc:
                 discord_runtime_state["status"] = "degraded"
                 discord_runtime_state["error"] = f"Discord connection failed: {exc}; retrying in {retry_delay}s"
@@ -1478,6 +1485,7 @@ async def run_discord_bot(stop_event: asyncio.Event):
                     error=str(exc),
                     retry_delay_seconds=retry_delay,
                 )
+                retry_delay = min(retry_delay * 2, DISCORD_RETRY_MAX_SECONDS)
             finally:
                 discord_client_instance = None
 
@@ -1488,8 +1496,6 @@ async def run_discord_bot(stop_event: asyncio.Event):
                 await asyncio.wait_for(stop_event.wait(), timeout=retry_delay)
             except asyncio.TimeoutError:
                 pass
-
-            retry_delay = min(retry_delay * 2, DISCORD_RETRY_MAX_SECONDS)
     except asyncio.CancelledError:
         raise
     except Exception as exc:

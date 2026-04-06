@@ -443,22 +443,25 @@ class QueueReparseValidationTests(unittest.TestCase):
             )
             session.commit()
 
-            result = admin_queue_state_counts(
-                status=None,
-                channel_id=None,
-                entry_kind=None,
-                after=None,
-                before=None,
-                session=session,
-            )
-            ignored_result = admin_queue_state_counts(
-                status="ignored",
-                channel_id=None,
-                entry_kind=None,
-                after=None,
-                before=None,
-                session=session,
-            )
+            with patch("app.main.require_role_response", return_value=None):
+                result = admin_queue_state_counts(
+                    make_request("/admin/queue-state-counts"),
+                    status=None,
+                    channel_id=None,
+                    entry_kind=None,
+                    after=None,
+                    before=None,
+                    session=session,
+                )
+                ignored_result = admin_queue_state_counts(
+                    make_request("/admin/queue-state-counts"),
+                    status="ignored",
+                    channel_id=None,
+                    entry_kind=None,
+                    after=None,
+                    before=None,
+                    session=session,
+                )
 
             self.assertEqual(result["counts"]["queued"], 1)
             self.assertEqual(result["counts"]["needs_review"], 1)

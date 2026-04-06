@@ -8,6 +8,67 @@ from typing import TextIO
 from .config import BASE_DIR, get_settings
 from .models import utcnow
 
+LOG_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+LOG_BACKUP_COUNT = 5
+
+
+class RotatingStream:
+    """File-like stream that rotates when exceeding max_bytes."""
+
+    def __init__(self, path: Path, max_bytes: int = LOG_MAX_BYTES, backup_count: int = LOG_BACKUP_COUNT):
+        self._path = path
+        self._max_bytes = max_bytes
+        self._backup_count = backup_count
+        self._handle: TextIO = open(path, "a", encoding="utf-8", buffering=1)
+        self.encoding = "utf-8"
+
+    def write(self, data: str) -> int:
+        if self._handle.closed:
+            return 0
+        try:
+            self._handle.write(data)
+            if self._path.exists() and self._path.stat().st_size >= self._max_bytes:
+                self._rotate()
+        except (OSError, ValueError):
+            pass
+        return len(data)
+
+    def flush(self) -> None:
+        try:
+            if not self._handle.closed:
+                self._handle.flush()
+        except (OSError, ValueError):
+            pass
+
+    def close(self) -> None:
+        try:
+            self._handle.close()
+        except (OSError, ValueError):
+            pass
+
+    @property
+    def closed(self) -> bool:
+        return self._handle.closed
+
+    def _rotate(self) -> None:
+        self._handle.close()
+        for i in range(self._backup_count - 1, 0, -1):
+            src = self._path.with_suffix(f".log.{i}")
+            dst = self._path.with_suffix(f".log.{i + 1}")
+            if src.exists():
+                try:
+                    dst.unlink(missing_ok=True)
+                    src.rename(dst)
+                except OSError:
+                    pass
+        first_backup = self._path.with_suffix(f".log.1")
+        try:
+            first_backup.unlink(missing_ok=True)
+            self._path.rename(first_backup)
+        except OSError:
+            pass
+        self._handle = open(self._path, "a", encoding="utf-8", buffering=1)
+
 
 class TeeStream:
     def __init__(self, primary: TextIO, mirror: TextIO):
@@ -65,7 +126,7 @@ def setup_runtime_file_logging(default_name: str = "app.log") -> Path | None:
     if getattr(sys, sentinel, None) == str(log_path):
         return log_path
 
-    handle = open(log_path, "a", encoding="utf-8", buffering=1)
+    handle = RotatingStream(log_path)
     setattr(sys, sentinel, str(log_path))
 
     if not getattr(sys.stdout, "_degen_tee_wrapped", False):

@@ -47,6 +47,28 @@ def worker_runtime_details() -> dict:
     }
 
 
+def _recreate_task(task_name: str, stop_event: asyncio.Event) -> asyncio.Task | None:
+    """Re-create a crashed background task by name."""
+    factories = {
+        "discord-ingest": lambda: asyncio.create_task(run_discord_bot(stop_event), name="discord-ingest"),
+        "backfill-queue": lambda: asyncio.create_task(
+            backfill_request_loop(stop_event, get_discord_client), name="backfill-queue"
+        ),
+        "recent-message-audit": lambda: asyncio.create_task(
+            recent_message_audit_loop(stop_event, get_discord_client), name="recent-message-audit"
+        ),
+        "stitch-audit": lambda: asyncio.create_task(
+            periodic_stitch_audit_loop(stop_event), name="stitch-audit"
+        ),
+        "attachment-repair-audit": lambda: asyncio.create_task(
+            periodic_attachment_repair_loop(stop_event, get_discord_client), name="attachment-repair-audit"
+        ),
+        "parser-worker": lambda: asyncio.create_task(parser_loop(stop_event), name="parser-worker"),
+    }
+    factory = factories.get(task_name)
+    return factory() if factory else None
+
+
 async def run_worker_service() -> None:
     if not settings.discord_ingest_enabled and not settings.parser_worker_enabled:
         raise SystemExit("Worker service has nothing to run. Enable DISCORD_INGEST_ENABLED and/or PARSER_WORKER_ENABLED.")
@@ -129,16 +151,32 @@ async def run_worker_service() -> None:
 
     stop_waiter = asyncio.create_task(stop_event.wait(), name="worker-stop-waiter")
     try:
-        done, _pending = await asyncio.wait([stop_waiter, *background_tasks], return_when=asyncio.FIRST_COMPLETED)
-        if stop_waiter not in done:
-            stop_event.set()
+        while not stop_event.is_set():
+            waitables = [stop_waiter] + [t for t in background_tasks if not t.done()]
+            if not waitables or (len(waitables) == 1 and waitables[0] is stop_waiter):
+                break
+            done, _pending = await asyncio.wait(waitables, return_when=asyncio.FIRST_COMPLETED)
+            if stop_waiter in done:
+                break
             for task in done:
                 if task is stop_waiter:
                     continue
-                exc = task.exception()
+                task_name = task.get_name()
+                exc = task.exception() if not task.cancelled() else None
                 if exc:
-                    raise exc
-                raise RuntimeError(f"{task.get_name()} exited unexpectedly")
+                    print(f"[worker] task {task_name} crashed: {exc}; restarting in 5s")
+                else:
+                    print(f"[worker] task {task_name} exited unexpectedly; restarting in 5s")
+                background_tasks.remove(task)
+                await asyncio.sleep(5)
+                if stop_event.is_set():
+                    break
+                new_task = _recreate_task(task_name, stop_event)
+                if new_task:
+                    background_tasks.append(new_task)
+                    print(f"[worker] task {task_name} restarted")
+                else:
+                    print(f"[worker] task {task_name} has no restart factory; not restarted")
     finally:
         stop_event.set()
         heartbeat_stop_event.set()
