@@ -86,9 +86,12 @@ from .models import (
     AppSetting,
     AttachmentAsset,
     BackfillRequest,
+    BIG_HIT_THRESHOLD,
     BookkeepingImport,
     DiscordMessage,
     expand_parse_status_filter_values,
+    LiveHit,
+    STREAMER_COLORS,
     OperationsLog,
     ParseAttempt,
     PARSE_FAILED,
@@ -97,8 +100,12 @@ from .models import (
     PARSE_PENDING,
     PARSE_PROCESSING,
     PARSE_REVIEW_REQUIRED,
+    PLATFORMS,
     ReparseRun,
     ShopifyOrder,
+    Streamer,
+    STREAMERS,
+    StreamSchedule,
     TikTokAuth,
     TikTokOrder,
     TikTokProduct,
@@ -3584,20 +3591,6 @@ async def lifespan(app: FastAPI):
         print(f"[tiktok-live-chat] starting for @{live_chat_username}")
     else:
         app.state.live_chat_task = None
-
-    async def _warm_attachment_cache_bg():
-        try:
-            extracted, cached = await asyncio.to_thread(_warm_cache_sync)
-            if extracted > 0:
-                logger.info(
-                    "attachment cache warm complete: %d extracted, %d already cached",
-                    extracted, cached,
-                )
-        except Exception:
-            logger.debug("attachment cache warm failed", exc_info=True)
-
-    cache_warm_task = asyncio.create_task(_warm_attachment_cache_bg(), name="attachment-cache-warm")
-    background_tasks.append(cache_warm_task)
 
     yield
 
@@ -7792,6 +7785,9 @@ def tiktok_streamer_page(
         "stream_data_json": json.dumps(stream_data),
         "chat_status": chat_info["status"],
         "current_user": getattr(request.state, "current_user", None),
+        "streamers": get_streamer_names(session),
+        "platforms": PLATFORMS,
+        "current_streamer": get_current_streamer(session) or "",
     })
 
 
@@ -10194,3 +10190,674 @@ def admin_list_discord_channels(request: Request):
         return denial
     channels = list_available_discord_channels()
     return channels
+
+
+# ===========================================================================
+# Streamer helpers
+# ===========================================================================
+
+
+def get_streamer_names(session: Session) -> list[str]:
+    """Return active streamer names from DB; fall back to STREAMERS constant."""
+    db_streamers = session.exec(
+        select(Streamer).where(Streamer.is_active == True).order_by(Streamer.name)
+    ).all()
+    if db_streamers:
+        return [s.display_name or s.name for s in db_streamers]
+    return STREAMERS
+
+
+def _now_pacific() -> datetime:
+    """Return current time in US/Pacific."""
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/Los_Angeles"))
+
+
+def get_current_streamer(session: Session) -> Optional[str]:
+    """Return the streamer name for whoever is scheduled right now (Pacific time), or None."""
+    now = _now_pacific()
+    today = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
+
+    schedules = session.exec(
+        select(StreamSchedule).where(StreamSchedule.date == today)
+    ).all()
+    for sched in schedules:
+        if sched.start_time <= current_time <= sched.end_time:
+            streamer = session.get(Streamer, sched.streamer_id)
+            if streamer and streamer.is_active:
+                return streamer.display_name or streamer.name
+    return None
+
+
+# ===========================================================================
+# Live Hit Tracker
+# ===========================================================================
+
+
+def _build_hits_stmt(
+    *,
+    streamer: Optional[str] = None,
+    after: Optional[datetime] = None,
+    before: Optional[datetime] = None,
+    search: Optional[str] = None,
+    min_value: Optional[float] = None,
+):
+    from sqlalchemy import or_
+
+    stmt = select(LiveHit).where(LiveHit.is_deleted == False)
+    if streamer:
+        stmt = stmt.where(LiveHit.streamer_name == streamer)
+    if after:
+        stmt = stmt.where(LiveHit.hit_at >= after)
+    if before:
+        stmt = stmt.where(LiveHit.hit_at <= before)
+    if search:
+        like = f"%{search}%"
+        stmt = stmt.where(
+            or_(
+                LiveHit.customer_name.ilike(like),
+                LiveHit.order_number.ilike(like),
+                LiveHit.hit_note.ilike(like),
+            )
+        )
+    if min_value is not None:
+        stmt = stmt.where(LiveHit.estimated_value >= min_value)
+    return stmt.order_by(LiveHit.hit_at.desc())
+
+
+def _parse_hit_at(raw: Optional[str]) -> datetime:
+    """Parse a datetime-local string from a form field; fall back to utcnow."""
+    if raw:
+        try:
+            return datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return utcnow()
+
+
+def _parse_optional_float(raw: Optional[str]) -> Optional[float]:
+    if raw and raw.strip():
+        try:
+            return float(raw.strip())
+        except ValueError:
+            pass
+    return None
+
+
+def _hit_to_dict(h: LiveHit) -> dict:
+    return {
+        "id": h.id,
+        "hit_at": h.hit_at.isoformat() if h.hit_at else None,
+        "streamer_name": h.streamer_name,
+        "customer_name": h.customer_name or "",
+        "order_number": h.order_number or "",
+        "hit_note": h.hit_note,
+        "estimated_value": h.estimated_value,
+        "order_value": h.order_value,
+        "platform": h.platform or "",
+        "stream_label": h.stream_label or "",
+        "notes": h.notes or "",
+        "created_by": h.created_by or "",
+        "created_at": h.created_at.isoformat() if h.created_at else None,
+        "is_big_hit": (h.estimated_value or 0) >= BIG_HIT_THRESHOLD,
+    }
+
+
+@app.get("/hits", response_class=HTMLResponse)
+def hits_list_page(
+    request: Request,
+    streamer: Optional[str] = Query(default=None),
+    platform: Optional[str] = Query(default=None),
+    after: Optional[str] = Query(default=None),
+    before: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    min_value: Optional[str] = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=25, ge=1, le=100),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    after_dt: Optional[datetime] = None
+    before_dt: Optional[datetime] = None
+    if after:
+        try:
+            after_dt = datetime.fromisoformat(after).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    if before:
+        try:
+            before_dt = datetime.fromisoformat(before).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    min_val = _parse_optional_float(min_value)
+
+    stmt = _build_hits_stmt(
+        streamer=streamer,
+        after=after_dt,
+        before=before_dt,
+        search=search,
+        min_value=min_val,
+    )
+    if platform:
+        stmt = stmt.where(LiveHit.platform == platform)
+
+    total_rows = count_rows(session, stmt)
+    offset = (max(page, 1) - 1) * limit
+    hits = session.exec(stmt.offset(offset).limit(limit)).all()
+    pagination = build_pagination(page, limit, total_rows)
+
+    # Summary stats for current filter (fetch all rows without pagination)
+    all_hits = session.exec(stmt).all()
+    total_value = sum(h.estimated_value or 0 for h in all_hits)
+    big_hits_count = sum(1 for h in all_hits if (h.estimated_value or 0) >= BIG_HIT_THRESHOLD)
+    active_streamers = len({h.streamer_name for h in all_hits})
+
+    return templates.TemplateResponse(request, "hits.html", {
+        "request": request,
+        "title": "Live Hit Tracker",
+        "current_user": getattr(request.state, "current_user", None),
+        "hits": hits,
+        "pagination": pagination,
+        "streamers": get_streamer_names(session),
+        "platforms": PLATFORMS,
+        "big_hit_threshold": BIG_HIT_THRESHOLD,
+        "total_rows": total_rows,
+        "total_value": total_value,
+        "big_hits_count": big_hits_count,
+        "active_streamers": active_streamers,
+        # filter values for form re-population
+        "sel_streamer": streamer or "",
+        "sel_platform": platform or "",
+        "sel_after": after or "",
+        "sel_before": before or "",
+        "sel_search": search or "",
+        "sel_min_value": min_value or "",
+        "sel_limit": limit,
+    })
+
+
+@app.get("/hits/new", response_class=HTMLResponse)
+def hits_new_page(
+    request: Request,
+    success: Optional[str] = Query(default=None),
+    last_streamer: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    recent = session.exec(
+        select(LiveHit)
+        .where(LiveHit.is_deleted == False)
+        .order_by(LiveHit.hit_at.desc())
+        .limit(5)
+    ).all()
+
+    return templates.TemplateResponse(request, "hits_new.html", {
+        "request": request,
+        "title": "Log a Hit",
+        "current_user": getattr(request.state, "current_user", None),
+        "streamers": get_streamer_names(session),
+        "platforms": PLATFORMS,
+        "success": success,
+        "last_streamer": last_streamer or get_current_streamer(session) or "",
+        "recent_hits": recent,
+        "big_hit_threshold": BIG_HIT_THRESHOLD,
+    })
+
+
+@app.post("/hits/new")
+def hits_new_submit(
+    request: Request,
+    streamer_name: str = Form(...),
+    hit_note: str = Form(...),
+    customer_name: Optional[str] = Form(default=None),
+    order_number: Optional[str] = Form(default=None),
+    estimated_value: Optional[str] = Form(default=None),
+    order_value: Optional[str] = Form(default=None),
+    platform: Optional[str] = Form(default=None),
+    stream_label: Optional[str] = Form(default=None),
+    notes: Optional[str] = Form(default=None),
+    hit_at_raw: Optional[str] = Form(default=None),
+    add_another: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    hit = LiveHit(
+        streamer_name=streamer_name.strip(),
+        hit_note=hit_note.strip(),
+        customer_name=(customer_name or "").strip() or None,
+        order_number=(order_number or "").strip() or None,
+        estimated_value=_parse_optional_float(estimated_value),
+        order_value=_parse_optional_float(order_value),
+        platform=(platform or "").strip() or None,
+        stream_label=(stream_label or "").strip() or None,
+        notes=(notes or "").strip() or None,
+        hit_at=_parse_hit_at(hit_at_raw),
+        created_by=current_user_label(request),
+    )
+    session.add(hit)
+    session.commit()
+
+    qs = f"success=1&last_streamer={hit.streamer_name}"
+    if add_another:
+        return RedirectResponse(url=f"/hits/new?{qs}", status_code=303)
+    return RedirectResponse(url=f"/hits?success=1", status_code=303)
+
+
+@app.get("/hits/{hit_id}/edit", response_class=HTMLResponse)
+def hits_edit_page(
+    request: Request,
+    hit_id: int,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    hit = session.get(LiveHit, hit_id)
+    if not hit or hit.is_deleted:
+        return RedirectResponse(url="/hits?error=Hit+not+found", status_code=303)
+
+    return templates.TemplateResponse(request, "hits_edit.html", {
+        "request": request,
+        "title": "Edit Hit",
+        "current_user": getattr(request.state, "current_user", None),
+        "hit": hit,
+        "streamers": get_streamer_names(session),
+        "platforms": PLATFORMS,
+        "big_hit_threshold": BIG_HIT_THRESHOLD,
+    })
+
+
+@app.post("/hits/{hit_id}/edit")
+def hits_edit_submit(
+    request: Request,
+    hit_id: int,
+    streamer_name: str = Form(...),
+    hit_note: str = Form(...),
+    customer_name: Optional[str] = Form(default=None),
+    order_number: Optional[str] = Form(default=None),
+    estimated_value: Optional[str] = Form(default=None),
+    order_value: Optional[str] = Form(default=None),
+    platform: Optional[str] = Form(default=None),
+    stream_label: Optional[str] = Form(default=None),
+    notes: Optional[str] = Form(default=None),
+    hit_at_raw: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    hit = session.get(LiveHit, hit_id)
+    if not hit or hit.is_deleted:
+        return RedirectResponse(url="/hits?error=Hit+not+found", status_code=303)
+
+    hit.streamer_name = streamer_name.strip()
+    hit.hit_note = hit_note.strip()
+    hit.customer_name = (customer_name or "").strip() or None
+    hit.order_number = (order_number or "").strip() or None
+    hit.estimated_value = _parse_optional_float(estimated_value)
+    hit.order_value = _parse_optional_float(order_value)
+    hit.platform = (platform or "").strip() or None
+    hit.stream_label = (stream_label or "").strip() or None
+    hit.notes = (notes or "").strip() or None
+    hit.hit_at = _parse_hit_at(hit_at_raw)
+    hit.updated_at = utcnow()
+    session.add(hit)
+    session.commit()
+
+    return RedirectResponse(url="/hits?success=1", status_code=303)
+
+
+@app.post("/hits/{hit_id}/delete")
+def hits_delete(
+    request: Request,
+    hit_id: int,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    hit = session.get(LiveHit, hit_id)
+    if hit and not hit.is_deleted:
+        hit.is_deleted = True
+        hit.updated_at = utcnow()
+        session.add(hit)
+        session.commit()
+
+    return RedirectResponse(url="/hits?success=1", status_code=303)
+
+
+@app.get("/api/hits/export")
+def hits_export_csv(
+    request: Request,
+    streamer: Optional[str] = Query(default=None),
+    platform: Optional[str] = Query(default=None),
+    after: Optional[str] = Query(default=None),
+    before: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    min_value: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    after_dt: Optional[datetime] = None
+    before_dt: Optional[datetime] = None
+    if after:
+        try:
+            after_dt = datetime.fromisoformat(after).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    if before:
+        try:
+            before_dt = datetime.fromisoformat(before).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+
+    stmt = _build_hits_stmt(
+        streamer=streamer,
+        after=after_dt,
+        before=before_dt,
+        search=search,
+        min_value=_parse_optional_float(min_value),
+    )
+    if platform:
+        stmt = stmt.where(LiveHit.platform == platform)
+
+    hits = session.exec(stmt).all()
+    rows = [_hit_to_dict(h) for h in hits]
+    # Drop the computed field; keep only DB columns for export
+    for r in rows:
+        r.pop("is_big_hit", None)
+
+    return csv_response("hits_export.csv", rows if rows else [
+        {"message": "No hits found for the given filters"}
+    ])
+
+
+@app.get("/api/hits/summary")
+def hits_summary_json(
+    request: Request,
+    streamer: Optional[str] = Query(default=None),
+    after: Optional[str] = Query(default=None),
+    before: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    after_dt: Optional[datetime] = None
+    before_dt: Optional[datetime] = None
+    if after:
+        try:
+            after_dt = datetime.fromisoformat(after).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    if before:
+        try:
+            before_dt = datetime.fromisoformat(before).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+
+    hits = session.exec(_build_hits_stmt(streamer=streamer, after=after_dt, before=before_dt)).all()
+
+    per_streamer: dict = {}
+    total_value = 0.0
+    big_hits = 0
+    for h in hits:
+        per_streamer[h.streamer_name] = per_streamer.get(h.streamer_name, 0) + 1
+        total_value += h.estimated_value or 0
+        if (h.estimated_value or 0) >= BIG_HIT_THRESHOLD:
+            big_hits += 1
+
+    return {
+        "total_hits": len(hits),
+        "total_estimated_value": round(total_value, 2),
+        "big_hits_count": big_hits,
+        "big_hit_threshold": BIG_HIT_THRESHOLD,
+        "per_streamer": per_streamer,
+    }
+
+
+@app.post("/api/hits")
+async def hits_api_create(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+
+    streamer_name = (body.get("streamer_name") or "").strip()
+    hit_note = (body.get("hit_note") or "").strip()
+    if not streamer_name or not hit_note:
+        return JSONResponse({"ok": False, "error": "streamer_name and hit_note are required"}, status_code=422)
+
+    hit = LiveHit(
+        streamer_name=streamer_name,
+        hit_note=hit_note,
+        customer_name=(body.get("customer_name") or "").strip() or None,
+        order_number=(body.get("order_number") or "").strip() or None,
+        estimated_value=_parse_optional_float(str(body.get("estimated_value", "")) if body.get("estimated_value") is not None else ""),
+        order_value=_parse_optional_float(str(body.get("order_value", "")) if body.get("order_value") is not None else ""),
+        platform=(body.get("platform") or "").strip() or None,
+        stream_label=(body.get("stream_label") or "").strip() or None,
+        notes=(body.get("notes") or "").strip() or None,
+        hit_at=_parse_hit_at(body.get("hit_at")),
+        created_by=current_user_label(request),
+    )
+    session.add(hit)
+    session.commit()
+    session.refresh(hit)
+
+    return JSONResponse({"ok": True, "id": hit.id, "hit": _hit_to_dict(hit)})
+
+
+@app.get("/api/hits/recent")
+def hits_api_recent(
+    request: Request,
+    limit: int = Query(default=5, ge=1, le=50),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    hits = session.exec(
+        select(LiveHit)
+        .where(LiveHit.is_deleted == False)
+        .order_by(LiveHit.hit_at.desc())
+        .limit(limit)
+    ).all()
+
+    return {"hits": [_hit_to_dict(h) for h in hits]}
+
+
+# ===========================================================================
+# Stream Manager — Streamer Profiles & Schedule
+# ===========================================================================
+
+
+@app.get("/stream-manager", response_class=HTMLResponse)
+def stream_manager_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    streamers = session.exec(
+        select(Streamer).where(Streamer.is_active == True).order_by(Streamer.name)
+    ).all()
+
+    # Get schedule for the next 7 days (Pacific time)
+    now_pst = _now_pacific()
+    today = now_pst.strftime("%Y-%m-%d")
+    end_date = (now_pst + timedelta(days=7)).strftime("%Y-%m-%d")
+    schedules = session.exec(
+        select(StreamSchedule)
+        .where(StreamSchedule.date >= today, StreamSchedule.date <= end_date)
+        .order_by(StreamSchedule.date, StreamSchedule.start_time)
+    ).all()
+
+    # Build a lookup for streamer names by id
+    streamer_map = {s.id: s for s in streamers}
+
+    # Enrich schedules with streamer info
+    schedule_items = []
+    for sched in schedules:
+        s = streamer_map.get(sched.streamer_id)
+        schedule_items.append({
+            "id": sched.id,
+            "date": sched.date,
+            "start_time": sched.start_time,
+            "end_time": sched.end_time,
+            "title": sched.title or "",
+            "notes": sched.notes or "",
+            "streamer_name": (s.display_name or s.name) if s else "Unknown",
+            "streamer_color": (s.color or "#fe2c55") if s else "#fe2c55",
+            "streamer_emoji": (s.avatar_emoji or "🎮") if s else "🎮",
+        })
+
+    current_streamer = get_current_streamer(session)
+
+    return templates.TemplateResponse(request, "stream_manager.html", {
+        "request": request,
+        "title": "Stream Manager",
+        "current_user": getattr(request.state, "current_user", None),
+        "streamers": streamers,
+        "streamer_colors": STREAMER_COLORS,
+        "schedules": schedule_items,
+        "current_streamer": current_streamer,
+        "today": today,
+    })
+
+
+@app.post("/stream-manager/streamer/add")
+def stream_manager_add_streamer(
+    request: Request,
+    name: str = Form(...),
+    display_name: Optional[str] = Form(default=None),
+    color: Optional[str] = Form(default=None),
+    avatar_emoji: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    streamer = Streamer(
+        name=name.strip(),
+        display_name=(display_name or "").strip() or None,
+        color=(color or "").strip() or None,
+        avatar_emoji=(avatar_emoji or "").strip() or None,
+    )
+    session.add(streamer)
+    session.commit()
+    return RedirectResponse(url="/stream-manager?success=Streamer+added", status_code=303)
+
+
+@app.post("/stream-manager/streamer/{streamer_id}/edit")
+def stream_manager_edit_streamer(
+    request: Request,
+    streamer_id: int,
+    name: str = Form(...),
+    display_name: Optional[str] = Form(default=None),
+    color: Optional[str] = Form(default=None),
+    avatar_emoji: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    streamer = session.get(Streamer, streamer_id)
+    if not streamer:
+        return RedirectResponse(url="/stream-manager?error=Streamer+not+found", status_code=303)
+
+    streamer.name = name.strip()
+    streamer.display_name = (display_name or "").strip() or None
+    streamer.color = (color or "").strip() or None
+    streamer.avatar_emoji = (avatar_emoji or "").strip() or None
+    streamer.updated_at = utcnow()
+    session.add(streamer)
+    session.commit()
+    return RedirectResponse(url="/stream-manager?success=Streamer+updated", status_code=303)
+
+
+@app.post("/stream-manager/streamer/{streamer_id}/delete")
+def stream_manager_delete_streamer(
+    request: Request,
+    streamer_id: int,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    streamer = session.get(Streamer, streamer_id)
+    if streamer:
+        streamer.is_active = False
+        streamer.updated_at = utcnow()
+        session.add(streamer)
+        session.commit()
+    return RedirectResponse(url="/stream-manager?success=Streamer+removed", status_code=303)
+
+
+@app.post("/stream-manager/schedule/add")
+def stream_manager_add_schedule(
+    request: Request,
+    streamer_id: str = Form(...),
+    date: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    title: Optional[str] = Form(default=None),
+    notes: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    sched = StreamSchedule(
+        streamer_id=int(streamer_id),
+        date=date.strip(),
+        start_time=start_time.strip(),
+        end_time=end_time.strip(),
+        title=(title or "").strip() or None,
+        notes=(notes or "").strip() or None,
+    )
+    session.add(sched)
+    session.commit()
+    return RedirectResponse(url="/stream-manager?success=Shift+added", status_code=303)
+
+
+@app.post("/stream-manager/schedule/{schedule_id}/delete")
+def stream_manager_delete_schedule(
+    request: Request,
+    schedule_id: int,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    sched = session.get(StreamSchedule, schedule_id)
+    if sched:
+        session.delete(sched)
+        session.commit()
+    return RedirectResponse(url="/stream-manager?success=Shift+removed", status_code=303)
+
+
+@app.get("/api/stream-manager/current-streamer")
+def api_current_streamer(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    return {"current_streamer": get_current_streamer(session)}

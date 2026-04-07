@@ -79,15 +79,16 @@ def thumbnail_cache_path(asset_id: int) -> Path:
     return ensure_thumbnail_cache_dir() / f"{asset_id}.jpg"
 
 
-def warm_attachment_cache(session) -> tuple[int, int]:
+def warm_attachment_cache(session, *, throttle_seconds: float = 0.1) -> tuple[int, int]:
     """Extract attachment blobs from DB to disk cache. Returns (extracted, already_cached)."""
+    import time
     from sqlalchemy import select as sa_select
     from .models import AttachmentAsset
 
     already_cached = 0
     extracted = 0
     offset = 0
-    batch_size = 100
+    batch_size = 50
 
     while True:
         rows = session.exec(
@@ -117,15 +118,20 @@ def warm_attachment_cache(session) -> tuple[int, int]:
                 needs_extract.append((asset_id, filename, content_type, is_image))
 
         for asset_id, filename, content_type, is_image in needs_extract:
-            asset = session.get(AttachmentAsset, asset_id)
-            if asset and asset.data:
-                file_path = write_attachment_cache_file(
-                    asset_id, filename=asset.filename,
-                    content_type=asset.content_type, data=asset.data,
-                )
-                extracted += 1
-                if is_image:
-                    generate_thumbnail(file_path, asset_id)
+            try:
+                asset = session.get(AttachmentAsset, asset_id)
+                if asset and asset.data:
+                    file_path = write_attachment_cache_file(
+                        asset_id, filename=asset.filename,
+                        content_type=asset.content_type, data=asset.data,
+                    )
+                    extracted += 1
+                    if is_image:
+                        generate_thumbnail(file_path, asset_id)
+            except Exception:
+                logger.debug("cache warm: failed to extract asset %s", asset_id, exc_info=True)
+            if throttle_seconds > 0:
+                time.sleep(throttle_seconds)
 
         offset += batch_size
 
