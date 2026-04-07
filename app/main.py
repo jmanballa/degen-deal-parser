@@ -24,7 +24,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlmodel import Session, delete, select
 
 from .auth import authenticate_user, has_role, seed_default_users
-from .attachment_storage import attachment_cache_path, write_attachment_cache_file
+from .attachment_storage import attachment_cache_path, generate_thumbnail, warm_attachment_cache, write_attachment_cache_file
 from .bookkeeping import (
     refresh_bookkeeping_import_from_source,
     import_bookkeeping_file,
@@ -2579,6 +2579,7 @@ def message_list_item(row: DiscordMessage) -> dict:
         "has_images": len(image_urls) > 0,
         "image_urls": image_urls,
         "first_image_url": image_urls[0] if image_urls else None,
+        "first_thumb_url": None,
         "parse_attempts": row.parse_attempts,
         "stitched_group_id": row.stitched_group_id,
         "stitched_primary": row.stitched_primary,
@@ -2698,6 +2699,7 @@ def build_message_list_items(
             item,
             extra_attachment_groups=[grouped_attachment_urls] if grouped_attachment_urls else None,
             extra_image_groups=[grouped_image_urls] if grouped_image_urls else None,
+            prefetched_assets=cached_assets_by_message_id,
         )
         item["bookkeeping"] = bookkeeping_status_by_message_id.get(
             item["id"],
@@ -2786,15 +2788,19 @@ def apply_cached_or_proxy_attachment_urls(
     *,
     extra_attachment_groups: list[list[str]] | None = None,
     extra_image_groups: list[list[str]] | None = None,
+    prefetched_assets: dict[int, dict[str, list[str]]] | None = None,
 ) -> dict:
     message_id = item.get("id")
     if message_id is None:
         return item
 
-    cached_assets = get_cached_attachment_map(
-        session,
-        [message_id],
-    ).get(message_id)
+    if prefetched_assets is not None:
+        cached_assets = prefetched_assets.get(message_id)
+    else:
+        cached_assets = get_cached_attachment_map(
+            session,
+            [message_id],
+        ).get(message_id)
     if cached_assets:
         base_attachment_urls = list(cached_assets["all_urls"])
         base_image_urls = list(cached_assets["image_urls"])
@@ -2820,13 +2826,21 @@ def apply_cached_or_proxy_attachment_urls(
         item["image_urls"] = merged_image_urls
         item["first_image_url"] = merged_image_urls[0] if merged_image_urls else None
         item["has_images"] = bool(merged_image_urls)
+        item["first_thumb_url"] = _thumb_url(item.get("first_image_url"))
         return item
 
     item["attachment_urls"] = base_attachment_urls
     item["image_urls"] = base_image_urls
     item["first_image_url"] = base_image_urls[0] if base_image_urls else None
     item["has_images"] = bool(base_image_urls)
+    item["first_thumb_url"] = _thumb_url(item.get("first_image_url"))
     return item
+
+
+def _thumb_url(url: str | None) -> str | None:
+    if url and url.startswith("/attachments/") and "/thumb" not in url:
+        return url + "/thumb"
+    return url
 
 
 def build_return_url(
@@ -3394,6 +3408,11 @@ def _save_stream_range() -> None:
         print(structured_log_line(runtime="app", action="stream_range.save_failed", success=False, error=str(exc)))
 
 
+def _warm_cache_sync() -> tuple[int, int]:
+    with managed_session() as session:
+        return warm_attachment_cache(session)
+
+
 async def lifespan(app: FastAPI):
     init_db()
     _load_stream_range()
@@ -3566,6 +3585,20 @@ async def lifespan(app: FastAPI):
     else:
         app.state.live_chat_task = None
 
+    async def _warm_attachment_cache_bg():
+        try:
+            extracted, cached = await asyncio.to_thread(_warm_cache_sync)
+            if extracted > 0:
+                logger.info(
+                    "attachment cache warm complete: %d extracted, %d already cached",
+                    extracted, cached,
+                )
+        except Exception:
+            logger.debug("attachment cache warm failed", exc_info=True)
+
+    cache_warm_task = asyncio.create_task(_warm_attachment_cache_bg(), name="attachment-cache-warm")
+    background_tasks.append(cache_warm_task)
+
     yield
 
     stop_event.set()
@@ -3639,7 +3672,7 @@ async def handle_operational_error(request: Request, exc: OperationalError):
 
 
 @app.get("/attachments/{asset_id}")
-def attachment_asset(asset_id: int, session: Session = Depends(get_session)):
+def attachment_asset(request: Request, asset_id: int, session: Session = Depends(get_session)):
     asset_meta = session.exec(
         select(AttachmentAsset.id, AttachmentAsset.filename, AttachmentAsset.content_type)
         .where(AttachmentAsset.id == asset_id)
@@ -3648,6 +3681,12 @@ def attachment_asset(asset_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Attachment not found")
 
     _, filename, content_type = asset_meta
+
+    etag = f'"{asset_id}"'
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match.strip() == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "public, max-age=31536000, immutable"})
+
     file_path = attachment_cache_path(
         asset_id,
         filename=filename,
@@ -3667,10 +3706,52 @@ def attachment_asset(asset_id: int, session: Session = Depends(get_session)):
     media_type = content_type or "application/octet-stream"
     headers = {
         "Cache-Control": "public, max-age=31536000, immutable",
+        "ETag": etag,
     }
     if filename:
         headers["Content-Disposition"] = f'inline; filename="{filename}"'
     return FileResponse(path=file_path, media_type=media_type, headers=headers)
+
+
+@app.get("/attachments/{asset_id}/thumb")
+def attachment_thumbnail(request: Request, asset_id: int, session: Session = Depends(get_session)):
+    etag = f'"thumb-{asset_id}"'
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match.strip() == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "public, max-age=31536000, immutable"})
+
+    asset_meta = session.exec(
+        select(AttachmentAsset.id, AttachmentAsset.filename, AttachmentAsset.content_type, AttachmentAsset.is_image)
+        .where(AttachmentAsset.id == asset_id)
+    ).first()
+    if not asset_meta:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    _, filename, content_type, is_image = asset_meta
+    if not is_image:
+        return RedirectResponse(url=f"/attachments/{asset_id}", status_code=307)
+
+    file_path = attachment_cache_path(asset_id, filename=filename, content_type=content_type)
+    if not file_path.exists():
+        asset = session.get(AttachmentAsset, asset_id)
+        if not asset:
+            raise HTTPException(status_code=404, detail="Attachment not found")
+        file_path = write_attachment_cache_file(
+            asset_id, filename=asset.filename, content_type=asset.content_type, data=asset.data,
+        )
+
+    thumb_path = generate_thumbnail(file_path, asset_id)
+    if thumb_path and thumb_path.exists():
+        return FileResponse(
+            path=thumb_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=31536000, immutable", "ETag": etag},
+        )
+    return FileResponse(
+        path=file_path,
+        media_type=content_type or "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=31536000, immutable", "ETag": etag},
+    )
 
 
 @app.get("/messages/{message_id}/attachments/{attachment_index}")
@@ -9057,6 +9138,25 @@ def admin_recompute_financials_form(request: Request, session: Session = Depends
     updated = recompute_financial_fields(session)
     return RedirectResponse(
         url=f"/table?success=Recomputed+financial+fields+for+{updated}+messages",
+        status_code=303,
+    )
+
+
+@app.post("/admin/warm-attachment-cache")
+def admin_warm_attachment_cache(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    extracted, already_cached = warm_attachment_cache(session)
+    return {"ok": True, "extracted": extracted, "already_cached": already_cached}
+
+
+@app.post("/admin/warm-attachment-cache/form")
+def admin_warm_attachment_cache_form(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    extracted, already_cached = warm_attachment_cache(session)
+    return RedirectResponse(
+        url=f"/table?success=Cache+warmed:+{extracted}+extracted,+{already_cached}+already+cached",
         status_code=303,
     )
 

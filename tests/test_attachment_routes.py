@@ -62,14 +62,16 @@ class AttachmentRouteTests(unittest.TestCase):
             session.refresh(asset)
 
             expected_path = self.cache_dir / f"{asset.id}-deal.png"
+            req = make_request(f"/attachments/{asset.id}")
             with patch("app.main.attachment_cache_path", return_value=expected_path), patch(
                 "app.main.write_attachment_cache_file",
                 side_effect=lambda asset_id, filename, content_type, data: expected_path.write_bytes(data) or expected_path,
             ):
-                response = attachment_asset(asset.id, session=session)
+                response = attachment_asset(request=req, asset_id=asset.id, session=session)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["cache-control"], "public, max-age=31536000, immutable")
+        self.assertIn("etag", response.headers)
         self.assertTrue(expected_path.exists())
         self.assertEqual(expected_path.read_bytes(), b"cached-image-bytes")
 

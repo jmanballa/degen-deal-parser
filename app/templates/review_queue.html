@@ -156,7 +156,7 @@
             <div class="review-card">
                 <div>
                     {% if row["first_image_url"] %}
-                    <a href="{{ row['first_image_url'] }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ row['first_image_url'] }}" alt="deal image"></a>
+                    <a href="{{ row['first_image_url'] }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ row['first_thumb_url'] or row['first_image_url'] }}" alt="deal image" loading="lazy"></a>
                     {% else %}
                     <div class="thumb-placeholder">No image</div>
                     {% endif %}
