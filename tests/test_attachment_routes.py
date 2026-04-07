@@ -63,7 +63,9 @@ class AttachmentRouteTests(unittest.TestCase):
 
             expected_path = self.cache_dir / f"{asset.id}-deal.png"
             req = make_request(f"/attachments/{asset.id}")
-            with patch("app.main.attachment_cache_path", return_value=expected_path), patch(
+            with patch("app.main.require_role_response", return_value=None), patch(
+                "app.main.attachment_cache_path", return_value=expected_path,
+            ), patch(
                 "app.main.write_attachment_cache_file",
                 side_effect=lambda asset_id, filename, content_type, data: expected_path.write_bytes(data) or expected_path,
             ):
@@ -111,8 +113,9 @@ class AttachmentRouteTests(unittest.TestCase):
                     return _TupleAllResult(result.all())
                 return result
 
-            with patch.object(session, "exec", side_effect=wrapped_exec):
-                response = asyncio.run(message_attachment_fallback(row.id, 0, session=session))
+            req = make_request(f"/messages/{row.id}/attachments/0")
+            with patch("app.main.require_role_response", return_value=None), patch.object(session, "exec", side_effect=wrapped_exec):
+                response = asyncio.run(message_attachment_fallback(request=req, message_id=row.id, attachment_index=0, session=session))
 
         self.assertEqual(response.status_code, 307)
         self.assertEqual(response.headers["location"], f"/attachments/{asset.id}")
@@ -156,12 +159,16 @@ class AttachmentRouteTests(unittest.TestCase):
                     return _TupleAllResult(result.all())
                 return result
 
-            with patch("app.main.recover_attachment_assets_for_message", new=AsyncMock(side_effect=fake_recover_attachment_assets_for_message)), patch.object(
+            req = make_request(f"/messages/{row.id}/attachments/0")
+            with patch("app.main.require_role_response", return_value=None), patch(
+                "app.main.recover_attachment_assets_for_message",
+                new=AsyncMock(side_effect=fake_recover_attachment_assets_for_message),
+            ), patch.object(
                 session,
                 "exec",
                 side_effect=wrapped_exec,
             ):
-                response = asyncio.run(message_attachment_fallback(row.id, 0, session=session))
+                response = asyncio.run(message_attachment_fallback(request=req, message_id=row.id, attachment_index=0, session=session))
 
         with Session(self.engine) as session:
             recovered_asset = session.exec(

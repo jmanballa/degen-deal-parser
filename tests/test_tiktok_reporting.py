@@ -1734,7 +1734,10 @@ class TikTokRegressionTests(unittest.TestCase):
             )
             session.commit()
 
-            payload = main_module.tiktok_orders_poll(session=session)
+            from starlette.requests import Request as _Request
+            _req = _Request({"type": "http", "method": "GET", "path": "/tiktok/orders/poll", "headers": [], "scheme": "http", "server": ("testserver", 80)})
+            with patch("app.main.require_role_response", return_value=None):
+                payload = main_module.tiktok_orders_poll(request=_req, session=session)
 
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["latest_updated_at"], updated_at.isoformat())

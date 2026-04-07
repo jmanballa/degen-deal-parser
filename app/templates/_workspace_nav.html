@@ -206,23 +206,34 @@
             <div class="nav-menu-wrap">
                 <button class="nav-menu-btn" id="nav-menu-btn" type="button" title="Navigation" aria-haspopup="true" aria-expanded="false">&#x2630;</button>
                 <div class="nav-dropdown" id="nav-dropdown">
+                    {% set user_role = current_user.role if current_user else "viewer" %}
+                    {% set is_reviewer = user_role in ("reviewer", "admin") %}
+                    {% set is_admin = user_role == "admin" %}
                     <div class="nav-dropdown-label">Workspace</div>
                     <a class="{% if active_dashboard %}is-active{% endif %}" href="/dashboard">Dashboard</a>
+                    {% if is_reviewer %}
                     <a class="{% if active_review %}is-active{% endif %}" href="/review">Review</a>
+                    {% endif %}
                     <a class="{% if active_deals %}is-active{% endif %}" href="/deals">Deals</a>
                     <a class="{% if active_finance %}is-active{% endif %}" href="/finance">Finance</a>
                     <a class="{% if active_reports %}is-active{% endif %}" href="/reports">Reports</a>
+                    {% if is_admin %}
                     <a class="{% if active_bookkeeping %}is-active{% endif %}" href="/bookkeeping">Bookkeeping</a>
+                    {% endif %}
                     <a class="{% if active_shopify %}is-active{% endif %}" href="/shopify/orders">Shopify Orders</a>
                     <a class="{% if active_tiktok %}is-active{% endif %}" href="/tiktok/orders">TikTok Orders</a>
                     <a class="{% if active_tiktok_products %}is-active{% endif %}" href="/tiktok/products">TikTok Products</a>
                     <a class="{% if active_streamer %}is-active{% endif %}" href="/tiktok/streamer">Streamer</a>
                     <a class="{% if active_hits %}is-active{% endif %}" href="/hits">Live Hits</a>
                     <a class="{% if active_stream_mgr %}is-active{% endif %}" href="/stream-manager">Stream Manager</a>
+                    {% if is_admin %}
                     <div class="nav-dropdown-label">Operators</div>
                     <a class="{% if active_table %}is-active{% endif %}" href="/table">Table</a>
                     <a class="{% if active_status %}is-active{% endif %}" href="/status">Status</a>
                     <a class="{% if active_admin %}is-active{% endif %}" href="/admin">Admin</a>
+                    {% endif %}
+                    <div class="nav-dropdown-label" style="margin-top:4px; border-top:1px solid rgba(255,255,255,.06); padding-top:8px;">{{ current_user.display_name or current_user.username if current_user else "" }} <span style="opacity:.5;">({{ user_role }})</span></div>
+                    <a href="/logout" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/login');return false;">Sign Out</a>
                 </div>
             </div>
         </div>

@@ -120,7 +120,9 @@ class Pass2ConsolidationTests(unittest.TestCase):
             session.commit()
             session.refresh(row)
 
-            response = main_module.get_message(row.id, session=session)
+            req = make_request(f"/messages/{row.id}")
+            with patch("app.main.require_role_response", return_value=None):
+                response = main_module.get_message(request=req, message_id=row.id, session=session)
 
         self.assertEqual(response.status_code, 301)
         self.assertEqual(response.headers["location"], f"/deals/{row.id}")

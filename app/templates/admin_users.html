@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:900px; margin:0 auto; padding:28px 28px 60px; }
+        .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); padding:24px; margin-bottom:18px; }
+        .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background:#fff; color:var(--text); border:1px solid var(--line); font-weight:800; cursor:pointer; font-size:13px; }
+        .button-accent { background:var(--accent); color:#fff; border-color:var(--accent); }
+        .button-danger { background:#8e2722; color:#fff; border-color:#8e2722; }
+        h1 { font-size:32px; letter-spacing:-.04em; margin:0 0 6px; }
+        h2 { font-size:20px; letter-spacing:-.03em; margin:0 0 14px; }
+        .pill { display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .pill-viewer { background:#dbeafe; color:#1d4ed8; }
+        .pill-reviewer { background:#fef3c7; color:#92400e; }
+        .pill-admin { background:#fce7f3; color:#9d174d; }
+        .pill-inactive { background:#f3f4f6; color:#6b7280; }
+        table { width:100%; border-collapse:collapse; font-size:14px; }
+        th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:8px 10px; border-bottom:2px solid var(--line); }
+        td { padding:10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+        tr:last-child td { border-bottom:none; }
+        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .form-group { display:flex; flex-direction:column; gap:4px; }
+        .form-group.full { grid-column:1/-1; }
+        label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+        input, select { padding:10px 12px; border:1px solid var(--line); border-radius:12px; font-size:14px; font-family:inherit; background:#fff; }
+        .flash { padding:12px 16px; border-radius:14px; margin-bottom:14px; font-weight:600; font-size:14px; }
+        .flash-success { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+        .flash-error { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+        @media (max-width:600px) { .form-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } }
+    </style>
+    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+</head>
+<body>
+    <div class="page">
+        {% include "_workspace_nav.html" %}
+        <div style="margin-bottom:14px; display:flex; gap:10px;">
+            <a class="button" href="/admin">&larr; Admin</a>
+        </div>
+
+        {% if success %}<div class="flash flash-success">{{ success }}</div>{% endif %}
+        {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+        <div class="card">
+            <h2>Create User</h2>
+            <form method="post" action="/admin/users/create">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required autocomplete="off" placeholder="e.g. streamer1">
+                    </div>
+                    <div class="form-group">
+                        <label for="display_name">Display Name</label>
+                        <input type="text" id="display_name" name="display_name" placeholder="e.g. John">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required autocomplete="new-password" placeholder="Choose a password">
+                    </div>
+                    <div class="form-group">
+                        <label for="role">Role</label>
+                        <select id="role" name="role">
+                            <option value="viewer" selected>Viewer</option>
+                            <option value="reviewer">Reviewer</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="button button-accent">Create User</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Users ({{ users|length }})</h2>
+            {% if users %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Display Name</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td><strong>{{ user.username }}</strong></td>
+                        <td>{{ user.display_name or "-" }}</td>
+                        <td>
+                            {% if user.role == "admin" %}<span class="pill pill-admin">Admin</span>
+                            {% elif user.role == "reviewer" %}<span class="pill pill-reviewer">Reviewer</span>
+                            {% else %}<span class="pill pill-viewer">Viewer</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}<span class="pill pill-viewer">Active</span>
+                            {% else %}<span class="pill pill-inactive">Disabled</span>{% endif %}
+                        </td>
+                        <td style="font-size:12px; color:var(--muted);">{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else "-" }}</td>
+                        <td>
+                            {% if user.username != current_admin_username %}
+                            <form method="post" action="/admin/users/{{ user.id }}/toggle" style="display:inline;">
+                                {% if user.is_active %}
+                                <button type="submit" class="button" style="font-size:12px; padding:6px 10px;">Disable</button>
+                                {% else %}
+                                <button type="submit" class="button button-accent" style="font-size:12px; padding:6px 10px;">Enable</button>
+                                {% endif %}
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color:var(--muted);">No users found.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

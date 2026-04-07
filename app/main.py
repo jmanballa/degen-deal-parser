@@ -3666,6 +3666,8 @@ async def handle_operational_error(request: Request, exc: OperationalError):
 
 @app.get("/attachments/{asset_id}")
 def attachment_asset(request: Request, asset_id: int, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     asset_meta = session.exec(
         select(AttachmentAsset.id, AttachmentAsset.filename, AttachmentAsset.content_type)
         .where(AttachmentAsset.id == asset_id)
@@ -3708,6 +3710,8 @@ def attachment_asset(request: Request, asset_id: int, session: Session = Depends
 
 @app.get("/attachments/{asset_id}/thumb")
 def attachment_thumbnail(request: Request, asset_id: int, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     etag = f'"thumb-{asset_id}"'
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and if_none_match.strip() == etag:
@@ -3749,10 +3753,13 @@ def attachment_thumbnail(request: Request, asset_id: int, session: Session = Dep
 
 @app.get("/messages/{message_id}/attachments/{attachment_index}")
 async def message_attachment_fallback(
+    request: Request,
     message_id: int,
     attachment_index: int,
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     row = session.get(DiscordMessage, message_id)
     if not row:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -4138,6 +4145,8 @@ def partner_page(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     return RedirectResponse(url="/dashboard", status_code=301)
 
 
@@ -4240,7 +4249,9 @@ def operations_log_page(
 
 
 @app.get("/ops-log/error-count")
-def ops_log_error_count(session: Session = Depends(get_session)):
+def ops_log_error_count(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     return {"count": count_recent_errors(session)}
 
 
@@ -4302,6 +4313,85 @@ def admin_home_page(
             "backfill_channel_count": len(backfill_channels),
         },
     )
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+def admin_users_page(
+    request: Request,
+    success: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    users = session.exec(select(User).order_by(User.created_at.asc())).all()
+    return templates.TemplateResponse(
+        request,
+        "admin_users.html",
+        {
+            "request": request,
+            "title": "User Management",
+            "current_user": getattr(request.state, "current_user", None),
+            "users": users,
+            "current_admin_username": settings.admin_username.strip().lower(),
+            "success": success,
+            "error": error,
+        },
+    )
+
+
+@app.post("/admin/users/create")
+def admin_create_user(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    display_name: str = Form(default=""),
+    role: str = Form(default="viewer"),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    normalized = (username or "").strip().lower()
+    if not normalized or not password:
+        return RedirectResponse(url="/admin/users?error=Username+and+password+are+required", status_code=303)
+    if role not in ("viewer", "reviewer", "admin"):
+        return RedirectResponse(url="/admin/users?error=Invalid+role", status_code=303)
+    existing = session.exec(select(User).where(User.username == normalized)).first()
+    if existing:
+        return RedirectResponse(url=f"/admin/users?error=User+{normalized}+already+exists", status_code=303)
+    from .auth import hash_password
+    session.add(User(
+        username=normalized,
+        password_hash=hash_password(password),
+        display_name=(display_name or "").strip() or normalized,
+        role=role,
+        is_active=True,
+        created_at=utcnow(),
+        updated_at=utcnow(),
+    ))
+    session.commit()
+    return RedirectResponse(url=f"/admin/users?success=Created+user+{normalized}", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/toggle")
+def admin_toggle_user(
+    request: Request,
+    user_id: int,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    user = session.get(User, user_id)
+    if not user:
+        return RedirectResponse(url="/admin/users?error=User+not+found", status_code=303)
+    if user.username == settings.admin_username.strip().lower():
+        return RedirectResponse(url="/admin/users?error=Cannot+disable+the+primary+admin+account", status_code=303)
+    user.is_active = not user.is_active
+    user.updated_at = utcnow()
+    session.add(user)
+    session.commit()
+    action = "enabled" if user.is_active else "disabled"
+    return RedirectResponse(url=f"/admin/users?success=User+{user.username}+{action}", status_code=303)
 
 
 @app.get("/admin/debug", response_class=HTMLResponse)
@@ -5742,12 +5832,15 @@ def build_dashboard_snapshot(session: Session) -> dict:
 
 
 @app.get("/channels")
-def list_channels(session: Session = Depends(get_session)):
+def list_channels(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     return get_channel_filter_choices(session)
 
 
 @app.get("/messages")
 def list_messages(
+    request: Request,
     status: Optional[str] = Query(default=None),
     channel_id: Optional[str] = Query(default=None),
     entry_kind: Optional[str] = Query(default=None),
@@ -5759,6 +5852,8 @@ def list_messages(
     limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     rows, total_rows = get_message_rows(
         session,
         status=status,
@@ -5780,6 +5875,7 @@ def list_messages(
 
 @app.get("/api/review")
 def review_queue_api(
+    request: Request,
     status: Optional[str] = Query(default="review_queue"),
     channel_id: Optional[str] = Query(default=None),
     after: Optional[str] = Query(default=None),
@@ -5790,6 +5886,8 @@ def review_queue_api(
     limit: int = Query(default=100, ge=1, le=500),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "reviewer"):
+        return denial
     rows, total_rows = get_message_rows(
         session,
         status=status,
@@ -5808,7 +5906,9 @@ def review_queue_api(
 
 
 @app.get("/messages/{message_id}")
-def get_message(message_id: int, session: Session = Depends(get_session)):
+def get_message(request: Request, message_id: int, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     row = session.get(DiscordMessage, message_id)
     target = f"/deals/{message_id}" if row else "/deals"
     return RedirectResponse(url=target, status_code=301)
@@ -5891,6 +5991,8 @@ def message_detail_page(
     error: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     row = session.get(DiscordMessage, message_id)
     target = "/deals"
     if row:
@@ -6078,11 +6180,14 @@ def edit_message_form(
 
 @app.get("/reports/summary")
 def report_summary(
+    request: Request,
     start: Optional[str] = Query(default=None),
     end: Optional[str] = Query(default=None),
     channel_id: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     start_dt = parse_report_datetime(start)
     end_dt = parse_report_datetime(end, end_of_day=True)
     rows = get_financial_rows(session, start=start_dt, end=end_dt, channel_id=channel_id)
@@ -6647,7 +6752,9 @@ def shopify_backfill_start(
 
 
 @app.get("/shopify-orders")
-def shopify_orders_redirect():
+def shopify_orders_redirect(request: Request):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     return RedirectResponse(url="/shopify/orders", status_code=307)
 
 
@@ -6768,12 +6875,15 @@ def shopify_orders_page(
 
 @app.get("/reports/messages")
 def report_messages(
+    request: Request,
     start: Optional[str] = Query(default=None),
     end: Optional[str] = Query(default=None),
     channel_id: Optional[str] = Query(default=None),
     entry_kind: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     start_dt = parse_report_datetime(start)
     end_dt = parse_report_datetime(end, end_of_day=True)
     rows = get_financial_rows(session, start=start_dt, end=end_dt, channel_id=channel_id)
@@ -6784,12 +6894,15 @@ def report_messages(
 
 @app.get("/reports/export.csv")
 def report_transactions_csv(
+    request: Request,
     start: Optional[str] = Query(default=None),
     end: Optional[str] = Query(default=None),
     channel_id: Optional[str] = Query(default=None),
     entry_kind: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     start_dt = parse_report_datetime(start)
     end_dt = parse_report_datetime(end, end_of_day=True)
     transactions = get_transactions(
@@ -6828,6 +6941,7 @@ def report_transactions_csv(
 
 @app.get("/messages/export.csv")
 def messages_csv(
+    request: Request,
     status: Optional[str] = Query(default=None),
     channel_id: Optional[str] = Query(default=None),
     entry_kind: Optional[str] = Query(default=None),
@@ -6838,6 +6952,8 @@ def messages_csv(
     sort_dir: str = Query(default="desc"),
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "admin"):
+        return denial
     rows, _ = get_message_rows(
         session,
         status=status,
@@ -7034,7 +7150,9 @@ def reports_page(
 
 
 @app.get("/pnl", include_in_schema=False)
-def finance_redirect():
+def finance_redirect(request: Request):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     return RedirectResponse(url="/finance", status_code=307)
 
 
@@ -7128,7 +7246,9 @@ def finance_page(
 
 
 @app.get("/tiktok", include_in_schema=False)
-def tiktok_orders_redirect():
+def tiktok_orders_redirect(request: Request):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     return RedirectResponse(url="/tiktok/orders", status_code=307)
 
 
@@ -7351,7 +7471,9 @@ def tiktok_orders_page(
 
 
 @app.get("/tiktok/orders/poll")
-def tiktok_orders_poll(session: Session = Depends(get_session)):
+def tiktok_orders_poll(request: Request, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     total = int(session.exec(select(func.count()).select_from(TikTokOrder)).one())
     latest_updated_at = session.exec(select(func.max(TikTokOrder.updated_at))).one()
     latest_updated_at_text = None
@@ -7859,7 +7981,8 @@ def tiktok_streamer_poll(
 
 @app.get("/tiktok/streamer/config", response_class=HTMLResponse)
 def tiktok_streamer_config(request: Request):
-    """Backend page to configure the stream date range shown on the streamer dashboard."""
+    if denial := require_role_response(request, "admin"):
+        return denial
     s = _stream_range["start"]
     e = _stream_range["end"]
     start_val = s.astimezone(PACIFIC_TZ).strftime("%Y-%m-%dT%H:%M") if s else ""
@@ -7960,7 +8083,8 @@ function clearRange() {{
 
 @app.post("/tiktok/streamer/config")
 def tiktok_streamer_config_save(request: Request, body: dict = None):
-    """Save the stream date range."""
+    if denial := require_role_response(request, "admin"):
+        return denial
     if body is None:
         body = {}
     start_str = (body.get("start") or "").strip()
@@ -7990,8 +8114,11 @@ def tiktok_streamer_config_save(request: Request, body: dict = None):
 
 @app.get("/tiktok/streamer/chat/poll")
 def tiktok_streamer_chat_poll(
+    request: Request,
     since: int = Query(default=0),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     messages = get_live_chat_messages(since_idx=since)
     status_info = get_chat_status()
     latest_idx = messages[-1]["idx"] if messages else since
@@ -8248,8 +8375,11 @@ def tiktok_products_page(
 
 @app.get("/tiktok/products/poll")
 def tiktok_products_poll(
+    request: Request,
     session: Session = Depends(get_session),
 ):
+    if denial := require_role_response(request, "viewer"):
+        return denial
     total = int(session.exec(select(func.count()).select_from(TikTokProduct)).one())
     active = int(session.exec(
         select(func.count()).select_from(TikTokProduct).where(TikTokProduct.status == "ACTIVATE")
@@ -8704,7 +8834,9 @@ async def bookkeeping_refresh_import(
 
 
 @app.post("/messages/{message_id}/retry")
-def retry_message(message_id: int, session: Session = Depends(get_session)):
+def retry_message(request: Request, message_id: int, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "reviewer"):
+        return denial
     row = session.get(DiscordMessage, message_id)
     if not row:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -8720,7 +8852,9 @@ def retry_message(message_id: int, session: Session = Depends(get_session)):
 
 
 @app.post("/messages/{message_id}/approve")
-def approve_message(message_id: int, session: Session = Depends(get_session)):
+def approve_message(request: Request, message_id: int, session: Session = Depends(get_session)):
+    if denial := require_role_response(request, "reviewer"):
+        return denial
     row = session.get(DiscordMessage, message_id)
     if not row:
         raise HTTPException(status_code=404, detail="Message not found")

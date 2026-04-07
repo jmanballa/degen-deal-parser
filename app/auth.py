@@ -108,6 +108,21 @@ def seed_default_users(session: Session) -> None:
             display_name=settings.reviewer_display_name,
             role="reviewer",
         )
+    for entry in (settings.viewer_accounts or "").split(","):
+        entry = entry.strip()
+        if not entry or ":" not in entry:
+            continue
+        parts = entry.split(":", 1)
+        username = parts[0].strip()
+        password = parts[1].strip()
+        if username and password:
+            upsert_seed_user(
+                session,
+                username=username,
+                password=password,
+                display_name=username,
+                role="viewer",
+            )
     session.commit()
 
 
