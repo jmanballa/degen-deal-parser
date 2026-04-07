@@ -407,6 +407,24 @@
             </div>
         </div>
 
+        {% if recent_promotions %}
+        <div class="card">
+            <h2 class="section-title">Auto-Promoted Patterns</h2>
+            <p class="section-subtitle">Correction patterns promoted automatically in the last 7 days.</p>
+            <div class="list">
+                {% for row in recent_promotions %}
+                <div class="list-row">
+                    <div>
+                        <div class="small mono">{{ row["normalized_text"] }}</div>
+                        <div class="small muted">{{ row["promoted_at"] | pacific_datetime(include_zone=False) if row["promoted_at"] else "" }}</div>
+                    </div>
+                    <span class="pill">promoted</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <div class="card">
             <h2 class="section-title">Quick Search</h2>
             <p class="section-subtitle">Jump straight into the deal list by date.</p>

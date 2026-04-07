@@ -732,11 +732,14 @@ def auto_promote_once() -> None:
             min_count=settings.auto_promote_min_count,
             min_confidence=settings.auto_promote_min_confidence,
         )
-    for normalized_text in promoted:
-        worker_log(
-            action="auto_promoted_correction_pattern",
-            normalized_text=normalized_text,
-        )
+        for normalized_text in promoted:
+            worker_log(
+                action="auto_promoted_correction_pattern",
+                normalized_text=normalized_text,
+                session=session,
+            )
+        if promoted:
+            session.commit()
 
 
 async def parser_loop(stop_event: asyncio.Event):

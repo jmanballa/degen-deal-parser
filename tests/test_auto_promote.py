@@ -1,10 +1,13 @@
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from app.corrections import auto_promote_eligible_patterns
-from app.models import ReviewCorrection
+from app.models import OperationsLog, ReviewCorrection
+from app.worker import auto_promote_once
 
 
 def _utcnow():
@@ -111,6 +114,62 @@ class AutoPromoteTests(unittest.TestCase):
 
         self.assertIn("group a", promoted)
         self.assertNotIn("group b", promoted)
+
+
+class AutoPromoteOnceLoggingTests(unittest.TestCase):
+    """Verify that auto_promote_once() persists events to OperationsLog."""
+
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        SQLModel.metadata.create_all(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+
+    @contextmanager
+    def _managed_session(self):
+        with Session(self.engine) as session:
+            yield session
+
+    def _seed_promotable(self):
+        with Session(self.engine) as session:
+            for _ in range(5):
+                session.add(_make_correction("log test pattern", confidence=0.90))
+            session.commit()
+
+    def test_promoted_pattern_logged_to_operations_log(self):
+        self._seed_promotable()
+        with patch("app.worker.managed_session", self._managed_session), \
+             patch("app.worker.settings") as mock_settings:
+            mock_settings.auto_promote_min_count = 5
+            mock_settings.auto_promote_min_confidence = 0.85
+            auto_promote_once()
+
+        with Session(self.engine) as session:
+            rows = session.exec(
+                select(OperationsLog).where(
+                    OperationsLog.event_type == "queue.auto_promoted_correction_pattern"
+                )
+            ).all()
+        self.assertEqual(len(rows), 1)
+        self.assertIn("log test pattern", rows[0].details_json)
+
+    def test_no_promotions_no_log_entries(self):
+        # Seed below min_count threshold
+        with Session(self.engine) as session:
+            for _ in range(2):
+                session.add(_make_correction("too few", confidence=0.90))
+            session.commit()
+
+        with patch("app.worker.managed_session", self._managed_session), \
+             patch("app.worker.settings") as mock_settings:
+            mock_settings.auto_promote_min_count = 5
+            mock_settings.auto_promote_min_confidence = 0.85
+            auto_promote_once()
+
+        with Session(self.engine) as session:
+            rows = session.exec(select(OperationsLog)).all()
+        self.assertEqual(len(rows), 0)
 
 
 if __name__ == "__main__":

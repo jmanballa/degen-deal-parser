@@ -481,6 +481,25 @@ class OperationsLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+class TikTokSyncState(SQLModel, table=True):
+    """Singleton row (id=1) that persists the TikTok integration runtime state across restarts."""
+
+    __tablename__ = "tiktok_sync_state"
+
+    id: int = Field(default=1, primary_key=True)
+    last_authorization_at: Optional[datetime] = Field(default=None, index=True)
+    last_callback_json: str = Field(default="{}")
+    last_webhook_at: Optional[datetime] = Field(default=None, index=True)
+    last_webhook_json: str = Field(default="{}")
+    is_pull_running: bool = Field(default=False)
+    last_pull_started_at: Optional[datetime] = Field(default=None, index=True)
+    last_pull_finished_at: Optional[datetime] = Field(default=None, index=True)
+    last_pull_at: Optional[datetime] = Field(default=None, index=True)
+    last_pull_json: str = Field(default="{}")
+    last_error: Optional[str] = Field(default=None)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
 class AppSetting(SQLModel, table=True):
     __tablename__ = "app_settings"
     key: str = Field(primary_key=True)

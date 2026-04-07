@@ -102,6 +102,7 @@ from .models import (
     TikTokAuth,
     TikTokOrder,
     TikTokProduct,
+    TikTokSyncState,
     User,
     WatchedChannel,
     normalize_money_value,
@@ -1514,10 +1515,64 @@ def read_tiktok_integration_state() -> dict[str, object]:
         return dict(_tiktok_state)
 
 
+def _tiktok_state_to_db_row(state: dict) -> TikTokSyncState:
+    import json as _json
+    return TikTokSyncState(
+        id=1,
+        last_authorization_at=state.get("last_authorization_at"),
+        last_callback_json=_json.dumps(state.get("last_callback") or {}, default=str),
+        last_webhook_at=state.get("last_webhook_at"),
+        last_webhook_json=_json.dumps(state.get("last_webhook") or {}, default=str),
+        is_pull_running=bool(state.get("is_pull_running", False)),
+        last_pull_started_at=state.get("last_pull_started_at"),
+        last_pull_finished_at=state.get("last_pull_finished_at"),
+        last_pull_at=state.get("last_pull_at"),
+        last_pull_json=_json.dumps(state.get("last_pull") or {}, default=str),
+        last_error=str(state["last_error"]) if state.get("last_error") is not None else None,
+        updated_at=utcnow(),
+    )
+
+
+def _persist_tiktok_state(state: dict) -> None:
+    """Fire-and-forget: write the current state dict to the DB singleton row."""
+    try:
+        with managed_session() as session:
+            row = _tiktok_state_to_db_row(state)
+            session.merge(row)
+            session.commit()
+    except Exception:
+        pass  # state persistence is best-effort; don't crash the request
+
+
 def update_tiktok_integration_state(**changes: object) -> dict[str, object]:
     with _tiktok_state_lock:
         _tiktok_state.update(changes)
-        return dict(_tiktok_state)
+        snapshot = dict(_tiktok_state)
+    _persist_tiktok_state(snapshot)
+    return snapshot
+
+
+def _load_tiktok_state_from_db() -> None:
+    """Populate the in-memory state dict from the DB on startup."""
+    import json as _json
+    try:
+        with managed_session() as session:
+            row = session.get(TikTokSyncState, 1)
+        if row is None:
+            return
+        with _tiktok_state_lock:
+            _tiktok_state["last_authorization_at"] = row.last_authorization_at
+            _tiktok_state["last_callback"] = _json.loads(row.last_callback_json or "{}")
+            _tiktok_state["last_webhook_at"] = row.last_webhook_at
+            _tiktok_state["last_webhook"] = _json.loads(row.last_webhook_json or "{}")
+            _tiktok_state["is_pull_running"] = False  # always reset on restart
+            _tiktok_state["last_pull_started_at"] = row.last_pull_started_at
+            _tiktok_state["last_pull_finished_at"] = row.last_pull_finished_at
+            _tiktok_state["last_pull_at"] = row.last_pull_at
+            _tiktok_state["last_pull"] = _json.loads(row.last_pull_json or "{}")
+            _tiktok_state["last_error"] = row.last_error
+    except Exception:
+        pass  # best-effort; proceed with empty state
 
 
 def read_background_task_state() -> dict[str, object]:
@@ -3342,6 +3397,7 @@ def _save_stream_range() -> None:
 async def lifespan(app: FastAPI):
     init_db()
     _load_stream_range()
+    _load_tiktok_state_from_db()
     with managed_session() as session:
         seed_default_users(session)
         requeue_interrupted_backfill_requests(session)
@@ -3959,6 +4015,20 @@ def dashboard_page(
         shopify_connected = False
         shopify_message = "Shopify not connected yet"
 
+    _raw_promotions = list_operations_logs(
+        session,
+        event_type_prefix="queue.auto_promoted_correction_pattern",
+        limit=10,
+        since=utcnow() - timedelta(days=7),
+    )
+    recent_promotions = [
+        {
+            "normalized_text": (parse_operations_log_details(row) or {}).get("normalized_text") or row.message,
+            "promoted_at": row.created_at,
+        }
+        for row in _raw_promotions
+    ]
+
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -3971,19 +4041,20 @@ def dashboard_page(
             "dashboard_snapshot": dashboard_snapshot,
             "recent_reviewed": recent_reviewed,
             "recent_deals": recent_deals,
-        "shopify_connected": shopify_connected,
-        "shopify_message": shopify_message,
-        "shopify_orders": shopify_orders,
-        "tiktok_connected": bool(tiktok_auth_row or tiktok_sync_snapshot.get("has_tokens")),
-        "tiktok_message": "" if (tiktok_auth_row or tiktok_sync_snapshot.get("has_tokens")) else "TikTok Shop not connected yet",
-        "tiktok_orders": tiktok_orders,
-        "tiktok_recent_order_count": tiktok_recent_order_count,
-        "parser_progress": parser_progress,
-        "tiktok_summary": tiktok_summary,
-        "tiktok_sync_snapshot": tiktok_sync_snapshot,
-        "tiktok_auth_row": tiktok_auth_row,
-        "tiktok_today_rows": tiktok_rows,
+            "shopify_connected": shopify_connected,
+            "shopify_message": shopify_message,
+            "shopify_orders": shopify_orders,
+            "tiktok_connected": bool(tiktok_auth_row or tiktok_sync_snapshot.get("has_tokens")),
+            "tiktok_message": "" if (tiktok_auth_row or tiktok_sync_snapshot.get("has_tokens")) else "TikTok Shop not connected yet",
+            "tiktok_orders": tiktok_orders,
+            "tiktok_recent_order_count": tiktok_recent_order_count,
+            "parser_progress": parser_progress,
+            "tiktok_summary": tiktok_summary,
+            "tiktok_sync_snapshot": tiktok_sync_snapshot,
+            "tiktok_auth_row": tiktok_auth_row,
+            "tiktok_today_rows": tiktok_rows,
             "tiktok_today_totals": tiktok_summary.get("totals", {}),
+            "recent_promotions": recent_promotions,
         },
     )
 

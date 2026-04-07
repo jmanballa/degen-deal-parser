@@ -250,6 +250,49 @@ def infer_pattern_type(
     return None
 
 
+def compute_correction_confidence(
+    session: Session,
+    normalized_text: str,
+    field_diffs: dict,
+    parser_confidence: Optional[float],
+) -> float:
+    """Compute a blended confidence for a correction.
+
+    Factors:
+    - parser_confidence: base score from OpenAI (or learned rule floor)
+    - severity_factor: penalises corrections that changed many fields
+    - agreement_factor: boosts when other corrections for the same text agree
+      on entry_kind and amount; penalises disagreement
+    """
+    base = float(parser_confidence or 0.85)
+
+    n_diffs = len(field_diffs)
+    if n_diffs == 0:
+        severity_factor = 1.0
+    elif n_diffs <= 2:
+        severity_factor = 0.95
+    elif n_diffs <= 4:
+        severity_factor = 0.85
+    else:
+        severity_factor = 0.75
+
+    peers = session.exec(
+        select(ReviewCorrection).where(ReviewCorrection.normalized_text == normalized_text)
+    ).all()
+
+    if len(peers) < 2:
+        agreement_factor = 1.0
+    else:
+        entry_kinds = {c.entry_kind for c in peers if c.entry_kind}
+        amounts = {round(float(c.amount), 2) for c in peers if c.amount is not None}
+        if len(entry_kinds) <= 1 and len(amounts) <= 1:
+            agreement_factor = 1.0  # capped below at min(1.0, ...)
+        else:
+            agreement_factor = 0.80
+
+    return min(1.0, base * severity_factor * agreement_factor)
+
+
 def save_review_correction(
     session: Session,
     row: DiscordMessage,
@@ -286,10 +329,12 @@ def save_review_correction(
     correction.items_in_json = row.items_in_json or "[]"
     correction.items_out_json = row.items_out_json or "[]"
     correction.item_names_json = row.item_names_json or "[]"
-    correction.confidence = row.confidence
     corrected_after = snapshot_message_parse(row)
     baseline_before = parsed_before or {}
     field_diffs = build_field_diffs(baseline_before, corrected_after)
+    correction.confidence = compute_correction_confidence(
+        session, normalized_text, field_diffs, row.confidence
+    )
     features = extract_learning_features(row.content or "")
     correction.pattern_type = infer_pattern_type(row.content or "", corrected_after, field_diffs, features)
     correction.parsed_before_json = json.dumps(baseline_before, sort_keys=True)
