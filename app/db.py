@@ -177,6 +177,9 @@ SQLITE_ADDITIVE_MIGRATIONS = {
         "source": "TEXT DEFAULT 'webhook'",
         "received_at": "TIMESTAMP",
     },
+    "live_hits": {
+        "order_value": "REAL",
+    },
 }
 
 
@@ -300,6 +303,9 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
         "raw_payload": "TEXT DEFAULT '{}'",
         "source": "TEXT DEFAULT 'webhook'",
         "received_at": "TIMESTAMP",
+    },
+    "live_hits": {
+        "order_value": "DOUBLE PRECISION",
     },
 }
 

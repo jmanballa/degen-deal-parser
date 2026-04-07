@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --bg-card: #151518;
+            --bg-card-hover: #1c1c22;
+            --border: #222228;
+            --border-glow: #333340;
+            --text: #f0eeeb;
+            --text-secondary: #a09da6;
+            --text-muted: #5d5b66;
+            --accent: #fe2c55;
+            --green: #3ecf8e;
+            --green-glow: rgba(62, 207, 142, .15);
+            --red: #ef4444;
+            --shadow: 0 8px 32px rgba(0, 0, 0, .5);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+            background: var(--bg); color: var(--text);
+            min-height: 100vh;
+        }
+        a { color: inherit; text-decoration: none; }
+
+        .page { max-width: 900px; margin: 0 auto; padding: 20px 20px 80px; }
+
+        /* Header */
+        .page-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0 20px; border-bottom: 1px solid var(--border);
+            margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+        }
+        .page-title {
+            font-size: 24px; font-weight: 900; letter-spacing: -.03em;
+        }
+        .header-links { display: flex; gap: 8px; flex-wrap: wrap; }
+        .header-link {
+            padding: 7px 14px; border-radius: 10px; font-size: 13px; font-weight: 700;
+            border: 1px solid var(--border); background: var(--bg-card);
+            color: var(--text-secondary); transition: all .15s; cursor: pointer;
+        }
+        .header-link:hover { background: var(--bg-card-hover); color: var(--text); }
+
+        /* Flash */
+        .flash {
+            margin-bottom: 16px; padding: 12px 16px; border-radius: 12px;
+            font-size: 13px; font-weight: 700;
+        }
+        .flash.success { background: rgba(62,207,142,.12); border: 1px solid rgba(62,207,142,.3); color: var(--green); }
+        .flash.error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: var(--red); }
+
+        /* Section */
+        .section { margin-bottom: 32px; }
+        .section-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 14px; flex-wrap: wrap; gap: 8px;
+        }
+        .section-title {
+            font-size: 16px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: .06em; color: var(--text-secondary);
+        }
+        .section-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        /* Now streaming badge */
+        .now-streaming {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 18px; border-radius: 14px;
+            background: rgba(62,207,142,.1); border: 1px solid rgba(62,207,142,.25);
+            font-size: 14px; font-weight: 800; color: var(--green);
+            margin-bottom: 20px;
+        }
+        .now-streaming .live-dot {
+            width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+            animation: dot-blink 1.5s ease-in-out infinite;
+        }
+        @keyframes dot-blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+        .now-none {
+            display: inline-flex; padding: 10px 18px; border-radius: 14px;
+            background: rgba(255,255,255,.04); border: 1px solid var(--border);
+            font-size: 13px; color: var(--text-muted); margin-bottom: 20px;
+        }
+
+        /* Streamer cards */
+        .streamer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+        .streamer-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+            padding: 16px; display: flex; align-items: center; gap: 12px;
+            transition: all .15s; position: relative;
+        }
+        .streamer-card:hover { border-color: var(--border-glow); }
+        .streamer-avatar {
+            width: 44px; height: 44px; border-radius: 12px; display: flex;
+            align-items: center; justify-content: center; font-size: 22px;
+            flex-shrink: 0;
+        }
+        .streamer-info { flex: 1; min-width: 0; }
+        .streamer-name { font-size: 15px; font-weight: 800; }
+        .streamer-handle { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+        .streamer-actions {
+            display: flex; gap: 4px; position: absolute; top: 8px; right: 8px;
+        }
+        .btn-icon {
+            width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg); color: var(--text-muted); font-size: 13px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all .12s;
+        }
+        .btn-icon:hover { background: var(--bg-card-hover); color: var(--text); }
+        .btn-icon-danger:hover { background: rgba(239,68,68,.15); color: var(--red); border-color: rgba(239,68,68,.3); }
+
+        /* Add streamer form */
+        .add-form {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+            padding: 20px; margin-top: 14px;
+        }
+        .form-row {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+            align-items: end;
+        }
+        .form-full { grid-column: 1 / -1; }
+        .form-label {
+            display: flex; flex-direction: column; gap: 5px;
+            font-size: 11px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text-muted);
+        }
+        .form-input, .form-select {
+            width: 100%; padding: 10px 12px; border-radius: 10px;
+            border: 1px solid var(--border); background: rgba(255,255,255,.07);
+            color: var(--text); font: inherit; font-size: 14px;
+        }
+        .form-input::placeholder { color: var(--text-muted); }
+        .form-input:focus, .form-select:focus {
+            outline: none; border-color: var(--green);
+            box-shadow: 0 0 0 2px rgba(62,207,142,.2);
+        }
+        .form-select option { background: #1c1c22; }
+        .btn {
+            appearance: none; border: none; border-radius: 12px;
+            padding: 10px 20px; font: inherit; font-size: 13px; font-weight: 800;
+            cursor: pointer; transition: filter .12s;
+        }
+        .btn:hover { filter: brightness(1.08); }
+        .btn-green {
+            background: linear-gradient(135deg, #166647, #2ea870); color: #fff;
+            box-shadow: 0 6px 16px rgba(62,207,142,.25);
+        }
+        .btn-ghost {
+            background: rgba(255,255,255,.06); color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-sm {
+            padding: 6px 12px; font-size: 12px; border-radius: 10px;
+        }
+
+        /* Color picker row */
+        .color-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+        .color-swatch {
+            width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+            border: 2px solid transparent; transition: all .12s;
+        }
+        .color-swatch:hover { transform: scale(1.15); }
+        .color-swatch.is-selected { border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,.3); }
+
+        /* Schedule */
+        .schedule-list { display: flex; flex-direction: column; gap: 8px; }
+        .schedule-row {
+            display: flex; align-items: center; gap: 12px;
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+            padding: 12px 16px; transition: all .15s;
+        }
+        .schedule-row:hover { border-color: var(--border-glow); }
+        .schedule-dot {
+            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+        }
+        .schedule-info { flex: 1; min-width: 0; }
+        .schedule-who { font-size: 14px; font-weight: 800; }
+        .schedule-when { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .schedule-title-text { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+        .schedule-date-group {
+            font-size: 12px; font-weight: 800; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: .06em;
+            margin: 16px 0 8px; padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        .schedule-date-group:first-child { margin-top: 0; }
+        .schedule-today { color: var(--green); }
+
+        /* Edit modal */
+        .edit-backdrop {
+            display: none; position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0,0,0,.72); backdrop-filter: blur(4px);
+            align-items: center; justify-content: center;
+        }
+        .edit-backdrop.is-open { display: flex; }
+        .edit-modal {
+            background: var(--bg-card); border: 1px solid var(--border-glow);
+            border-radius: 20px; width: min(480px, 94vw); padding: 24px;
+            box-shadow: 0 40px 100px rgba(0,0,0,.8);
+            animation: modal-in .3s cubic-bezier(.22,1,.36,1);
+        }
+        @keyframes modal-in {
+            from { opacity: 0; transform: scale(.94) translateY(20px); }
+            to { opacity: 1; transform: none; }
+        }
+        .edit-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .edit-title { font-size: 18px; font-weight: 900; }
+        .edit-close {
+            width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--border);
+            background: var(--bg-card); color: var(--text-muted); font-size: 16px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .edit-close:hover { background: var(--bg-card-hover); color: var(--text); }
+
+        /* Empty state */
+        .empty { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
+
+        /* Emoji picker */
+        .emoji-picker-wrap { position: relative; }
+        .emoji-selected {
+            width: 52px; height: 44px; border-radius: 10px;
+            border: 1px solid var(--border); background: rgba(255,255,255,.07);
+            font-size: 22px; cursor: pointer; display: flex;
+            align-items: center; justify-content: center;
+            transition: all .15s;
+        }
+        .emoji-selected:hover { border-color: var(--green); background: rgba(255,255,255,.12); }
+        .emoji-dropdown {
+            display: none; position: absolute; top: calc(100% + 6px); left: 0;
+            background: #1c1c22; border: 1px solid var(--border-glow);
+            border-radius: 14px; padding: 10px; z-index: 200;
+            box-shadow: 0 16px 48px rgba(0,0,0,.7);
+            width: 260px; max-height: 220px; overflow-y: auto;
+        }
+        .emoji-dropdown.is-open { display: block; }
+        .emoji-grid {
+            display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+        }
+        .emoji-option {
+            width: 32px; height: 32px; border-radius: 8px; border: none;
+            background: transparent; font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all .1s;
+        }
+        .emoji-option:hover { background: rgba(255,255,255,.1); transform: scale(1.2); }
+        .emoji-option.is-selected { background: rgba(62,207,142,.2); border-radius: 8px; }
+
+        /* Date/time input icons — make them bright and visible */
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(2);
+            cursor: pointer;
+            opacity: 1;
+            width: 20px; height: 20px;
+        }
+        /* Firefox */
+        input[type="date"], input[type="time"] {
+            color-scheme: dark;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .form-row { grid-template-columns: 1fr; }
+            .streamer-grid { grid-template-columns: 1fr; }
+            .page { padding: 14px 14px 60px; }
+            .emoji-dropdown { left: auto; right: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Stream Manager</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Manage your streamers and schedule</div>
+            </div>
+            <div class="header-links">
+                <a class="header-link" href="/tiktok/streamer">Live Dashboard</a>
+                <a class="header-link" href="/hits">Hit Tracker</a>
+                <a class="header-link" href="/dashboard">Dashboard</a>
+            </div>
+        </div>
+
+        {% if request.query_params.get("success") %}
+        <div class="flash success">{{ request.query_params.get("success").replace("+", " ") }}</div>
+        {% endif %}
+        {% if request.query_params.get("error") %}
+        <div class="flash error">{{ request.query_params.get("error").replace("+", " ") }}</div>
+        {% endif %}
+
+        <!-- Now streaming -->
+        {% if current_streamer %}
+        <div class="now-streaming">
+            <span class="live-dot"></span>
+            Now streaming: {{ current_streamer }}
+        </div>
+        {% else %}
+        <div class="now-none">No one is scheduled to stream right now</div>
+        {% endif %}
+
+        <!-- ===== STREAMERS ===== -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">Streamers</div>
+                    <div class="section-subtitle">Your team. Add everyone who streams.</div>
+                </div>
+                <button class="btn btn-green btn-sm" onclick="document.getElementById('add-streamer-form').style.display = document.getElementById('add-streamer-form').style.display === 'none' ? 'block' : 'none'">+ Add Streamer</button>
+            </div>
+
+            <!-- Add form (hidden by default) -->
+            <div class="add-form" id="add-streamer-form" style="display:none;">
+                <form method="post" action="/stream-manager/streamer/add">
+                    <div class="form-row">
+                        <label class="form-label">Name *
+                            <input class="form-input" type="text" name="name" placeholder="e.g. Isaac" required>
+                        </label>
+                        <label class="form-label">Display Name
+                            <input class="form-input" type="text" name="display_name" placeholder="e.g. Isaac Santy">
+                        </label>
+                        <div class="form-label">
+                            <span>Emoji</span>
+                            <input type="hidden" name="avatar_emoji" id="new-streamer-emoji" value="🎮">
+                            <div class="emoji-picker-wrap">
+                                <div class="emoji-selected" id="new-emoji-btn" onclick="toggleEmojiPicker('new-emoji-dropdown', event)">🎮</div>
+                                <div class="emoji-dropdown" id="new-emoji-dropdown">
+                                    <div class="emoji-grid" id="new-emoji-grid"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <label class="form-label">Color
+                            <input type="hidden" name="color" id="new-streamer-color" value="{{ streamer_colors[0] }}">
+                            <div class="color-row">
+                                {% for c in streamer_colors %}
+                                <div class="color-swatch {% if loop.first %}is-selected{% endif %}"
+                                     style="background:{{ c }};"
+                                     onclick="selectColor(this, '{{ c }}', 'new-streamer-color')"></div>
+                                {% endfor %}
+                            </div>
+                        </label>
+                    </div>
+                    <div style="margin-top:14px;display:flex;gap:8px;">
+                        <button type="submit" class="btn btn-green">Add Streamer</button>
+                        <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-streamer-form').style.display='none'">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            {% if streamers %}
+            <div class="streamer-grid">
+                {% for s in streamers %}
+                <div class="streamer-card">
+                    <div class="streamer-avatar" style="background:{{ s.color or '#fe2c55' }}20;">
+                        {{ s.avatar_emoji or '🎮' }}
+                    </div>
+                    <div class="streamer-info">
+                        <div class="streamer-name">{{ s.display_name or s.name }}</div>
+                        <div class="streamer-handle">@{{ s.name }}</div>
+                    </div>
+                    <div class="streamer-actions">
+                        <button class="btn-icon" title="Edit" onclick="openEditStreamer({{ s.id }}, '{{ s.name }}', '{{ s.display_name or '' }}', '{{ s.avatar_emoji or '' }}', '{{ s.color or '' }}')">&#x270E;</button>
+                        <form method="post" action="/stream-manager/streamer/{{ s.id }}/delete" style="display:inline;" onsubmit="return confirm('Remove this streamer?')">
+                            <button class="btn-icon btn-icon-danger" title="Remove" type="submit">&#x2715;</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty">No streamers yet. Click "+ Add Streamer" to get started.</div>
+            {% endif %}
+        </div>
+
+        <!-- ===== SCHEDULE ===== -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <div class="section-title">Schedule</div>
+                    <div class="section-subtitle">Next 7 days. The streamer on shift auto-selects in the hit tracker.</div>
+                </div>
+                {% if streamers %}
+                <button class="btn btn-green btn-sm" onclick="document.getElementById('add-schedule-form').style.display = document.getElementById('add-schedule-form').style.display === 'none' ? 'block' : 'none'">+ Add Shift</button>
+                {% endif %}
+            </div>
+
+            {% if streamers %}
+            <!-- Add schedule form (hidden by default) -->
+            <div class="add-form" id="add-schedule-form" style="display:none;">
+                <form method="post" action="/stream-manager/schedule/add">
+                    <div class="form-row">
+                        <label class="form-label">Who's streaming? *
+                            <select class="form-select" name="streamer_id" required>
+                                <option value="">— pick streamer —</option>
+                                {% for s in streamers %}
+                                <option value="{{ s.id }}">{{ s.display_name or s.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="form-label">Date *
+                            <input class="form-input" type="date" name="date" value="{{ today }}" required>
+                        </label>
+                        <label class="form-label">Start Time *
+                            <input class="form-input" type="time" name="start_time" value="18:00" required>
+                        </label>
+                        <label class="form-label">End Time *
+                            <input class="form-input" type="time" name="end_time" value="22:00" required>
+                        </label>
+                        <label class="form-label form-full">Title (optional)
+                            <input class="form-input" type="text" name="title" placeholder="e.g. Friday Night Pokemon Breaks">
+                        </label>
+                    </div>
+                    <div style="margin-top:14px;display:flex;gap:8px;">
+                        <button type="submit" class="btn btn-green">Add Shift</button>
+                        <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-schedule-form').style.display='none'">Cancel</button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+
+            {% if schedules %}
+            <div class="schedule-list">
+                {% set current_date = namespace(value='') %}
+                {% for sched in schedules %}
+                    {% if sched.date != current_date.value %}
+                        {% set current_date.value = sched.date %}
+                        <div class="schedule-date-group {% if sched.date == today %}schedule-today{% endif %}">
+                            {% if sched.date == today %}Today{% else %}{{ sched.date }}{% endif %}
+                        </div>
+                    {% endif %}
+                    <div class="schedule-row">
+                        <div class="schedule-dot" style="background:{{ sched.streamer_color }};"></div>
+                        <div style="font-size:18px;flex-shrink:0;">{{ sched.streamer_emoji }}</div>
+                        <div class="schedule-info">
+                            <div class="schedule-who">{{ sched.streamer_name }}</div>
+                            <div class="schedule-when">{{ sched.start_time }} — {{ sched.end_time }}</div>
+                            {% if sched.title %}<div class="schedule-title-text">{{ sched.title }}</div>{% endif %}
+                        </div>
+                        <form method="post" action="/stream-manager/schedule/{{ sched.id }}/delete" style="display:inline;" onsubmit="return confirm('Remove this shift?')">
+                            <button class="btn-icon btn-icon-danger" title="Remove" type="submit">&#x2715;</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty">No shifts scheduled. {% if streamers %}Click "+ Add Shift" to schedule someone.{% else %}Add streamers first.{% endif %}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Edit Streamer Modal -->
+    <div class="edit-backdrop" id="edit-streamer-backdrop">
+        <div class="edit-modal">
+            <div class="edit-header">
+                <span class="edit-title">Edit Streamer</span>
+                <button class="edit-close" onclick="closeEditStreamer()">&#x2715;</button>
+            </div>
+            <form method="post" id="edit-streamer-form">
+                <div class="form-row">
+                    <label class="form-label">Name *
+                        <input class="form-input" type="text" name="name" id="edit-name" required>
+                    </label>
+                    <label class="form-label">Display Name
+                        <input class="form-input" type="text" name="display_name" id="edit-display-name">
+                    </label>
+                    <div class="form-label">
+                        <span>Emoji</span>
+                        <input type="hidden" name="avatar_emoji" id="edit-emoji" value="">
+                        <div class="emoji-picker-wrap">
+                            <div class="emoji-selected" id="edit-emoji-btn" onclick="toggleEmojiPicker('edit-emoji-dropdown', event)">🎮</div>
+                            <div class="emoji-dropdown" id="edit-emoji-dropdown">
+                                <div class="emoji-grid" id="edit-emoji-grid"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <label class="form-label">Color
+                        <input type="hidden" name="color" id="edit-streamer-color" value="">
+                        <div class="color-row" id="edit-color-row">
+                            {% for c in streamer_colors %}
+                            <div class="color-swatch" style="background:{{ c }};"
+                                 onclick="selectColor(this, '{{ c }}', 'edit-streamer-color')"></div>
+                            {% endfor %}
+                        </div>
+                    </label>
+                </div>
+                <div style="margin-top:14px;display:flex;gap:8px;">
+                    <button type="submit" class="btn btn-green">Save</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeEditStreamer()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    /* ---- Emoji picker ---- */
+    var EMOJIS = [
+        '🎮', '🎬', '🎤', '🎯', '🔥', '💎', '⭐',
+        '🐉', '🦊', '🐺', '🦁', '🐲', '🦅', '🐻',
+        '👑', '💪', '🎪', '🎲', '🃏', '🏆', '🎖️',
+        '⚡', '💥', '🌟', '✨', '💫', '🌈', '🍀',
+        '🎸', '🎵', '🎺', '🥁', '🎭', '🎨', '🧩',
+        '🚀', '💰', '📦', '🎁', '🏅', '🎊', '🎉',
+    ];
+
+    function buildEmojiGrid(gridId, inputId, btnId) {
+        var grid = document.getElementById(gridId);
+        if (!grid) return;
+        var currentVal = document.getElementById(inputId).value || '';
+        grid.innerHTML = EMOJIS.map(function(e) {
+            var sel = e === currentVal ? ' is-selected' : '';
+            return '<button type="button" class="emoji-option' + sel + '" data-emoji="' + e + '">' + e + '</button>';
+        }).join('');
+        grid.addEventListener('click', function(ev) {
+            var btn = ev.target.closest('.emoji-option');
+            if (!btn) return;
+            var emoji = btn.getAttribute('data-emoji');
+            document.getElementById(inputId).value = emoji;
+            document.getElementById(btnId).textContent = emoji;
+            // Update selection
+            var opts = grid.querySelectorAll('.emoji-option');
+            for (var i = 0; i < opts.length; i++) opts[i].classList.remove('is-selected');
+            btn.classList.add('is-selected');
+            // Close picker
+            btn.closest('.emoji-dropdown').classList.remove('is-open');
+        });
+    }
+
+    function toggleEmojiPicker(dropdownId, event) {
+        if (event) event.stopPropagation();
+        var dd = document.getElementById(dropdownId);
+        var isOpen = dd.classList.contains('is-open');
+        // Close all pickers first
+        var all = document.querySelectorAll('.emoji-dropdown');
+        for (var i = 0; i < all.length; i++) all[i].classList.remove('is-open');
+        // Toggle the one we clicked
+        if (!isOpen) dd.classList.add('is-open');
+    }
+
+    // Close emoji pickers when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.emoji-picker-wrap')) {
+            var all = document.querySelectorAll('.emoji-dropdown');
+            for (var i = 0; i < all.length; i++) all[i].classList.remove('is-open');
+        }
+    });
+
+    // Init emoji grids
+    buildEmojiGrid('new-emoji-grid', 'new-streamer-emoji', 'new-emoji-btn');
+    buildEmojiGrid('edit-emoji-grid', 'edit-emoji', 'edit-emoji-btn');
+
+    /* ---- Color picker ---- */
+    function selectColor(el, color, inputId) {
+        var parent = el.parentNode;
+        var swatches = parent.querySelectorAll('.color-swatch');
+        for (var i = 0; i < swatches.length; i++) swatches[i].classList.remove('is-selected');
+        el.classList.add('is-selected');
+        document.getElementById(inputId).value = color;
+    }
+
+    /* ---- Edit streamer modal ---- */
+    function openEditStreamer(id, name, displayName, emoji, color) {
+        document.getElementById('edit-streamer-form').action = '/stream-manager/streamer/' + id + '/edit';
+        document.getElementById('edit-name').value = name;
+        document.getElementById('edit-display-name').value = displayName;
+        document.getElementById('edit-emoji').value = emoji || '🎮';
+        document.getElementById('edit-emoji-btn').textContent = emoji || '🎮';
+        document.getElementById('edit-streamer-color').value = color;
+        // Highlight current color
+        var swatches = document.querySelectorAll('#edit-color-row .color-swatch');
+        for (var i = 0; i < swatches.length; i++) {
+            var swatchColor = swatches[i].style.backgroundColor || '';
+            swatches[i].classList.toggle('is-selected', swatchColor === color || swatches[i].getAttribute('onclick').indexOf(color) !== -1);
+        }
+        // Rebuild edit emoji grid to highlight current
+        buildEmojiGrid('edit-emoji-grid', 'edit-emoji', 'edit-emoji-btn');
+        document.getElementById('edit-streamer-backdrop').classList.add('is-open');
+    }
+    function closeEditStreamer() {
+        document.getElementById('edit-streamer-backdrop').classList.remove('is-open');
+    }
+    document.getElementById('edit-streamer-backdrop').addEventListener('click', function(e) {
+        if (e.target === this) closeEditStreamer();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeEditStreamer();
+    });
+    </script>
+</body>
+</html>

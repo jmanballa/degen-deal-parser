@@ -12,6 +12,8 @@
 {% set active_table = current_path.startswith("/table") or current_path.startswith("/review-table") %}
 {% set active_status = current_path == "/status" %}
 {% set active_admin = current_path.startswith("/admin") or current_path.startswith("/ops-log") or current_path.startswith("/learned-rule-log") %}
+{% set active_hits = current_path.startswith("/hits") %}
+{% set active_stream_mgr = current_path.startswith("/stream-manager") %}
 {% if active_dashboard %}
     {% set current_label = "Dashboard" %}
 {% elif active_review %}
@@ -38,6 +40,10 @@
     {% set current_label = "Status" %}
 {% elif active_admin %}
     {% set current_label = "Admin" %}
+{% elif active_hits %}
+    {% set current_label = "Live Hits" %}
+{% elif active_stream_mgr %}
+    {% set current_label = "Stream Manager" %}
 {% else %}
     {% set current_label = "Workspace" %}
 {% endif %}
@@ -211,6 +217,8 @@
                     <a class="{% if active_tiktok %}is-active{% endif %}" href="/tiktok/orders">TikTok Orders</a>
                     <a class="{% if active_tiktok_products %}is-active{% endif %}" href="/tiktok/products">TikTok Products</a>
                     <a class="{% if active_streamer %}is-active{% endif %}" href="/tiktok/streamer">Streamer</a>
+                    <a class="{% if active_hits %}is-active{% endif %}" href="/hits">Live Hits</a>
+                    <a class="{% if active_stream_mgr %}is-active{% endif %}" href="/stream-manager">Stream Manager</a>
                     <div class="nav-dropdown-label">Operators</div>
                     <a class="{% if active_table %}is-active{% endif %}" href="/table">Table</a>
                     <a class="{% if active_status %}is-active{% endif %}" href="/status">Status</a>

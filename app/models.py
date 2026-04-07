@@ -481,6 +481,75 @@ class OperationsLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+# ---------------------------------------------------------------------------
+# Live Hit Tracker
+# ---------------------------------------------------------------------------
+
+# Fallback streamer list — used only if no Streamer profiles exist in the DB.
+STREAMERS: list[str] = [
+    "Jeff",
+    "Streamer 2",
+    "Streamer 3",
+]
+
+PLATFORMS: list[str] = ["TikTok", "Whatnot", "Shopify Live", "YouTube", "Other"]
+
+BIG_HIT_THRESHOLD: float = 50.0
+
+STREAMER_COLORS: list[str] = [
+    "#fe2c55", "#25f4ee", "#3ecf8e", "#f59e0b", "#8b5cf6",
+    "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1",
+]
+
+
+class Streamer(SQLModel, table=True):
+    __tablename__ = "streamers"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    display_name: Optional[str] = Field(default=None)
+    color: Optional[str] = Field(default=None)
+    avatar_emoji: Optional[str] = Field(default=None)
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class StreamSchedule(SQLModel, table=True):
+    __tablename__ = "stream_schedules"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    streamer_id: int = Field(index=True)
+    date: str = Field(index=True)  # YYYY-MM-DD
+    start_time: str  # HH:MM (24h)
+    end_time: str    # HH:MM (24h)
+    title: Optional[str] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class LiveHit(SQLModel, table=True):
+    __tablename__ = "live_hits"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow)
+    is_deleted: bool = Field(default=False, index=True)
+
+    hit_at: datetime = Field(default_factory=utcnow, index=True)
+    streamer_name: str = Field(index=True)
+    customer_name: Optional[str] = Field(default=None, index=True)
+    order_number: Optional[str] = Field(default=None, index=True)
+    hit_note: str
+    estimated_value: Optional[float] = Field(default=None)
+    order_value: Optional[float] = Field(default=None)
+    platform: Optional[str] = Field(default=None)
+    stream_label: Optional[str] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
+    created_by: Optional[str] = Field(default=None)
+
+
 class TikTokSyncState(SQLModel, table=True):
     """Singleton row (id=1) that persists the TikTok integration runtime state across restarts."""
 

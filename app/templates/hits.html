@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
+        * { box-sizing:border-box; }
+        html { scroll-behavior: smooth; }
+        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:1440px; margin:0 auto; padding:28px 28px 60px; }
+        .workspace-nav, .nav-links, .hero-meta, .section-header, .scope-strip, .actions, .meta-row, .pagination { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .workspace-nav { justify-content:space-between; margin-bottom:14px; padding:12px 16px; border:1px solid rgba(159,49,29,.12); border-radius:20px; background:linear-gradient(180deg, rgba(255,253,248,.94), rgba(255,247,238,.82)); box-shadow:0 14px 28px rgba(77,46,20,.08); position:sticky; top:12px; z-index:5; backdrop-filter:blur(10px); }
+        .hero { background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:28px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.55), transparent 24%), radial-gradient(circle at 78% 22%, rgba(213,83,56,.11), transparent 20%), linear-gradient(135deg, rgba(255,249,239,.98), rgba(255,238,223,.95)); }
+        .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
+        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
+        .pill { background:#f5eadc; color:#a7b0ba; }
+        .pill-big-hit { background:#fff0ef; color:#9d2f2b; border:1px solid #efb8b4; }
+        h1 { margin:10px 0 8px; font-size:clamp(34px,4vw,52px); line-height:.93; letter-spacing:-.045em; color:#ffffff; font-weight:800; }
+        p, .small { color:#a7b0ba; line-height:1.5; }
+        .hero-meta { margin-top:12px; }
+        .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; }
+        .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
+        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
+        .card { padding:18px; margin-bottom:18px; background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .filters { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; align-items:end; }
+        label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        .scope-strip { display:flex; justify-content:space-between; margin-top:14px; padding:12px 14px; border:1px solid #eadfce; border-radius:18px; background:#fffdf9; flex-wrap:wrap; gap:8px; }
+        .scope-chip { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background:#fff; border:1px solid var(--line); color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
+        .metric { background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,248,238,.75)); border:1px solid var(--line); border-radius:18px; padding:14px; }
+        .metric-label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; color:#24170f; font-variant-numeric:tabular-nums; }
+        .section-header { justify-content:space-between; margin-bottom:12px; }
+        .section-title { margin:0; font-size:24px; letter-spacing:-.04em; color:#24170f; font-weight:800; }
+        .section-subtitle { margin:4px 0 0; color:#a7b0ba; }
+        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:20px; background:#fff; max-height:72vh; margin-bottom:18px; }
+        table { width:100%; border-collapse:separate; border-spacing:0; }
+        th, td { padding:10px 14px; border-bottom:1px solid #efe4d6; text-align:left; vertical-align:middle; font-size:13px; }
+        thead th { position:sticky; top:0; z-index:2; background:#fff6ea; color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; white-space:nowrap; }
+        tbody tr:hover { background:#fff9f1; }
+        tbody tr:last-child td { border-bottom:none; }
+        .hit-note { max-width:260px; }
+        .value-cell { white-space:nowrap; }
+        .action-cell { white-space:nowrap; display:flex; gap:6px; }
+        .btn-sm { padding:5px 10px; border-radius:10px; font-size:12px; font-weight:700; border:1px solid var(--line); background:#fff; color:var(--text); cursor:pointer; }
+        .btn-sm-danger { border-color:#efb8b4; color:#9d2f2b; background:#fff0ef; }
+        .flash { margin-bottom:14px; padding:12px 14px; border-radius:14px; border:1px solid; font-weight:700; }
+        .flash.success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
+        .flash.error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
+        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
+        .hero, .card, .metric { animation:card-in .5s cubic-bezier(.22,1,.36,1) both; }
+        @media (max-width:900px) {
+            .hero, .summary-grid { grid-template-columns:1fr; }
+            .filters { grid-template-columns:1fr 1fr; }
+            .page { padding:16px 14px 28px; }
+            .workspace-nav { position:static; }
+            .action-cell { flex-direction:column; }
+        }
+    </style>
+    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+</head>
+<body>
+    <div class="page">
+        {% include "_workspace_nav.html" %}
+
+        {% if request.query_params.get("success") %}
+        <div class="flash success">Hit saved successfully.</div>
+        {% endif %}
+        {% if request.query_params.get("error") %}
+        <div class="flash error">{{ request.query_params.get("error") }}</div>
+        {% endif %}
+
+        <section class="hero">
+            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
+            <div>
+                <div class="eyebrow">Streams</div>
+                <h1>{{ title }}</h1>
+                <p>Log and review hits from your livestreams. Filter by streamer, date, or search by customer and order number.</p>
+                <div class="actions">
+                    <a class="button primary-button" href="/hits/new">+ Log a Hit</a>
+                    <a class="button secondary-button" href="/api/hits/export?streamer={{ sel_streamer }}&platform={{ sel_platform }}&after={{ sel_after }}&before={{ sel_before }}&search={{ sel_search }}&min_value={{ sel_min_value }}">Export CSV</a>
+                    <a class="button secondary-button" href="/dashboard">Dashboard</a>
+                </div>
+                <div class="hero-meta">
+                    <span class="scope-chip">{{ total_rows }} hits</span>
+                    <span class="scope-chip">Big hit threshold: ${{ big_hit_threshold|int }}</span>
+                </div>
+            </div>
+        </section>
+
+        <div class="card">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Filter Hits</h2>
+                    <div class="section-subtitle">Narrow by streamer, platform, date range, or keyword search.</div>
+                </div>
+            </div>
+            <form method="get" action="/hits" class="filters">
+                <label>Streamer
+                    <select name="streamer">
+                        <option value="">All streamers</option>
+                        {% for s in streamers %}<option value="{{ s }}" {% if sel_streamer == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label>Platform
+                    <select name="platform">
+                        <option value="">All platforms</option>
+                        {% for p in platforms %}<option value="{{ p }}" {% if sel_platform == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label>After<input type="date" name="after" value="{{ sel_after }}"></label>
+                <label>Before<input type="date" name="before" value="{{ sel_before }}"></label>
+                <label>Search<input type="text" name="search" value="{{ sel_search }}" placeholder="customer, order, note…"></label>
+                <label>Min Value ($)<input type="number" step="0.01" name="min_value" value="{{ sel_min_value }}" placeholder="e.g. 50"></label>
+                <label>Rows
+                    <select name="limit">
+                        {% for opt in [10,25,50,100] %}<option value="{{ opt }}" {% if sel_limit == opt %}selected{% endif %}>{{ opt }}</option>{% endfor %}
+                    </select>
+                </label>
+                <button type="submit" class="secondary-button">Apply</button>
+            </form>
+            <div class="scope-strip">
+                <div class="small">
+                    {% if sel_streamer %}{{ sel_streamer }}{% else %}All streamers{% endif %}
+                    {% if sel_platform %} · {{ sel_platform }}{% endif %}
+                    {% if sel_search %} · search: "{{ sel_search }}"{% endif %}
+                </div>
+                <div class="meta-row">
+                    <span class="scope-chip">{{ total_rows }} hits</span>
+                    <span class="scope-chip">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="metric">
+                <div class="metric-label">Total Hits</div>
+                <div class="metric-value">{{ total_rows }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Total Est. Value</div>
+                <div class="metric-value">${{ "%.2f"|format(total_value) }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Big Hits (≥${{ big_hit_threshold|int }})</div>
+                <div class="metric-value">{{ big_hits_count }}</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Streamers Active</div>
+                <div class="metric-value">{{ active_streamers }}</div>
+            </div>
+        </div>
+
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hit At</th>
+                        <th>Streamer</th>
+                        <th>Customer</th>
+                        <th>Order #</th>
+                        <th>Hit Note</th>
+                        <th>Order $</th>
+                        <th>Hit Value</th>
+                        <th>Platform</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for hit in hits %}
+                    <tr>
+                        <td style="white-space:nowrap;">{{ hit.hit_at.strftime("%b %d %H:%M") if hit.hit_at else "—" }}</td>
+                        <td>{{ hit.streamer_name }}</td>
+                        <td>
+                            {% if hit.customer_name %}
+                            <a href="/hits?search={{ hit.customer_name }}" style="text-decoration:underline;text-underline-offset:3px;">{{ hit.customer_name }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if hit.order_number %}
+                            <a href="/hits?search={{ hit.order_number }}" style="text-decoration:underline;text-underline-offset:3px;">{{ hit.order_number }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="hit-note">{{ hit.hit_note }}</td>
+                        <td class="value-cell">
+                            {% if hit.order_value is not none %}${{ "%.2f"|format(hit.order_value) }}{% else %}—{% endif %}
+                        </td>
+                        <td class="value-cell">
+                            {% if hit.estimated_value is not none %}
+                                ${{ "%.2f"|format(hit.estimated_value) }}
+                                {% if hit.estimated_value >= big_hit_threshold %}
+                                <span class="pill pill-big-hit" style="margin-left:4px;">Big Hit</span>
+                                {% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>{{ hit.platform or "—" }}</td>
+                        <td>
+                            <div class="action-cell">
+                                <a class="btn-sm" href="/hits/{{ hit.id }}/edit">Edit</a>
+                                <form method="post" action="/hits/{{ hit.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this hit?')">
+                                    <button type="submit" class="btn-sm btn-sm-danger">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" style="text-align:center;color:#a7b0ba;padding:32px;">No hits match the current filters. <a href="/hits/new" style="color:var(--accent);font-weight:700;">Log the first one →</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="pagination">
+                {% if pagination["has_previous"] %}
+                <a class="button secondary-button" href="/hits?streamer={{ sel_streamer }}&platform={{ sel_platform }}&after={{ sel_after }}&before={{ sel_before }}&search={{ sel_search }}&min_value={{ sel_min_value }}&limit={{ sel_limit }}&page={{ pagination['previous_page'] }}">Previous</a>
+                {% endif %}
+                <span class="small">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
+                {% if pagination["has_next"] %}
+                <a class="button secondary-button" href="/hits?streamer={{ sel_streamer }}&platform={{ sel_platform }}&after={{ sel_after }}&before={{ sel_before }}&search={{ sel_search }}&min_value={{ sel_min_value }}&limit={{ sel_limit }}&page={{ pagination['next_page'] }}">Next</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

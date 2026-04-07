@@ -853,6 +853,180 @@
             .row-price { font-size: 17px; }
             .gmv-row { gap: 14px; }
         }
+
+        /* ---- Log Hit button ---- */
+        .badge-log-hit {
+            cursor: pointer;
+            user-select: none;
+            background: rgba(62, 207, 142, .14);
+            border-color: rgba(62, 207, 142, .35);
+            color: var(--green);
+            font-weight: 800;
+        }
+        .badge-log-hit:hover { background: rgba(62, 207, 142, .24); }
+
+        /* ---- Hit Modal ---- */
+        .hit-modal-backdrop {
+            display: none;
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0, 0, 0, .72);
+            backdrop-filter: blur(4px);
+            align-items: center; justify-content: center;
+        }
+        .hit-modal-backdrop.is-open { display: flex; }
+        .hit-modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-glow);
+            border-radius: 20px;
+            width: min(560px, 96vw);
+            max-height: 92vh;
+            overflow-y: auto;
+            box-shadow: 0 40px 100px rgba(0,0,0,.8);
+            padding: 24px;
+            animation: modal-in .3s cubic-bezier(.22,1,.36,1);
+        }
+        @keyframes modal-in {
+            from { opacity: 0; transform: scale(.94) translateY(20px); }
+            to { opacity: 1; transform: none; }
+        }
+        .hit-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .hit-modal-title {
+            font-size: 20px; font-weight: 900; letter-spacing: -.03em;
+            color: var(--text);
+        }
+        .hit-modal-close {
+            width: 32px; height: 32px; border-radius: 10px;
+            border: 1px solid var(--border); background: var(--bg-card);
+            color: var(--text-muted); font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .hit-modal-close:hover { background: var(--bg-card-hover); color: var(--text); }
+        .hit-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .hit-form-full { grid-column: 1 / -1; }
+        .hit-label {
+            display: flex; flex-direction: column; gap: 5px;
+            font-size: 11px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text-muted);
+        }
+        .hit-input, .hit-select, .hit-textarea {
+            width: 100%; padding: 10px 12px;
+            border-radius: 10px; border: 1px solid var(--border);
+            background: rgba(255,255,255,.07); color: var(--text);
+            font: inherit; font-size: 14px;
+        }
+        .hit-input::placeholder { color: var(--text-muted); }
+        .hit-input:focus, .hit-select:focus, .hit-textarea:focus {
+            outline: none; border-color: var(--green);
+            box-shadow: 0 0 0 2px rgba(62,207,142,.2);
+        }
+        .hit-textarea { resize: vertical; min-height: 76px; }
+        .hit-select option { background: #1c1c22; }
+        .hit-submit-row {
+            display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px;
+        }
+        .hit-btn {
+            appearance: none; border: none; border-radius: 12px;
+            padding: 10px 16px; font: inherit; font-size: 13px; font-weight: 800;
+            cursor: pointer;
+        }
+        .hit-btn-primary {
+            background: linear-gradient(135deg, #166647, #2ea870);
+            color: #fff; flex: 1;
+            box-shadow: 0 8px 20px rgba(62,207,142,.28);
+        }
+        .hit-btn-secondary {
+            background: rgba(255,255,255,.08); color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .hit-btn:hover { filter: brightness(1.08); }
+        .hit-toast {
+            margin-top: 12px; padding: 10px 14px; border-radius: 10px;
+            font-size: 13px; font-weight: 700; display: none;
+        }
+        .hit-toast.success { background: rgba(62,207,142,.14); border: 1px solid rgba(62,207,142,.4); color: var(--green); }
+        .hit-toast.error { background: rgba(239,68,68,.14); border: 1px solid rgba(239,68,68,.4); color: var(--red); }
+        .hit-recent-title {
+            font-size: 11px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text-muted);
+            margin: 20px 0 8px;
+        }
+        .hit-recent-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .hit-recent-table th {
+            text-align: left; padding: 5px 8px;
+            color: var(--text-muted); font-size: 10px;
+            font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+            border-bottom: 1px solid var(--border);
+        }
+        .hit-recent-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .hit-recent-table tr:last-child td { border-bottom: none; }
+        .hit-big-badge {
+            display: inline-flex; align-items: center; padding: 2px 6px;
+            border-radius: 999px; font-size: 9px; font-weight: 800;
+            background: rgba(254,44,85,.15); color: var(--accent);
+            border: 1px solid rgba(254,44,85,.3); margin-left: 4px;
+        }
+
+        /* ---- Order picker inside hit modal ---- */
+        .order-picker-title {
+            font-size: 11px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text-muted);
+            margin: 16px 0 6px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .order-picker-search {
+            width: 180px; padding: 5px 8px; border-radius: 8px;
+            border: 1px solid var(--border); background: rgba(255,255,255,.07);
+            color: var(--text); font-size: 12px; font-family: inherit;
+        }
+        .order-picker-search::placeholder { color: var(--text-muted); }
+        .order-picker-search:focus { outline: none; border-color: var(--green); }
+        .order-picker {
+            max-height: 220px; overflow-y: auto;
+            border: 1px solid var(--border); border-radius: 12px;
+            background: rgba(0,0,0,.25);
+        }
+        .order-pick-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px; cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            transition: background .12s;
+        }
+        .order-pick-row:last-child { border-bottom: none; }
+        .order-pick-row:hover { background: rgba(62,207,142,.1); }
+        .order-pick-row.is-selected { background: rgba(62,207,142,.18); border-color: rgba(62,207,142,.3); }
+        .order-pick-thumb {
+            width: 36px; height: 36px; border-radius: 8px;
+            object-fit: cover; flex-shrink: 0; background: var(--bg);
+            border: 1px solid var(--border);
+        }
+        .order-pick-thumb-placeholder {
+            width: 36px; height: 36px; border-radius: 8px;
+            background: var(--bg); display: flex; align-items: center; justify-content: center;
+            font-size: 14px; color: var(--text-muted); flex-shrink: 0;
+            border: 1px solid var(--border);
+        }
+        .order-pick-info { flex: 1; min-width: 0; }
+        .order-pick-product {
+            font-size: 12px; font-weight: 700; line-height: 1.3;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .order-pick-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+        .order-pick-price {
+            font-size: 13px; font-weight: 800; color: var(--green);
+            flex-shrink: 0; white-space: nowrap;
+        }
+        .order-pick-check {
+            width: 18px; height: 18px; border-radius: 50%;
+            border: 2px solid var(--border); flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; color: transparent; transition: all .15s;
+        }
+        .order-pick-row.is-selected .order-pick-check {
+            border-color: var(--green); background: var(--green); color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -885,6 +1059,9 @@
                         <span class="badge badge-mute" id="mute-toggle" title="Toggle sound">
                             <span id="mute-icon">&#x1F50A;</span>
                         </span>
+                        <span class="badge badge-log-hit" id="log-hit-btn" title="Log a hit">
+                            &#x1F3AF; Log Hit
+                        </span>
                         <span class="badge badge-chat-toggle" id="chat-toggle-btn" title="Toggle chat">
                             &#x1F4AC; Chat
                         </span>
@@ -899,6 +1076,8 @@
                                 <a href="/bookkeeping">Bookkeeping</a>
                                 <a href="/review">Review</a>
                                 <a href="/deals">Deals</a>
+                                <a href="/hits">Live Hits</a>
+                                <a href="/stream-manager">Stream Manager</a>
                                 <div class="nav-dropdown-label">Operators</div>
                                 <a href="/table">Table</a>
                                 <a href="/status">Status</a>
@@ -1000,6 +1179,83 @@
         <div class="chat-messages" id="chat-messages-mobile"></div>
     </div>
 
+    <!-- ===== Log Hit Modal ===== -->
+    <div class="hit-modal-backdrop" id="hit-modal-backdrop">
+        <div class="hit-modal" role="dialog" aria-modal="true" aria-label="Log a Hit">
+            <div class="hit-modal-header">
+                <span class="hit-modal-title">&#x1F3AF; Log a Hit</span>
+                <button class="hit-modal-close" id="hit-modal-close" title="Close">&#x2715;</button>
+            </div>
+
+            <div class="hit-form-grid" id="hit-form-grid">
+                <label class="hit-label">Streamer *
+                    <select class="hit-select" id="hf-streamer">
+                        <option value="">— select —</option>
+                        {% for s in streamers %}<option value="{{ s }}" {% if current_streamer == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="hit-label">Platform
+                    <select class="hit-select" id="hf-platform">
+                        <option value="">— optional —</option>
+                        {% for p in platforms %}<option value="{{ p }}" {% if p == "TikTok" %}selected{% endif %}>{{ p }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="hit-label hit-form-full">Hit Note *
+                    <textarea class="hit-textarea" id="hf-note" placeholder="e.g. Charizard VMAX Alt Art Secret Rare" rows="3"></textarea>
+                </label>
+                <label class="hit-label">Customer Name
+                    <input class="hit-input" type="text" id="hf-customer" placeholder="e.g. John Smith">
+                </label>
+                <label class="hit-label">Order Number
+                    <input class="hit-input" type="text" id="hf-order" placeholder="e.g. 1234">
+                </label>
+                <label class="hit-label">Order Value ($)
+                    <input class="hit-input" type="number" step="0.01" id="hf-order-value" placeholder="auto from order" readonly style="opacity:.6;">
+                </label>
+                <label class="hit-label">Hit Value ($)
+                    <input class="hit-input" type="number" step="0.01" id="hf-value" placeholder="e.g. 500.00">
+                </label>
+                <label class="hit-label">Stream Label
+                    <input class="hit-input" type="text" id="hf-label" placeholder="e.g. Thursday Break">
+                </label>
+            </div>
+
+            <div class="order-picker-title">
+                <span>Link to Order</span>
+                <input class="order-picker-search" type="text" id="order-picker-search" placeholder="Search orders…">
+            </div>
+            <div class="order-picker" id="order-picker">
+                <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">Loading orders…</div>
+            </div>
+
+            <div id="hit-toast" class="hit-toast"></div>
+
+            <div class="hit-submit-row">
+                <button class="hit-btn hit-btn-primary" id="hit-save-btn">Save Hit</button>
+                <button class="hit-btn hit-btn-secondary" id="hit-modal-close-btn">Cancel</button>
+            </div>
+
+            <div class="hit-recent-title">Recent Hits</div>
+            <table class="hit-recent-table" id="hit-recent-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Streamer</th>
+                        <th>Note</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody id="hit-recent-body">
+                    <tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:12px;">Loading…</td></tr>
+                </tbody>
+            </table>
+
+            <div style="margin-top:14px;text-align:center;">
+                <a href="/hits" style="font-size:12px;color:var(--text-muted);text-decoration:underline;text-underline-offset:3px;">View all hits →</a>
+            </div>
+        </div>
+    </div>
+
     <script>
     (function () {
         var ORDER_POLL_MS = 10000;
@@ -1009,6 +1265,7 @@
         /* ---- Orders state ---- */
         var _orders = [];
         try { _orders = {{ orders_json|safe }}; } catch (e) {}
+        window.__streamerOrders = _orders;
         var _latestUpdatedAt = {{ latest_updated_at|tojson }};
         var _topSellers = [];
         try { _topSellers = {{ top_sellers_json|safe }}; } catch (e) {}
@@ -1754,6 +2011,234 @@
         setInterval(pollOrders, ORDER_POLL_MS);
         setInterval(pollChat, CHAT_POLL_MS);
         pollChat();
+    })();
+    </script>
+
+    <script>
+    /* ---- Log Hit Modal ---- */
+    (function () {
+        var BIG_HIT_THRESHOLD = 50;
+        var backdrop = document.getElementById('hit-modal-backdrop');
+        var logHitBtn = document.getElementById('log-hit-btn');
+        var closeBtn = document.getElementById('hit-modal-close');
+        var closeBtnAlt = document.getElementById('hit-modal-close-btn');
+        var saveBtn = document.getElementById('hit-save-btn');
+        var toast = document.getElementById('hit-toast');
+        var recentBody = document.getElementById('hit-recent-body');
+        var orderPicker = document.getElementById('order-picker');
+        var orderSearch = document.getElementById('order-picker-search');
+        var _selectedOrderId = null;
+
+        /* ---- Access orders from parent IIFE via window ---- */
+        function getOrders() {
+            return window.__streamerOrders || [];
+        }
+
+        function openModal() {
+            backdrop.classList.add('is-open');
+            _selectedOrderId = null;
+            renderOrderPicker('');
+            document.getElementById('hf-note').focus();
+            loadRecent();
+        }
+        function closeModal() {
+            backdrop.classList.remove('is-open');
+        }
+
+        if (logHitBtn) logHitBtn.addEventListener('click', openModal);
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+        if (closeBtnAlt) closeBtnAlt.addEventListener('click', closeModal);
+        backdrop && backdrop.addEventListener('click', function(e) {
+            if (e.target === backdrop) closeModal();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && backdrop.classList.contains('is-open')) closeModal();
+        });
+
+        /* ---- Order picker ---- */
+        function renderOrderPicker(filter) {
+            var orders = getOrders();
+            if (!orders.length) {
+                orderPicker.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">No orders loaded yet.</div>';
+                return;
+            }
+
+            var q = (filter || '').toLowerCase();
+            var filtered = orders.filter(function(o) {
+                if (!q) return true;
+                var haystack = ((o.customer_name || '') + ' ' + (o.order_number || '') + ' '
+                    + (o.items || []).map(function(i) { return i.title || ''; }).join(' ')).toLowerCase();
+                return haystack.indexOf(q) !== -1;
+            });
+
+            if (!filtered.length) {
+                orderPicker.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">No orders match "' + escHtml(filter) + '"</div>';
+                return;
+            }
+
+            orderPicker.innerHTML = filtered.map(function(o) {
+                var firstItem = (o.items && o.items[0]) || {};
+                var productName = firstItem.title || 'Unknown item';
+                var itemCount = (o.items || []).length;
+                var extra = itemCount > 1 ? (' + ' + (itemCount - 1) + ' more') : '';
+                var thumbHtml = firstItem.sku_image
+                    ? '<img class="order-pick-thumb" src="' + escHtml(firstItem.sku_image) + '" alt="" loading="lazy">'
+                    : '<div class="order-pick-thumb-placeholder">&#x1F4E6;</div>';
+                var isSelected = o.tiktok_order_id === _selectedOrderId;
+                var time = o.created_at ? new Date(o.created_at) : null;
+                var timeStr = time ? time.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+
+                return '<div class="order-pick-row' + (isSelected ? ' is-selected' : '') + '" data-order-id="' + escHtml(o.tiktok_order_id) + '">'
+                    + thumbHtml
+                    + '<div class="order-pick-info">'
+                    +   '<div class="order-pick-product">' + escHtml(productName) + escHtml(extra) + '</div>'
+                    +   '<div class="order-pick-meta">'
+                    +     escHtml(o.customer_name || 'Guest') + ' · #' + escHtml(o.order_number || '—')
+                    +     (timeStr ? ' · ' + timeStr : '')
+                    +   '</div>'
+                    + '</div>'
+                    + '<div class="order-pick-price">$' + (o.total_price || 0).toFixed(2) + '</div>'
+                    + '<div class="order-pick-check">&#x2713;</div>'
+                    + '</div>';
+            }).join('');
+        }
+
+        orderPicker && orderPicker.addEventListener('click', function(e) {
+            var row = e.target.closest('.order-pick-row');
+            if (!row) return;
+            var orderId = row.getAttribute('data-order-id');
+            var orders = getOrders();
+            var order = null;
+            for (var i = 0; i < orders.length; i++) {
+                if (orders[i].tiktok_order_id === orderId) { order = orders[i]; break; }
+            }
+            if (!order) return;
+
+            // Toggle selection
+            if (_selectedOrderId === orderId) {
+                _selectedOrderId = null;
+                document.getElementById('hf-customer').value = '';
+                document.getElementById('hf-order').value = '';
+                document.getElementById('hf-order-value').value = '';
+            } else {
+                _selectedOrderId = orderId;
+                document.getElementById('hf-customer').value = order.customer_name || '';
+                document.getElementById('hf-order').value = order.order_number || '';
+                document.getElementById('hf-order-value').value = order.total_price ? order.total_price.toFixed(2) : '';
+            }
+
+            // Re-render to update selection state
+            renderOrderPicker(orderSearch ? orderSearch.value : '');
+        });
+
+        orderSearch && orderSearch.addEventListener('input', function() {
+            renderOrderPicker(this.value);
+        });
+
+        /* ---- Toast ---- */
+        function showToast(msg, type) {
+            toast.textContent = msg;
+            toast.className = 'hit-toast ' + (type || 'success');
+            toast.style.display = 'block';
+            setTimeout(function() { toast.style.display = 'none'; }, 3500);
+        }
+
+        function resetForm() {
+            document.getElementById('hf-note').value = '';
+            document.getElementById('hf-customer').value = '';
+            document.getElementById('hf-order').value = '';
+            document.getElementById('hf-order-value').value = '';
+            document.getElementById('hf-value').value = '';
+            document.getElementById('hf-label').value = '';
+            _selectedOrderId = null;
+            renderOrderPicker(orderSearch ? orderSearch.value : '');
+        }
+
+        saveBtn && saveBtn.addEventListener('click', function() {
+            var streamer = (document.getElementById('hf-streamer').value || '').trim();
+            var note = (document.getElementById('hf-note').value || '').trim();
+            if (!streamer || !note) {
+                showToast('Streamer and Hit Note are required.', 'error');
+                return;
+            }
+
+            var body = {
+                streamer_name: streamer,
+                hit_note: note,
+                customer_name: (document.getElementById('hf-customer').value || '').trim() || null,
+                order_number: (document.getElementById('hf-order').value || '').trim() || null,
+                platform: (document.getElementById('hf-platform').value || '').trim() || null,
+                stream_label: (document.getElementById('hf-label').value || '').trim() || null,
+            };
+            var rawVal = (document.getElementById('hf-value').value || '').trim();
+            if (rawVal) {
+                var parsed = parseFloat(rawVal);
+                if (!isNaN(parsed)) body.estimated_value = parsed;
+            }
+            var rawOV = (document.getElementById('hf-order-value').value || '').trim();
+            if (rawOV) {
+                var parsedOV = parseFloat(rawOV);
+                if (!isNaN(parsedOV)) body.order_value = parsedOV;
+            }
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving…';
+
+            fetch('/api/hits', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Hit';
+                if (data.ok) {
+                    showToast('Hit logged! ' + note.slice(0, 60), 'success');
+                    resetForm();
+                    loadRecent();
+                } else {
+                    showToast(data.error || 'Failed to save.', 'error');
+                }
+            })
+            .catch(function() {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Hit';
+                showToast('Network error — could not save hit.', 'error');
+            });
+        });
+
+        function loadRecent() {
+            if (!recentBody) return;
+            fetch('/api/hits/recent?limit=5')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var hits = data.hits || [];
+                    if (hits.length === 0) {
+                        recentBody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:12px;">No hits yet.</td></tr>';
+                        return;
+                    }
+                    recentBody.innerHTML = hits.map(function(h) {
+                        var t = h.hit_at ? new Date(h.hit_at) : null;
+                        var tStr = t ? (t.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) : '—';
+                        var valStr = h.estimated_value != null ? ('$' + h.estimated_value.toFixed(2)) : '—';
+                        var bigBadge = (h.estimated_value != null && h.estimated_value >= BIG_HIT_THRESHOLD)
+                            ? '<span class="hit-big-badge">Big</span>' : '';
+                        return '<tr>'
+                            + '<td style="white-space:nowrap;color:var(--text-muted)">' + tStr + '</td>'
+                            + '<td>' + escHtml(h.streamer_name) + '</td>'
+                            + '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(h.hit_note) + '</td>'
+                            + '<td style="white-space:nowrap;">' + valStr + bigBadge + '</td>'
+                            + '</tr>';
+                    }).join('');
+                })
+                .catch(function() {});
+        }
+
+        function escHtml(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
     })();
     </script>
 </body>

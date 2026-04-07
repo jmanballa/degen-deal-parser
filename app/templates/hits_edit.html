@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <title>{{ title }}</title>
+    <style>
+        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
+        * { box-sizing:border-box; }
+        html { scroll-behavior:smooth; }
+        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing:antialiased; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:900px; margin:0 auto; padding:28px 28px 60px; }
+        .workspace-nav, .nav-links, .hero-meta, .section-header, .scope-strip, .actions, .meta-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .workspace-nav { justify-content:space-between; margin-bottom:14px; padding:12px 16px; border:1px solid rgba(159,49,29,.12); border-radius:20px; background:linear-gradient(180deg, rgba(255,253,248,.94), rgba(255,247,238,.82)); box-shadow:0 14px 28px rgba(77,46,20,.08); position:sticky; top:12px; z-index:5; backdrop-filter:blur(10px); }
+        .hero { background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.55), transparent 24%), radial-gradient(circle at 78% 22%, rgba(213,83,56,.11), transparent 20%), linear-gradient(135deg, rgba(255,249,239,.98), rgba(255,238,223,.95)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); display:grid; grid-template-columns:minmax(140px,180px) 1fr; gap:24px; align-items:center; padding:24px 28px; margin-bottom:18px; }
+        .logo { width:100%; max-width:160px; display:block; margin:0 auto; }
+        .eyebrow { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
+        h1 { margin:8px 0 6px; font-size:clamp(28px,4vw,44px); line-height:.95; letter-spacing:-.045em; color:#ffffff; font-weight:800; }
+        p, .small { color:#a7b0ba; line-height:1.5; font-size:14px; }
+        .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; }
+        .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
+        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
+        .danger-button { background:linear-gradient(135deg,#9d2f2b,#c43b36); color:#fff; box-shadow:0 8px 18px rgba(157,47,43,.28); }
+        .card { padding:24px; margin-bottom:18px; background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
+        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .form-full { grid-column:1 / -1; }
+        label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        input, select, textarea { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; font-size:15px; }
+        textarea { resize:vertical; min-height:80px; }
+        select { appearance:auto; }
+        .submit-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; align-items:center; }
+        .delete-zone { margin-top:24px; padding-top:20px; border-top:1px solid #eadfce; }
+        .delete-zone-label { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#a7b0ba; margin-bottom:10px; }
+        .section-header { justify-content:space-between; margin-bottom:16px; }
+        .section-title { margin:0; font-size:20px; letter-spacing:-.03em; color:#24170f; font-weight:800; }
+        .section-subtitle { margin:4px 0 0; color:#a7b0ba; font-size:13px; }
+        .meta-chip { display:inline-flex; align-items:center; padding:5px 9px; border-radius:999px; background:#fff; border:1px solid var(--line); color:#a7b0ba; font-size:11px; font-weight:700; }
+        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
+        .hero, .card { animation:card-in .5s cubic-bezier(.22,1,.36,1) both; }
+        @media (max-width:700px) {
+            .hero { grid-template-columns:1fr; }
+            .form-grid { grid-template-columns:1fr; }
+            .page { padding:16px 14px 28px; }
+            .workspace-nav { position:static; }
+        }
+    </style>
+    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+</head>
+<body>
+    <div class="page">
+        {% include "_workspace_nav.html" %}
+
+        <section class="hero">
+            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
+            <div>
+                <div class="eyebrow">Live Hits</div>
+                <h1>Edit Hit</h1>
+                <p>Update the details for this hit record.</p>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <a class="button secondary-button" href="/hits" style="font-size:13px;padding:8px 12px;">← All Hits</a>
+                </div>
+            </div>
+        </section>
+
+        <div class="card">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">Hit #{{ hit.id }}</h2>
+                    <div class="section-subtitle">
+                        Logged by {{ hit.created_by or "unknown" }} ·
+                        <span class="meta-chip">{{ hit.created_at.strftime("%b %d, %Y %H:%M UTC") if hit.created_at else "—" }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <form method="post" action="/hits/{{ hit.id }}/edit">
+                <div class="form-grid">
+                    <label>Streamer *
+                        <select name="streamer_name" required>
+                            <option value="">— select streamer —</option>
+                            {% for s in streamers %}
+                            <option value="{{ s }}" {% if hit.streamer_name == s %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                            {% if hit.streamer_name and hit.streamer_name not in streamers %}
+                            <option value="{{ hit.streamer_name }}" selected>{{ hit.streamer_name }}</option>
+                            {% endif %}
+                        </select>
+                    </label>
+                    <label>Platform
+                        <select name="platform">
+                            <option value="">— optional —</option>
+                            {% for p in platforms %}
+                            <option value="{{ p }}" {% if hit.platform == p %}selected{% endif %}>{{ p }}</option>
+                            {% endfor %}
+                            {% if hit.platform and hit.platform not in platforms %}
+                            <option value="{{ hit.platform }}" selected>{{ hit.platform }}</option>
+                            {% endif %}
+                        </select>
+                    </label>
+                    <label class="form-full">Hit Note *
+                        <textarea name="hit_note" required rows="3">{{ hit.hit_note }}</textarea>
+                    </label>
+                    <label>Customer Name
+                        <input type="text" name="customer_name" value="{{ hit.customer_name or '' }}">
+                    </label>
+                    <label>Order Number
+                        <input type="text" name="order_number" value="{{ hit.order_number or '' }}">
+                    </label>
+                    <label>Order Value ($)
+                        <input type="number" step="0.01" name="order_value" value="{{ hit.order_value if hit.order_value is not none else '' }}">
+                    </label>
+                    <label>Hit Value ($)
+                        <input type="number" step="0.01" name="estimated_value" value="{{ hit.estimated_value if hit.estimated_value is not none else '' }}">
+                    </label>
+                    <label>Stream Label
+                        <input type="text" name="stream_label" value="{{ hit.stream_label or '' }}">
+                    </label>
+                    <label>Hit At
+                        <input type="datetime-local" name="hit_at_raw" id="hit-at-field" value="">
+                    </label>
+                    <label class="form-full">Notes (internal)
+                        <textarea name="notes" rows="2">{{ hit.notes or '' }}</textarea>
+                    </label>
+                </div>
+
+                <div class="submit-row">
+                    <button type="submit" class="primary-button">Save Changes</button>
+                    <a class="button secondary-button" href="/hits">Cancel</a>
+                </div>
+            </form>
+
+            <div class="delete-zone">
+                <div class="delete-zone-label">Danger Zone</div>
+                <form method="post" action="/hits/{{ hit.id }}/delete" onsubmit="return confirm('Soft-delete this hit? It will no longer appear in the list but is not permanently removed.')">
+                    <button type="submit" class="danger-button">Delete This Hit</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Pre-fill the hit_at datetime-local field from server value
+        (function () {
+            var field = document.getElementById('hit-at-field');
+            if (field) {
+                // hit.hit_at is an ISO datetime string from the server
+                var raw = "{{ hit.hit_at.isoformat() if hit.hit_at else '' }}";
+                if (raw) {
+                    // Strip timezone suffix for datetime-local
+                    field.value = raw.replace(/\+.*$/, '').replace('Z', '').slice(0, 16);
+                }
+            }
+        })();
+    </script>
+</body>
+</html>
