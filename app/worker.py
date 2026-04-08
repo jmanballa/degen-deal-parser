@@ -1674,11 +1674,15 @@ def should_force_stitch(base_row: DiscordMessage, candidate_rows: list[DiscordMe
     first_text = normalize_text(first_row.content)
     second_text = normalize_text(second_row.content)
 
+    image_then_text = has_images(first_row) and len(first_text) <= 20 and is_explicit_buy_sell_text(second_text)
+    text_then_image = has_images(second_row) and len(second_text) <= 20 and is_explicit_buy_sell_text(first_text)
+
+    if image_then_text or text_then_image:
+        if not has_large_gap(sorted_rows, max_gap_seconds=45):
+            return True
+
     if has_large_gap(sorted_rows, max_gap_seconds=8):
         return False
-
-    if has_images(first_row) and len(first_text) <= 20 and is_explicit_buy_sell_text(second_text):
-        return True
 
     return False
 
