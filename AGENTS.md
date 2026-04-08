@@ -108,9 +108,10 @@ These conventions should be preserved unless the user explicitly asks to change 
 - `plus 195 zelle` in a trade usually means money to the store
 - `tap` means card
 - payment-only logs like `$11 zelle` or `zelle $11` default to a sell unless stronger context says otherwise
-- image-first + follow-up payment/message can be one transaction
+- image-first + follow-up payment/message can be one transaction (up to 45s gap)
 - unrelated nearby deals should not be stitched together
 - card buys/sells/trades should use `expense_category = inventory`
+- `2x`, `3x` etc. are quantity multipliers, NOT dollar amounts — the amount extractor skips these
 
 ## Current UX / Data Behavior
 
@@ -173,6 +174,62 @@ Do not assign overlapping files to multiple agents at the same time.
 
 **WARNING: `app/main.py` is 10,000+ lines.** It contains routes for both Discord and TikTok features, plus all background task logic. This is the highest-priority refactoring target. Be careful when editing — changes can have wide blast radius.
 
+## Stitching Behavior (CRITICAL)
+
+The worker stitches nearby messages from the same author into a single deal. Key parameters:
+
+- `stitch_window_seconds` (default 30) — how far back/forward to look for candidates
+- `stitch_max_messages` (default 3) — max messages per stitch group
+- `has_large_gap` (default 12s) — general inter-message gap limit for stitching
+- `should_force_stitch` — overrides gap limits for high-confidence patterns
+
+### Force-stitch patterns (bypass general gap limit)
+
+- **Image + explicit buy/sell text** (either order): up to **45 seconds** gap. This covers the common Discord pattern where someone posts a photo then types "Buy 1856 cash" 20-30 seconds later.
+- Other force-stitch patterns: 8 seconds max.
+
+### Stitch profile categories
+
+The stitching logic classifies each message into profile categories to decide what context is missing:
+- `images` — message has image attachments
+- `descriptions` — message has descriptive text (>= 8 chars, or explicit buy/sell text regardless of length)
+- `payment_fragments` — message is a payment-only shorthand like "zelle $50"
+- `trade_fragments` — message has in/out trade keywords
+
+A group "needs more context" until it has a useful combination of these (e.g., description + payment, or image + description + payment).
+
+### Back-to-back deals from the same author
+
+When an author posts multiple deals in quick succession (e.g., image+text, image+text within 12 seconds), the system must pair each image with its NEAREST text message. This relies on:
+1. `candidate_improves_group` sorting candidates by absolute time distance
+2. `has_descriptive_text` recognizing short explicit buy/sell text (like "Buy 450", 7 chars) so it doesn't get skipped in favor of a farther-away longer message
+
+### Anti-stitch guards
+
+- 2+ complete deals in the same group → reject stitch
+- 2+ image posts (unless other rows are all short fragments) → reject stitch
+- 2+ payment fragments → reject stitch
+- Large gap between messages → reject stitch (unless force-stitch applies)
+
+## Non-Transaction Detection
+
+The parser auto-ignores messages that are clearly not deals:
+
+### Currently detected noise patterns
+- Blank / empty messages
+- Date markers (e.g., "March 15", "Monday")
+- Internal cash transfers / partner loans
+- Non-transaction keywords ("profit overview", "summary", "spreadsheet", etc.)
+- **Emoji-only messages** (no alphanumeric content)
+- **"Wrong chat/channel/image" messages**
+- **Short conversational filler** (< 25 chars, no digits, no images) — "Noice", "Lmao", "Perfect!!", etc.
+
+### Preserved (NOT auto-ignored)
+- Payment method words alone ("cash", "zelle") — these may be stitch fragments
+- Anything with digits — could be a price or amount
+- Anything with images — could be a deal photo
+- Anything matching `has_transaction_signal` — buy/sell/trade/payment patterns
+
 ## Safe Change Priorities
 
 Preferred order of operations for parser changes:
@@ -196,10 +253,14 @@ Minimum verification after code changes:
 ```
 
 When touching parser/stitching logic, also sanity-check:
-- image-first then text
+- image-first then text (up to 45s gap for explicit buy/sell)
 - payment-only sell default
 - explicit buy/sell text overriding trade-like image guesses
 - grouped child rows no longer producing duplicate transactions
+- back-to-back deals from same author pair correctly (nearest image to nearest text)
+- short explicit text like "Buy 450" (< 8 chars) still counts as descriptive for stitching
+- multiplier notation like "2x" is not extracted as a dollar amount
+- emoji-only and "wrong chat" messages are auto-ignored, not stuck in review_required
 
 When touching bookkeeping:
 - upload `.xlsx`
@@ -256,6 +317,17 @@ Both are stored in the `TikTokAuth` DB table and auto-refreshed.
 - **GMV = `subtotal_price`** (product value only), not `total_price` (includes tax + shipping)
 - **Webhook payloads are incomplete** — always fetch full details from API after receiving
 - See `TIKTOK_API.md` for the complete list of gotchas
+
+## Infrastructure: Machine A / Machine B
+
+- **Machine A** (desktop-va88cfb) — local dev, runs SQLite, Tailscale IP `100.122.56.32`
+- **Machine B** (desktop-ppf7vk9) — production server, runs PostgreSQL + Discord bot + worker, Tailscale IP `100.110.34.106`
+
+Both machines are connected via **Tailscale** mesh VPN. From Machine A you can:
+- Query production Postgres: `postgresql+psycopg://degen:degen42069@100.110.34.106:5432/degen_live`
+- SSH: `ssh Degen@100.110.34.106`
+
+PostgreSQL on Machine B is at `C:\Program Files\PostgreSQL\17\data\` and allows connections from the Tailscale subnet (`100.64.0.0/10` in `pg_hba.conf`).
 
 ## Database: Dual-Engine Support (CRITICAL)
 
