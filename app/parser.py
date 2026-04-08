@@ -382,6 +382,8 @@ def extract_unlabeled_amount(text: str) -> float | None:
             continue
         if has_grade_context_before(lower, match.start()):
             continue
+        if re.match(r"x\b", lower[match.end():]):
+            continue
         candidates.append(amount)
 
     return candidates[-1] if candidates else None
@@ -815,6 +817,33 @@ def looks_like_internal_cash_transfer(message_text: str) -> bool:
     return any(re.search(pattern, lower, re.I) for pattern in patterns)
 
 
+def _detect_conversational_noise(lower: str, image_urls: List[str] | None = None) -> str | None:
+    """Return an ignore reason if the message is conversational noise, else None.
+
+    Only called AFTER has_transaction_signal returned False, so we know
+    there are no buy/sell/trade/payment signals in the text.
+    """
+    if not lower:
+        return None
+
+    if not re.search(r"[a-zA-Z0-9$]", lower):
+        return "ignored emoji-only message"
+
+    if re.search(r"\bwrong\s+(chat|channel|image)\b", lower, re.I):
+        return "ignored wrong-channel message"
+
+    is_payment_word = bool(re.fullmatch(
+        r"(zelle|venmo|paypal|cash|card|tap|cc|dc)", lower.strip(), re.I,
+    ))
+    if is_payment_word:
+        return None
+
+    if len(lower) < 25 and not re.search(r"\d", lower) and not image_urls:
+        return "ignored short conversational message"
+
+    return None
+
+
 def detect_non_transaction_message(message_text: str, image_urls: List[str] | None = None) -> Dict[str, Any] | None:
     normalized = normalize_detector_text(message_text)
     lower = normalized.lower()
@@ -906,6 +935,25 @@ def detect_non_transaction_message(message_text: str, image_urls: List[str] | No
             "parsed_notes": "ignored non-transaction summary or screenshot",
             "image_summary": "non-transaction image ignored" if image_urls else "no image used",
             "confidence": 0.98,
+            "needs_review": False,
+            "ignore_message": True,
+        }
+
+    noise_reason = _detect_conversational_noise(lower, image_urls)
+    if noise_reason:
+        return {
+            "parsed_type": None,
+            "parsed_amount": None,
+            "parsed_payment_method": None,
+            "parsed_cash_direction": None,
+            "parsed_category": None,
+            "parsed_items": [],
+            "parsed_items_in": [],
+            "parsed_items_out": [],
+            "parsed_trade_summary": "",
+            "parsed_notes": noise_reason,
+            "image_summary": "no image used",
+            "confidence": 0.99,
             "needs_review": False,
             "ignore_message": True,
         }
