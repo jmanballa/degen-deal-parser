@@ -86,26 +86,37 @@
     <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
 </head>
 <body>
+    {% set user_role = current_user.role if current_user else "viewer" %}
+    {% set is_admin = user_role == "admin" %}
+    {% set is_reviewer = user_role in ("reviewer", "admin") %}
     <div class="page">
         {% include "_workspace_nav.html" %}
         <section class="hero">
             <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
             <div>
-                <div class="eyebrow">Internal Operations</div>
+                <div class="eyebrow">{% if is_admin %}Internal Operations{% elif is_reviewer %}Review Operations{% else %}Stream Team{% endif %}</div>
                 <h1>{{ title }}</h1>
+                {% if is_reviewer %}
                 <p>Welcome back{% if current_user %}, {{ current_user.display_name or current_user.username }}{% endif %}. This is your daily briefing for deal flow, review pressure, and system activity so you can decide what needs attention first.</p>
+                {% else %}
+                <p>Welcome back{% if current_user %}, {{ current_user.display_name or current_user.username }}{% endif %}. Your live stream tools, order tracking, and deal feed are all here.</p>
+                {% endif %}
                 <div class="hero-actions">
-                    {% if current_user and current_user.role in ["admin","reviewer"] %}<a class="button primary-button" href="/review">Review Now</a>{% endif %}
+                    {% if not is_reviewer %}
+                    <a class="button primary-button" href="/tiktok/streamer">Streamer Dashboard</a>
+                    <a class="button secondary-button" href="/stream-manager">Stream Manager</a>
+                    {% endif %}
+                    {% if is_reviewer %}<a class="button primary-button" href="/review">Review Now</a>{% endif %}
                     <a class="button secondary-button" href="/deals">Browse Deals</a>
                     <a class="button secondary-button" href="/shopify/orders">Shopify Orders</a>
                     <a class="button secondary-button" href="/tiktok/orders">TikTok Shop Orders</a>
                     <a class="button secondary-button" href="/reports">Open Reports</a>
-                    {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
+                    {% if is_admin %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
                 </div>
             </div>
         </section>
 
-        {% if parser_progress["local_runtime"]["needs_attention"] %}
+        {% if is_reviewer and parser_progress["local_runtime"]["needs_attention"] %}
         <div class="alert">
             <div><strong>&#9888; System updates look delayed &mdash; new Discord messages may not be arriving yet</strong></div>
             <a href="/status">Check Status &rarr;</a>
@@ -113,7 +124,27 @@
         {% endif %}
 
         <div class="workspace-card-grid">
-            {% if current_user and current_user.role in ["admin","reviewer"] %}
+            {% if not is_reviewer %}
+            <div class="workspace-card">
+                <span class="workspace-kicker">Go live</span>
+                <h3>Streamer Dashboard</h3>
+                <p>Open the live order feed, chat overlay, and real-time sales ticker for your stream.</p>
+                <div class="workspace-card-footer">
+                    <span class="small">Live orders and chat</span>
+                    <a class="button primary-button" href="/tiktok/streamer">Open Streamer</a>
+                </div>
+            </div>
+            <div class="workspace-card">
+                <span class="workspace-kicker">Schedule</span>
+                <h3>Stream Manager</h3>
+                <p>Set up streamer profiles, manage the weekly schedule, and configure stream windows.</p>
+                <div class="workspace-card-footer">
+                    <span class="small">Scheduling and setup</span>
+                    <a class="button secondary-button" href="/stream-manager">Open Manager</a>
+                </div>
+            </div>
+            {% endif %}
+            {% if is_reviewer %}
             <div class="workspace-card">
                 <span class="workspace-kicker">Primary workflow</span>
                 <h3>Review Queue</h3>
@@ -142,18 +173,40 @@
                     <a class="button secondary-button" href="/reports">Open Reports</a>
                 </div>
             </div>
+            {% if is_reviewer %}
             <div class="workspace-card">
                 <span class="workspace-kicker">Operations</span>
-                <h3>{% if current_user and current_user.role == "admin" %}Admin + Status{% else %}System Status{% endif %}</h3>
-                <p>{% if current_user and current_user.role == "admin" %}Keep system health, bookkeeping, and operational controls available without overwhelming the rest of the product.{% else %}Check system activity and recent operations without dropping into the full admin console.{% endif %}</p>
+                <h3>{% if is_admin %}Admin + Status{% else %}System Status{% endif %}</h3>
+                <p>{% if is_admin %}Keep system health, bookkeeping, and operational controls available without overwhelming the rest of the product.{% else %}Check system activity and recent operations without dropping into the full admin console.{% endif %}</p>
                 <div class="workspace-card-footer">
                     <span class="small">{{ parser_progress["queued"] + parser_progress["processing"] }} rows in flight</span>
                     <div class="stack">
                         <a class="button secondary-button" href="/status">Status</a>
-                        {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/admin">Admin</a>{% endif %}
+                        {% if is_admin %}<a class="button secondary-button" href="/admin">Admin</a>{% endif %}
                     </div>
                 </div>
             </div>
+            {% endif %}
+            {% if is_admin %}
+            <div class="workspace-card">
+                <span class="workspace-kicker">Go live</span>
+                <h3>Streamer Dashboard</h3>
+                <p>Open the live order feed, chat overlay, and real-time sales ticker for your stream.</p>
+                <div class="workspace-card-footer">
+                    <span class="small">Live orders and chat</span>
+                    <a class="button secondary-button" href="/tiktok/streamer">Open Streamer</a>
+                </div>
+            </div>
+            <div class="workspace-card">
+                <span class="workspace-kicker">Schedule</span>
+                <h3>Stream Manager</h3>
+                <p>Set up streamer profiles, manage the weekly schedule, and configure stream windows.</p>
+                <div class="workspace-card-footer">
+                    <span class="small">Scheduling and setup</span>
+                    <a class="button secondary-button" href="/stream-manager">Open Manager</a>
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <div class="summary-grid">
@@ -184,6 +237,7 @@
             </div>
             <div class="metrics-stack" style="grid-column:1 / -1;">
                 <div class="metric-group supporting">
+                    {% if is_reviewer %}
                     <div class="metric">
                         <div class="metric-label">Review Required</div>
                         <div class="metric-value">{{ review_summary["needs_review"] }}</div>
@@ -194,6 +248,7 @@
                         <div class="metric-value">{{ parser_progress["queued"] + parser_progress["processing"] }}</div>
                         <div class="metric-footnote">{{ parser_progress["processing"] }} in progress now</div>
                     </div>
+                    {% endif %}
                     <div class="metric">
                         <div class="metric-label">{{ dashboard_snapshot["today"]["shopify"]["order_count"] }} Shopify orders today</div>
                         <div class="metric-value">{{ dashboard_snapshot["today"]["shopify"]["gross_display"] }}</div>
@@ -210,7 +265,8 @@
             </div>
         </div>
 
-        <div class="layout">
+        <div class="{% if is_reviewer %}layout{% endif %}">
+            {% if is_reviewer %}
             <div class="card">
                 <h2 class="section-title">What Needs Attention</h2>
                 <p class="section-subtitle">Start here before you drop into the big tables.</p>
@@ -220,9 +276,7 @@
                             <strong>Needs review</strong>
                             <div class="small">{{ review_summary["needs_review"] }} rows still require human review in the primary review queue.</div>
                         </div>
-                        {% if current_user and current_user.role in ["admin","reviewer"] %}
                         <a class="button primary-button" href="/review">Review Now</a>
-                        {% endif %}
                     </div>
                     <div class="action-row">
                         <div>
@@ -245,11 +299,12 @@
                         </div>
                         <div class="stack">
                             <a class="button secondary-button" href="/reports">Reports</a>
-                            {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
+                            {% if is_admin %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
                         </div>
                     </div>
                 </div>
             </div>
+            {% endif %}
 
             <div class="card">
                 <h2 class="section-title">Today at a Glance</h2>
@@ -407,7 +462,7 @@
             </div>
         </div>
 
-        {% if recent_promotions %}
+        {% if is_admin and recent_promotions %}
         <div class="card">
             <h2 class="section-title">Auto-Promoted Patterns</h2>
             <p class="section-subtitle">Correction patterns promoted automatically in the last 7 days.</p>
@@ -435,6 +490,7 @@
             </form>
         </div>
 
+        {% if is_reviewer %}
         <div class="card">
             <h2 class="section-title">Recent Reviewed Deals</h2>
             <p class="section-subtitle">The most recently confirmed rows.</p>
@@ -456,6 +512,7 @@
                 <a class="section-link" href="/review">View all &rarr;</a>
             </div>
         </div>
+        {% endif %}
     </div>
 </body>
 </html>

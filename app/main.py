@@ -191,6 +191,9 @@ try:
         product_record_from_payload as _product_record_from_payload,
         upsert_tiktok_product_row as _upsert_tiktok_product_row,
         fetch_tiktok_live_analytics as _fetch_tiktok_live_analytics,
+        fetch_live_session_list as _fetch_live_session_list,
+        fetch_overview_performance_daily as _fetch_overview_performance_daily,
+        fetch_stream_performance_per_minutes as _fetch_stream_performance_per_minutes,
     )
 except Exception:  # pragma: no cover - fallback if the script module is unavailable
     pull_tiktok_orders = None
@@ -205,6 +208,9 @@ except Exception:  # pragma: no cover - fallback if the script module is unavail
     _create_tiktok_product = None
     _fetch_tiktok_product_detail = None
     _fetch_tiktok_live_analytics = None
+    _fetch_live_session_list = None
+    _fetch_overview_performance_daily = None
+    _fetch_stream_performance_per_minutes = None
     _product_record_from_payload = None
     _upsert_tiktok_product_row = None
 
@@ -305,6 +311,7 @@ def build_tiktok_orders_url(
     *,
     start: str = "",
     end: str = "",
+    stream: str = "",
     financial_status: str = "",
     fulfillment_status: str = "",
     order_status: str = "",
@@ -317,6 +324,8 @@ def build_tiktok_orders_url(
     limit: int = 50,
 ) -> str:
     params: dict[str, str] = {}
+    if stream:
+        params["stream"] = stream
     if start:
         params["start"] = start
     if end:
@@ -396,6 +405,12 @@ _live_analytics_lock = threading.Lock()
 _LIVE_ANALYTICS_POLL_SECONDS = 60
 
 _stream_range: dict[str, Optional[datetime]] = {"start": None, "end": None}
+_stream_range_source: str = "manual"
+
+_live_session_cache: dict[str, object] = {}
+_live_session_lock = threading.Lock()
+_live_sessions_list_cache: list[dict] = []
+_live_sessions_list_lock = threading.Lock()
 
 PARSE_STATUS_OPTIONS = [
     PARSE_PENDING,
@@ -3381,7 +3396,8 @@ def build_watched_channel_groups(
 
 
 def _load_stream_range() -> None:
-    """Load persisted stream range from DB into memory."""
+    """Load persisted stream range and source from DB into memory."""
+    global _stream_range_source
     try:
         with managed_session() as session:
             for key in ("stream_start_utc", "stream_end_utc"):
@@ -3392,12 +3408,19 @@ def _load_stream_range() -> None:
                         dt = dt.replace(tzinfo=timezone.utc)
                     field = "start" if "start" in key else "end"
                     _stream_range[field] = dt
+            src_row = session.get(AppSetting, "stream_range_source")
+            if src_row and src_row.value:
+                _stream_range_source = src_row.value
     except Exception as exc:
         print(structured_log_line(runtime="app", action="stream_range.load_failed", success=False, error=str(exc)))
 
 
-def _save_stream_range() -> None:
-    """Persist current stream range to DB."""
+def _save_stream_range(source: Optional[str] = None) -> None:
+    """Persist current stream range and source to DB."""
+    global _stream_range_source
+    if source is not None:
+        _stream_range_source = source
+
     def _do(session: Session):
         for field, key in (("start", "stream_start_utc"), ("end", "stream_end_utc")):
             val = _stream_range.get(field)
@@ -3408,6 +3431,12 @@ def _save_stream_range() -> None:
                 session.add(existing)
             else:
                 session.add(AppSetting(key=key, value=val_str))
+        src_existing = session.get(AppSetting, "stream_range_source")
+        if src_existing:
+            src_existing.value = _stream_range_source
+            session.add(src_existing)
+        else:
+            session.add(AppSetting(key="stream_range_source", value=_stream_range_source))
         session.commit()
     try:
         run_write_with_retry(_do)
@@ -3599,14 +3628,14 @@ async def lifespan(app: FastAPI):
     live_analytics_stop.set()
     await stop_live_chat()
 
-    done, pending = await asyncio.wait(background_tasks, timeout=10)
-    for task in pending:
-        task.cancel()
-
-    if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
-    if done:
-        await asyncio.gather(*done, return_exceptions=True)
+    if background_tasks:
+        done, pending = await asyncio.wait(background_tasks, timeout=10)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        if done:
+            await asyncio.gather(*done, return_exceptions=True)
     heartbeat_thread = getattr(app.state, "heartbeat_thread", None)
     if heartbeat_thread:
         heartbeat_thread.join(timeout=5)
@@ -7385,6 +7414,7 @@ def tiktok_orders_page(
     request: Request,
     start: Optional[str] = Query(default=None),
     end: Optional[str] = Query(default=None),
+    stream: Optional[str] = Query(default=None),
     financial_status: Optional[str] = Query(default=None),
     fulfillment_status: Optional[str] = Query(default=None),
     order_status: Optional[str] = Query(default=None),
@@ -7401,10 +7431,24 @@ def tiktok_orders_page(
 ):
     if denial := require_role_response(request, "viewer"):
         return denial
+
+    effective_start = start
+    effective_end = end
+    if stream:
+        stream_sessions = _get_live_sessions_list()
+        match = next((s for s in stream_sessions if s.get("id") == stream), None)
+        if match:
+            s_ts = match.get("start_time") or 0
+            e_ts = match.get("end_time") or 0
+            if s_ts > 0:
+                effective_start = datetime.fromtimestamp(s_ts, tz=PACIFIC_TZ).strftime("%Y-%m-%d")
+            if e_ts > 0:
+                effective_end = datetime.fromtimestamp(e_ts, tz=PACIFIC_TZ).strftime("%Y-%m-%d")
+
     page_data = _collect_tiktok_orders_page_data(
         session,
-        start=start,
-        end=end,
+        start=effective_start,
+        end=effective_end,
         financial_status=financial_status,
         fulfillment_status=fulfillment_status,
         order_status=order_status,
@@ -7442,8 +7486,10 @@ def tiktok_orders_page(
         "sync_snapshot": page_data["sync_snapshot"],
         "integration_state": page_data["integration_state"],
         "pagination": pagination,
-        "selected_start": start or "",
-        "selected_end": end or "",
+        "selected_start": effective_start or "",
+        "selected_end": effective_end or "",
+        "selected_stream": stream or "",
+        "stream_sessions": _get_live_sessions_list(),
         "selected_financial_status": financial_status or "",
         "selected_fulfillment_status": fulfillment_status or "",
         "selected_order_status": order_status or "",
@@ -7597,6 +7643,8 @@ def _poll_tiktok_live_analytics(stop_event: threading.Event) -> None:
         return
     runtime_name = f"{settings.runtime_name}_live_analytics"
     while not stop_event.is_set():
+        _poll_access_token = ""
+        _poll_shop_cipher = ""
         try:
             with managed_session() as session:
                 auth_row = get_latest_tiktok_auth_row(session)
@@ -7605,6 +7653,8 @@ def _poll_tiktok_live_analytics(stop_event: threading.Event) -> None:
                 continue
 
             shop_id, shop_cipher, access_token = _resolve_tiktok_pull_credentials(auth_row)
+            _poll_access_token = access_token or ""
+            _poll_shop_cipher = shop_cipher or ""
             if not access_token or not shop_cipher:
                 stop_event.wait(_LIVE_ANALYTICS_POLL_SECONDS)
                 continue
@@ -7654,12 +7704,117 @@ def _poll_tiktok_live_analytics(stop_event: threading.Event) -> None:
             with _live_analytics_lock:
                 _live_analytics_cache["ok"] = False
 
+        if _poll_access_token and _poll_shop_cipher:
+            _poll_live_session_list(runtime_name, _poll_access_token, _poll_shop_cipher)
+
         stop_event.wait(_LIVE_ANALYTICS_POLL_SECONDS)
+
+
+def _poll_live_session_list(runtime_name: str, access_token: str, shop_cipher: str) -> None:
+    """Fetch the live session list and auto-update stream range if source is 'auto'."""
+    global _stream_range_source
+    if _fetch_live_session_list is None:
+        return
+    try:
+        now = datetime.now(timezone.utc)
+        start_str = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        end_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+            sessions = _fetch_live_session_list(
+                client,
+                base_url=resolve_tiktok_shop_pull_base_url(),
+                app_key=(settings.tiktok_app_key or "").strip(),
+                app_secret=(settings.tiktok_app_secret or "").strip(),
+                access_token=access_token,
+                shop_cipher=shop_cipher,
+                start_date=start_str,
+                end_date=end_str,
+            )
+        with _live_sessions_list_lock:
+            _live_sessions_list_cache.clear()
+            _live_sessions_list_cache.extend(sessions)
+
+        if not sessions:
+            return
+
+        latest = max(sessions, key=lambda s: s.get("end_time") or 0)
+        with _live_session_lock:
+            _live_session_cache.update(latest)
+            _live_session_cache["ok"] = True
+
+        if _stream_range_source == "manual":
+            return
+
+        start_ts = latest.get("start_time") or 0
+        end_ts = latest.get("end_time") or 0
+        if start_ts <= 0:
+            return
+        new_start = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+        new_end = datetime.fromtimestamp(end_ts, tz=timezone.utc) if end_ts > 0 else None
+
+        changed = (_stream_range.get("start") != new_start or _stream_range.get("end") != new_end)
+        if changed:
+            _stream_range["start"] = new_start
+            _stream_range["end"] = new_end
+            _save_stream_range(source="auto")
+            print(structured_log_line(
+                runtime=runtime_name,
+                action="tiktok.live_session.auto_range_set",
+                success=True,
+                live_id=latest.get("id"),
+                title=latest.get("title"),
+                gmv=latest.get("gmv"),
+                start_time=start_ts,
+                end_time=end_ts,
+            ))
+    except Exception as exc:
+        print(structured_log_line(
+            runtime=runtime_name,
+            action="tiktok.live_session.poll_failed",
+            success=False,
+            error=str(exc)[:400],
+        ))
+
+
+def _get_live_session_snapshot() -> dict:
+    with _live_session_lock:
+        return dict(_live_session_cache)
+
+
+def _is_currently_live() -> bool:
+    """Return True if the latest known stream session ended within the last 15 minutes."""
+    snap = _get_live_session_snapshot()
+    if not snap.get("ok"):
+        return False
+    end_ts = snap.get("end_time") or 0
+    if end_ts <= 0:
+        return False
+    now_ts = datetime.now(timezone.utc).timestamp()
+    return (now_ts - end_ts) < 900
+
+
+def _get_live_sessions_list() -> list[dict]:
+    with _live_sessions_list_lock:
+        return list(_live_sessions_list_cache)
 
 
 def _get_live_analytics_snapshot() -> dict:
     with _live_analytics_lock:
         return dict(_live_analytics_cache)
+
+
+def _resolve_tiktok_api_creds() -> tuple[str, str, str]:
+    """Return (access_token, shop_cipher, app_key) from the latest TikTok auth row, or empty strings."""
+    try:
+        with managed_session() as session:
+            auth_row = get_latest_tiktok_auth_row(session)
+        if auth_row is None:
+            return "", "", ""
+        _shop_id, shop_cipher, access_token = _resolve_tiktok_pull_credentials(auth_row)
+        return access_token or "", shop_cipher or "", (settings.tiktok_app_key or "").strip()
+    except Exception as exc:
+        print(structured_log_line(runtime="app", action="tiktok.resolve_creds_failed", success=False, error=str(exc)[:300]))
+        return "", "", ""
 
 
 def _streamer_session_gmv(session: Session) -> dict:
@@ -7856,6 +8011,333 @@ def _streamer_session_gmv(session: Session) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# TikTok Analytics helpers + routes
+# ---------------------------------------------------------------------------
+
+_REFUND_STATUSES = {"refunded", "refund_requested", "cancelled", "cancel_requested"}
+
+def _enrich_orders_for_range(session: Session, start_utc: datetime, end_utc: Optional[datetime]) -> dict:
+    """Compute top sellers, top buyers, refund rate, and AOV from local orders in [start, end]."""
+    paid_statuses = {
+        "paid", "completed", "awaiting_shipment", "awaiting_collection",
+        "awaiting_delivery", "in_transit", "delivered",
+    }
+    q = select(TikTokOrder).where(TikTokOrder.created_at >= start_utc)
+    if end_utc is not None:
+        q = q.where(TikTokOrder.created_at <= end_utc)
+    rows = session.exec(q).all()
+
+    gmv = 0.0
+    paid_count = 0
+    total_items = 0
+    refund_count = 0
+    product_agg: dict[str, dict] = {}
+    customer_agg: dict[str, dict] = {}
+
+    for o in rows:
+        status = (o.financial_status or o.order_status or "").lower().strip()
+        if status in _REFUND_STATUSES:
+            refund_count += 1
+        if status not in paid_statuses:
+            continue
+        order_gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
+        gmv += order_gmv
+        paid_count += 1
+
+        buyer_name = (o.customer_name or "").strip() or "Guest"
+        buyer_key = buyer_name.lower()
+        if buyer_key in customer_agg:
+            customer_agg[buyer_key]["spent"] += order_gmv
+            customer_agg[buyer_key]["orders"] += 1
+        else:
+            customer_agg[buyer_key] = {"name": buyer_name, "spent": order_gmv, "orders": 1}
+
+        raw_items: list[dict] = []
+        try:
+            raw_items = json.loads(o.line_items_json) if o.line_items_json else []
+        except (json.JSONDecodeError, TypeError):
+            pass
+        if not isinstance(raw_items, list):
+            raw_items = [raw_items] if isinstance(raw_items, dict) else []
+
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            title = str(
+                raw.get("product_name") or raw.get("sku_name") or raw.get("title") or raw.get("item_name") or ""
+            ).strip() or "Unknown item"
+            sku_name = str(raw.get("sku_name") or "").strip()
+            variant = sku_name if sku_name and sku_name.lower() != "default" and sku_name.lower() != title.lower() else None
+            key = (title.lower() + "||" + (variant or "").lower()).strip()
+
+            qty_raw = raw.get("quantity") or raw.get("sku_quantity") or raw.get("count")
+            try:
+                qty = max(int(qty_raw or 0), 1)
+            except (TypeError, ValueError):
+                qty = 1
+            total_items += qty
+
+            unit_price = 0.0
+            for pk in ("sale_price", "sku_sale_price", "price", "unit_price"):
+                val = raw.get(pk)
+                if val is not None:
+                    try:
+                        unit_price = float(val)
+                    except (TypeError, ValueError):
+                        continue
+                    break
+
+            sku_image = str(
+                raw.get("sku_image") or raw.get("product_image") or raw.get("image_url") or ""
+            ).strip() or None
+
+            if key in product_agg:
+                product_agg[key]["qty"] += qty
+                product_agg[key]["revenue"] += round(qty * unit_price, 2)
+                if not product_agg[key]["sku_image"] and sku_image:
+                    product_agg[key]["sku_image"] = sku_image
+            else:
+                product_agg[key] = {
+                    "title": title, "variant": variant, "sku_image": sku_image,
+                    "qty": qty, "revenue": round(qty * unit_price, 2),
+                }
+
+    top_sellers = sorted(product_agg.values(), key=lambda p: p["revenue"], reverse=True)[:10]
+    for ts in top_sellers:
+        ts["revenue"] = round(ts["revenue"], 2)
+    top_buyers = sorted(customer_agg.values(), key=lambda b: b["spent"], reverse=True)[:10]
+    for tb in top_buyers:
+        tb["spent"] = round(tb["spent"], 2)
+
+    aov = round(gmv / paid_count, 2) if paid_count > 0 else 0.0
+    refund_rate = round(refund_count / len(rows) * 100, 1) if rows else 0.0
+
+    return {
+        "gmv": round(gmv, 2),
+        "paid_orders": paid_count,
+        "total_orders": len(rows),
+        "total_items": total_items,
+        "aov": aov,
+        "refund_count": refund_count,
+        "refund_rate": refund_rate,
+        "top_sellers": top_sellers,
+        "top_buyers": top_buyers,
+    }
+
+
+@app.get("/tiktok/analytics/api/debug")
+def tiktok_analytics_debug(request: Request):
+    """Diagnostic endpoint -- shows what credentials and data sources are available."""
+    access_token, shop_cipher, app_key = _resolve_tiktok_api_creds()
+    return {
+        "has_access_token": bool(access_token),
+        "access_token_preview": (access_token[:8] + "...") if access_token else "",
+        "has_shop_cipher": bool(shop_cipher),
+        "shop_cipher_preview": (shop_cipher[:8] + "...") if shop_cipher else "",
+        "has_app_key": bool(app_key),
+        "app_key_preview": (app_key[:8] + "...") if app_key else "",
+        "app_secret_set": bool((settings.tiktok_app_secret or "").strip()),
+        "base_url": resolve_tiktok_shop_pull_base_url(),
+        "cached_sessions_count": len(_get_live_sessions_list()),
+        "live_session_cache": {k: v for k, v in _get_live_session_snapshot().items() if k != "ok"},
+        "live_analytics_cache_ok": _get_live_analytics_snapshot().get("ok"),
+    }
+
+
+@app.get("/tiktok/analytics", response_class=HTMLResponse)
+def tiktok_analytics_page(request: Request):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    return templates.TemplateResponse(request, "tiktok_analytics.html", {
+        "request": request,
+        "title": "TikTok Stream Analytics",
+        "current_user": getattr(request.state, "current_user", None),
+    })
+
+
+def _build_daily_from_local_orders(session: Session, days: int) -> list[dict]:
+    """Build daily GMV/orders breakdown from local TikTokOrder data as a fallback."""
+    paid_statuses = {
+        "paid", "completed", "awaiting_shipment", "awaiting_collection",
+        "awaiting_delivery", "in_transit", "delivered",
+    }
+    now_utc = datetime.now(timezone.utc)
+    start_utc = now_utc - timedelta(days=days)
+    rows = session.exec(
+        select(TikTokOrder).where(TikTokOrder.created_at >= start_utc)
+    ).all()
+    daily: dict[str, dict] = {}
+    for o in rows:
+        if not o.created_at:
+            continue
+        dt = o.created_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        day_key = dt.astimezone(PACIFIC_TZ).strftime("%Y-%m-%d")
+        if day_key not in daily:
+            daily[day_key] = {"date": day_key, "gmv": 0.0, "sku_orders": 0, "customers": 0, "items_sold": 0,
+                              "click_to_order_rate": "", "click_through_rate": "", "_buyers": set()}
+        status = (o.financial_status or o.order_status or "").lower().strip()
+        if status not in paid_statuses:
+            continue
+        order_gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
+        daily[day_key]["gmv"] += order_gmv
+        daily[day_key]["sku_orders"] += 1
+        buyer = (o.customer_name or "").strip().lower() or "guest"
+        daily[day_key]["_buyers"].add(buyer)
+        try:
+            items = json.loads(o.line_items_json) if o.line_items_json else []
+            if isinstance(items, list):
+                for it in items:
+                    qty = int(it.get("quantity") or it.get("sku_quantity") or 1)
+                    daily[day_key]["items_sold"] += qty
+        except Exception:
+            pass
+    result = []
+    for d in sorted(daily.values(), key=lambda x: x["date"]):
+        d["customers"] = len(d.pop("_buyers", set()))
+        d["gmv"] = round(d["gmv"], 2)
+        result.append(d)
+    return result
+
+
+@app.get("/tiktok/analytics/api/daily")
+def tiktok_analytics_daily(
+    request: Request,
+    days: int = Query(default=30, ge=7, le=90),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    source = "tiktok_api"
+    intervals = []
+
+    if _fetch_overview_performance_daily is not None:
+        access_token, shop_cipher, app_key = _resolve_tiktok_api_creds()
+        if access_token and shop_cipher:
+            now = datetime.now(timezone.utc)
+            start_str = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+            end_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            try:
+                with httpx.Client(timeout=25.0, follow_redirects=True) as client:
+                    intervals = _fetch_overview_performance_daily(
+                        client,
+                        base_url=resolve_tiktok_shop_pull_base_url(),
+                        app_key=app_key,
+                        app_secret=(settings.tiktok_app_secret or "").strip(),
+                        access_token=access_token,
+                        shop_cipher=shop_cipher,
+                        start_date=start_str,
+                        end_date=end_str,
+                    )
+            except Exception:
+                intervals = []
+
+    if not intervals:
+        intervals = _build_daily_from_local_orders(session, days)
+        source = "local_orders"
+
+    return {"intervals": intervals, "source": source}
+
+
+@app.get("/tiktok/analytics/api/streams")
+def tiktok_analytics_streams(
+    request: Request,
+    days: int = Query(default=30, ge=7, le=90),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    sessions: list[dict] = []
+
+    if _fetch_live_session_list is not None:
+        access_token, shop_cipher, app_key = _resolve_tiktok_api_creds()
+        if access_token and shop_cipher:
+            now = datetime.now(timezone.utc)
+            start_str = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+            end_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            try:
+                with httpx.Client(timeout=25.0, follow_redirects=True) as client:
+                    sessions = _fetch_live_session_list(
+                        client,
+                        base_url=resolve_tiktok_shop_pull_base_url(),
+                        app_key=app_key,
+                        app_secret=(settings.tiktok_app_secret or "").strip(),
+                        access_token=access_token,
+                        shop_cipher=shop_cipher,
+                        start_date=start_str,
+                        end_date=end_str,
+                    )
+            except Exception:
+                sessions = []
+
+    source = "tiktok_api" if sessions else "none"
+
+    if not sessions:
+        cached = _get_live_sessions_list()
+        if cached:
+            sessions = cached
+            source = "cache"
+
+    for i, s in enumerate(sessions):
+        if i > 0:
+            prev = sessions[i - 1]
+            prev_gmv = prev.get("gmv") or 0
+            cur_gmv = s.get("gmv") or 0
+            s["gmv_delta_pct"] = round((cur_gmv - prev_gmv) / prev_gmv * 100, 1) if prev_gmv > 0 else None
+        else:
+            s["gmv_delta_pct"] = None
+        dur_s = (s.get("end_time") or 0) - (s.get("start_time") or 0)
+        s["duration_hours"] = round(dur_s / 3600, 1) if dur_s > 0 else 0
+        s["revenue_per_hour"] = round(s.get("gmv", 0) / (dur_s / 3600), 2) if dur_s > 3600 else None
+    sessions.sort(key=lambda s: s.get("end_time") or 0, reverse=True)
+    return {"streams": sessions, "source": source}
+
+
+@app.get("/tiktok/analytics/api/stream/{live_id}")
+def tiktok_analytics_stream_detail(
+    request: Request,
+    live_id: str,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    access_token, shop_cipher, app_key = _resolve_tiktok_api_creds()
+
+    per_minutes = None
+    if _fetch_stream_performance_per_minutes and access_token and shop_cipher:
+        with httpx.Client(timeout=25.0, follow_redirects=True) as client:
+            per_minutes = _fetch_stream_performance_per_minutes(
+                client,
+                base_url=resolve_tiktok_shop_pull_base_url(),
+                app_key=app_key,
+                app_secret=(settings.tiktok_app_secret or "").strip(),
+                access_token=access_token,
+                shop_cipher=shop_cipher,
+                live_id=live_id,
+            )
+
+    streams = _get_live_sessions_list()
+    stream_info = next((s for s in streams if s.get("id") == live_id), None)
+
+    local_enrichment = {}
+    if stream_info:
+        start_ts = stream_info.get("start_time") or 0
+        end_ts = stream_info.get("end_time") or 0
+        if start_ts > 0:
+            start_utc = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+            end_utc = datetime.fromtimestamp(end_ts, tz=timezone.utc) if end_ts > 0 else None
+            local_enrichment = _enrich_orders_for_range(session, start_utc, end_utc)
+
+    return {
+        "live_id": live_id,
+        "stream": stream_info,
+        "per_minutes": per_minutes,
+        "local": local_enrichment,
+    }
+
+
 @app.get("/tiktok/streamer", response_class=HTMLResponse)
 def tiktok_streamer_page(
     request: Request,
@@ -7883,11 +8365,18 @@ def tiktok_streamer_page(
     chat_info = get_chat_status()
     live_analytics = _get_live_analytics_snapshot()
 
+    live_session = _get_live_session_snapshot()
     stream_data = {
         "stream_gmv": gmv_data.get("stream_gmv"),
         "stream_orders": gmv_data.get("stream_orders"),
         "stream_items": gmv_data.get("stream_items"),
         "stream_start_utc": gmv_data.get("stream_start_utc"),
+        "tiktok_gmv": live_session.get("gmv") if live_session.get("ok") else None,
+        "tiktok_items_sold": live_session.get("items_sold") if live_session.get("ok") else None,
+        "tiktok_customers": live_session.get("customers") if live_session.get("ok") else None,
+        "live_title": live_session.get("title") if live_session.get("ok") else None,
+        "stream_range_source": _stream_range_source,
+        "is_live": _is_currently_live(),
     }
 
     return templates.TemplateResponse(request, "tiktok_streamer.html", {
@@ -7905,6 +8394,7 @@ def tiktok_streamer_page(
         "stream_top_buyers_json": json.dumps(gmv_data.get("stream_top_buyers", [])),
         "live_analytics_json": json.dumps(live_analytics),
         "stream_data_json": json.dumps(stream_data),
+        "stream_sessions_json": json.dumps(_get_live_sessions_list()),
         "chat_status": chat_info["status"],
         "current_user": getattr(request.state, "current_user", None),
         "streamers": get_streamer_names(session),
@@ -7976,17 +8466,38 @@ def tiktok_streamer_poll(
         "stream_orders": gmv_data.get("stream_orders"),
         "stream_items": gmv_data.get("stream_items"),
         "stream_start_utc": gmv_data.get("stream_start_utc"),
+        "tiktok_gmv": (lambda snap: snap.get("gmv") if snap.get("ok") else None)(_get_live_session_snapshot()),
+        "stream_range_source": _stream_range_source,
+        "stream_sessions": _get_live_sessions_list(),
+        "is_live": _is_currently_live(),
     }
 
 
 @app.get("/tiktok/streamer/config", response_class=HTMLResponse)
 def tiktok_streamer_config(request: Request):
+    """Backend page to configure the stream date range shown on the streamer dashboard."""
     if denial := require_role_response(request, "admin"):
         return denial
     s = _stream_range["start"]
     e = _stream_range["end"]
     start_val = s.astimezone(PACIFIC_TZ).strftime("%Y-%m-%dT%H:%M") if s else ""
     end_val = e.astimezone(PACIFIC_TZ).strftime("%Y-%m-%dT%H:%M") if e else ""
+    source = _stream_range_source
+
+    live_snap = _get_live_session_snapshot()
+    has_auto = bool(live_snap.get("ok") and live_snap.get("start_time"))
+    auto_title = str(live_snap.get("title") or "") if has_auto else ""
+    auto_gmv = float(live_snap.get("gmv") or 0) if has_auto else 0.0
+    auto_start_ts = int(live_snap.get("start_time") or 0) if has_auto else 0
+    auto_end_ts = int(live_snap.get("end_time") or 0) if has_auto else 0
+    if auto_start_ts > 0:
+        auto_start_str = datetime.fromtimestamp(auto_start_ts, tz=PACIFIC_TZ).strftime("%b %d, %Y %I:%M %p")
+    else:
+        auto_start_str = ""
+    if auto_end_ts > 0:
+        auto_end_str = datetime.fromtimestamp(auto_end_ts, tz=PACIFIC_TZ).strftime("%b %d, %Y %I:%M %p")
+    else:
+        auto_end_str = ""
 
     html = f"""<!DOCTYPE html>
 <html><head>
@@ -7996,8 +8507,8 @@ def tiktok_streamer_config(request: Request):
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
 <style>
   body {{ font-family: system-ui, sans-serif; background: #0f0f0f; color: #e5e5e5;
-         display: flex; justify-content: center; padding: 60px 16px; margin: 0; }}
-  .card {{ background: #1a1a1a; border-radius: 16px; padding: 32px; max-width: 440px; width: 100%; }}
+         display: flex; justify-content: center; padding: 40px 16px; margin: 0; }}
+  .card {{ background: #1a1a1a; border-radius: 16px; padding: 32px; max-width: 480px; width: 100%; }}
   h1 {{ font-size: 20px; margin: 0 0 8px; }}
   .subtitle {{ font-size: 13px; color: #888; margin-bottom: 24px; }}
   label {{ display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
@@ -8012,22 +8523,41 @@ def tiktok_streamer_config(request: Request):
   button:hover {{ opacity: .85; }}
   .btn-save {{ background: #22c55e; color: #000; }}
   .btn-clear {{ background: #333; color: #ccc; }}
+  .btn-auto {{ background: #6366f1; color: #fff; }}
   .status {{ margin-top: 16px; font-size: 13px; color: #22c55e; display: none; text-align: center;
              padding: 8px; border-radius: 8px; background: rgba(34,197,94,.1); }}
   a {{ color: #22c55e; text-decoration: none; }}
   a:hover {{ text-decoration: underline; }}
   .flatpickr-calendar {{ font-family: system-ui, sans-serif !important; }}
+  .source-badge {{ display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; padding: 3px 8px; border-radius: 6px; }}
+  .source-auto {{ background: rgba(99,102,241,.15); color: #818cf8; }}
+  .source-manual {{ background: rgba(34,197,94,.15); color: #22c55e; }}
+  .auto-card {{ background: #111; border: 1px solid #333; border-radius: 12px; padding: 16px;
+    margin-bottom: 20px; }}
+  .auto-card h3 {{ font-size: 13px; margin: 0 0 8px; color: #818cf8; }}
+  .auto-row {{ font-size: 12px; color: #aaa; margin: 3px 0; }}
+  .auto-row strong {{ color: #e5e5e5; }}
+  hr {{ border: none; border-top: 1px solid #333; margin: 20px 0; }}
 </style>
 </head><body>
 <div class="card">
-  <h1>Stream Config</h1>
+  <h1>Stream Config <span class="source-badge {'source-auto' if source == 'auto' else 'source-manual'}">{source}</span></h1>
   <p class="subtitle">Set the date range for the current stream. GMV will be calculated from orders in this window.</p>
+  {'<div class="auto-card" id="auto-card"><h3>Latest Detected Stream</h3>' +
+   '<div class="auto-row"><strong>' + auto_title + '</strong></div>' +
+   '<div class="auto-row">Start: <strong>' + auto_start_str + '</strong></div>' +
+   '<div class="auto-row">End: <strong>' + (auto_end_str or 'ongoing') + '</strong></div>' +
+   '<div class="auto-row">TikTok GMV: <strong style="color:#22c55e;">$' + f'{auto_gmv:,.2f}' + '</strong></div>' +
+   '<div class="row" style="margin-top:12px;"><button class="btn-auto" onclick="useAuto()">Use This Stream</button></div></div>'
+   if has_auto else '<div class="auto-card"><h3>Auto-Detection</h3><div class="auto-row">No live sessions detected yet. Data appears after a stream ends.</div></div>'}
+  <hr>
   <label>Stream Start (Pacific)</label>
   <input class="fp-input" id="start" placeholder="Click to pick date & time" readonly>
   <label>Stream End (Pacific) — leave blank for ongoing</label>
   <input class="fp-input" id="end" placeholder="Click to pick date & time (optional)" readonly>
   <div class="row">
-    <button class="btn-save" onclick="save()">Save</button>
+    <button class="btn-save" onclick="save()">Save (Manual)</button>
     <button class="btn-clear" onclick="clearRange()">Clear</button>
   </div>
   <div class="status" id="status"></div>
@@ -8066,7 +8596,7 @@ function save() {{
   fetch('/tiktok/streamer/config', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify({{ start: s, end: e }}) }})
     .then(function(r) {{ return r.json(); }})
-    .then(function(d) {{ flash(d.ok ? 'Saved!' : (d.error || 'Error'), d.ok); }});
+    .then(function(d) {{ flash(d.ok ? 'Saved (manual)!' : (d.error || 'Error'), d.ok); }});
 }}
 function clearRange() {{
   fpStart.clear();
@@ -8075,6 +8605,14 @@ function clearRange() {{
     body: JSON.stringify({{ start: '', end: '' }}) }})
     .then(function(r) {{ return r.json(); }})
     .then(function() {{ flash('Cleared!', true); }});
+}}
+function useAuto() {{
+  fetch('/tiktok/streamer/config/auto', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}} }})
+    .then(function(r) {{ return r.json(); }})
+    .then(function(d) {{
+      if (d.ok) {{ flash('Switched to auto mode!', true); setTimeout(function(){{ location.reload(); }}, 1000); }}
+      else {{ flash('Error switching to auto', false); }}
+    }});
 }}
 </script>
 </body></html>"""
@@ -8108,8 +8646,29 @@ def tiktok_streamer_config_save(request: Request, body: dict = None):
     else:
         _stream_range["end"] = None
 
-    _save_stream_range()
+    _save_stream_range(source="manual")
     return {"ok": True, "start": str(_stream_range["start"] or ""), "end": str(_stream_range["end"] or "")}
+
+
+@app.post("/tiktok/streamer/config/auto")
+def tiktok_streamer_config_auto(request: Request):
+    """Switch stream range to auto mode, applying the latest detected session immediately."""
+    if denial := require_role_response(request, "admin"):
+        return denial
+    snap = _get_live_session_snapshot()
+    start_ts = snap.get("start_time") or 0
+    end_ts = snap.get("end_time") or 0
+    if isinstance(start_ts, int) and start_ts > 0:
+        _stream_range["start"] = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+        _stream_range["end"] = datetime.fromtimestamp(end_ts, tz=timezone.utc) if isinstance(end_ts, int) and end_ts > 0 else None
+    _save_stream_range(source="auto")
+    return {
+        "ok": True,
+        "source": "auto",
+        "start": str(_stream_range["start"] or ""),
+        "end": str(_stream_range["end"] or ""),
+        "session": snap if snap.get("ok") else None,
+    }
 
 
 @app.get("/tiktok/streamer/chat/poll")

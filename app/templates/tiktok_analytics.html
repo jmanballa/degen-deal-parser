@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --bg-card: #151518;
+            --bg-card-hover: #1c1c22;
+            --border: #222228;
+            --text: #f0eeeb;
+            --text-secondary: #a09da6;
+            --text-muted: #5d5b66;
+            --accent: #fe2c55;
+            --tiktok-cyan: #25f4ee;
+            --tiktok-pink: #fe2c55;
+            --green: #3ecf8e;
+            --green-glow: rgba(62, 207, 142, .15);
+            --red: #ef4444;
+            --red-glow: rgba(239, 68, 68, .18);
+            --card-radius: 16px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, .5);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px 16px 60px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        /* Header */
+        .page-header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+        .page-header h1 { font-size: 24px; font-weight: 800; }
+        .page-header .tt-logo { width: 28px; height: 28px; }
+        .nav-links { margin-left: auto; display: flex; gap: 12px; font-size: 13px; }
+        .nav-links a { color: var(--text-muted); text-decoration: none; padding: 6px 12px;
+            border-radius: 8px; transition: all .15s; }
+        .nav-links a:hover { color: var(--text); background: var(--bg-card); }
+
+        /* KPI row */
+        .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px; margin-bottom: 24px; }
+        .kpi-card { background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--card-radius); padding: 18px 16px; text-align: center; }
+        .kpi-value { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+        .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+            color: var(--text-muted); font-weight: 600; }
+        .kpi-value.green { color: var(--green); }
+        .kpi-value.red { color: var(--red); }
+
+        /* Section cards */
+        .section { background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--card-radius); padding: 24px; margin-bottom: 24px; }
+        .section-title { font-size: 16px; font-weight: 700; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px; }
+        .section-title .badge { font-size: 10px; background: var(--accent);
+            color: #fff; padding: 2px 8px; border-radius: 6px; font-weight: 700; }
+
+        /* Chart wrapper */
+        .chart-wrap { position: relative; height: 280px; margin-bottom: 8px; }
+
+        /* Stream table */
+        .stream-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .stream-table th { text-align: left; font-size: 10px; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text-muted); padding: 8px 10px;
+            border-bottom: 1px solid var(--border); font-weight: 700; }
+        .stream-table td { padding: 10px; border-bottom: 1px solid var(--border);
+            vertical-align: middle; }
+        .stream-table tr { cursor: pointer; transition: background .15s; }
+        .stream-table tr:hover { background: var(--bg-card-hover); }
+        .stream-table tr.active { background: rgba(254, 44, 85, .08); }
+        .delta-up { color: var(--green); font-weight: 600; }
+        .delta-down { color: var(--red); font-weight: 600; }
+
+        /* Detail panel */
+        #detail-panel { display: none; }
+        #detail-panel.visible { display: block; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 700px) { .detail-grid { grid-template-columns: 1fr; } }
+
+        /* Leaderboard */
+        .lb-list { list-style: none; }
+        .lb-item { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+            border-bottom: 1px solid var(--border); font-size: 13px; }
+        .lb-rank { width: 22px; height: 22px; border-radius: 50%; background: var(--border);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 800; flex-shrink: 0; }
+        .lb-img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+        .lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lb-variant { font-size: 11px; color: var(--text-muted); }
+        .lb-val { font-weight: 700; font-size: 13px; white-space: nowrap; }
+
+        /* Loading */
+        .loading { text-align: center; padding: 40px; color: var(--text-muted); font-size: 14px; }
+        .spinner { display: inline-block; width: 20px; height: 20px;
+            border: 2px solid var(--border); border-top-color: var(--accent);
+            border-radius: 50%; animation: spin .6s linear infinite; margin-right: 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Days picker */
+        .days-picker { display: flex; gap: 6px; margin-bottom: 16px; }
+        .days-btn { background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-secondary); padding: 6px 14px; border-radius: 8px;
+            cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; }
+        .days-btn:hover { border-color: var(--text-muted); color: var(--text); }
+        .days-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+        /* Per-minute chart */
+        .chart-wrap-sm { position: relative; height: 200px; }
+
+        /* Scrollable table */
+        .table-wrap { overflow-x: auto; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="page-header">
+        <svg class="tt-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M34.1 10.2A8.4 8.4 0 0 1 28.6 2h-6.3l-.01 28.7a5.1 5.1 0 0 1-5.08 4.82 5.1 5.1 0 0 1-5.1-5.1 5.1 5.1 0 0 1 5.1-5.1c.52 0 1 .08 1.47.22v-6.4a11.4 11.4 0 0 0-1.47-.1C10.2 19.1 4.6 24.7 4.6 31.6S10.2 44.1 17.18 44.1c6.97 0 12.58-5.6 12.58-12.5V17.2A14.6 14.6 0 0 0 38.5 20v-6.4a8.4 8.4 0 0 1-4.4-3.4z" fill="#fe2c55"/>
+            <path d="M34.1 10.2A8.4 8.4 0 0 1 28.6 2h-6.3l-.01 28.7a5.1 5.1 0 0 1-5.08 4.82 5.1 5.1 0 0 1-5.1-5.1 5.1 5.1 0 0 1 5.1-5.1c.52 0 1 .08 1.47.22v-6.4a11.4 11.4 0 0 0-1.47-.1C10.2 19.1 4.6 24.7 4.6 31.6S10.2 44.1 17.18 44.1c6.97 0 12.58-5.6 12.58-12.5V17.2A14.6 14.6 0 0 0 38.5 20v-6.4a8.4 8.4 0 0 1-4.4-3.4z" fill="#25f4ee" transform="translate(-2,-2)"/>
+        </svg>
+        <h1>Stream Analytics</h1>
+        <div class="nav-links">
+            <a href="/tiktok/streamer">Streamer</a>
+            <a href="/tiktok/orders">Orders</a>
+            <a href="/tiktok/streamer/config">Config</a>
+        </div>
+    </div>
+
+    <!-- Summary KPIs (filled from daily data) -->
+    <div class="kpi-row" id="summary-kpis">
+        <div class="kpi-card"><div class="kpi-value green" id="kpi-total-gmv">--</div><div class="kpi-label">Period GMV</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-total-orders">--</div><div class="kpi-label">Total Orders</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-total-customers">--</div><div class="kpi-label">Total Customers</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-avg-daily">--</div><div class="kpi-label">Avg Daily GMV</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-best-day">--</div><div class="kpi-label">Best Day</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-streams">--</div><div class="kpi-label">Streams</div></div>
+    </div>
+
+    <!-- Daily Trend Chart -->
+    <div class="section">
+        <div class="section-title">Daily GMV Trend</div>
+        <div class="days-picker">
+            <button class="days-btn" data-days="7">7d</button>
+            <button class="days-btn active" data-days="30">30d</button>
+            <button class="days-btn" data-days="60">60d</button>
+            <button class="days-btn" data-days="90">90d</button>
+        </div>
+        <div class="chart-wrap"><canvas id="daily-chart"></canvas></div>
+        <div class="loading" id="daily-loading"><span class="spinner"></span>Loading daily data...</div>
+    </div>
+
+    <!-- Stream List -->
+    <div class="section">
+        <div class="section-title">Live Streams <span class="badge" id="stream-count">0</span></div>
+        <div class="loading" id="streams-loading"><span class="spinner"></span>Loading streams...</div>
+        <div class="table-wrap">
+            <table class="stream-table" id="stream-table" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Date</th>
+                        <th>Duration</th>
+                        <th>GMV</th>
+                        <th>Orders</th>
+                        <th>Customers</th>
+                        <th>Items</th>
+                        <th>$/hr</th>
+                        <th>vs Prev</th>
+                    </tr>
+                </thead>
+                <tbody id="stream-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Stream Detail (hidden until selected) -->
+    <div class="section" id="detail-panel">
+        <div class="section-title" id="detail-title">Stream Detail</div>
+        <div class="kpi-row" id="detail-kpis"></div>
+        <div class="detail-grid">
+            <div>
+                <div class="section-title" style="font-size:14px;">Per-Minute GMV</div>
+                <div class="chart-wrap-sm" id="per-minute-wrap">
+                    <canvas id="per-minute-chart"></canvas>
+                </div>
+                <div class="loading" id="detail-loading" style="display:none;"><span class="spinner"></span>Loading detail...</div>
+                <div id="per-minute-unavailable" style="display:none; text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">Per-minute data is only available after a stream ends.</div>
+            </div>
+            <div>
+                <div class="section-title" style="font-size:14px;">Top Sellers</div>
+                <ul class="lb-list" id="detail-top-sellers"></ul>
+            </div>
+        </div>
+        <div style="margin-top:20px;">
+            <div class="section-title" style="font-size:14px;">Top Buyers</div>
+            <ul class="lb-list" id="detail-top-buyers"></ul>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var _dailyChart = null;
+    var _perMinChart = null;
+    var _selectedDays = 30;
+    var _streams = [];
+    var _selectedStreamId = null;
+
+    function fmtGmv(v) {
+        if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
+        if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'K';
+        return '$' + v.toFixed(2);
+    }
+    function fmtDate(ts) {
+        if (!ts) return '--';
+        var d = new Date(ts * 1000);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    function fmtTime(ts) {
+        if (!ts) return '';
+        var d = new Date(ts * 1000);
+        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    function fmtDuration(h) {
+        if (!h || h <= 0) return '--';
+        if (h >= 24) return Math.floor(h / 24) + 'd ' + Math.round(h % 24) + 'h';
+        if (h >= 1) return h.toFixed(1) + 'h';
+        return Math.round(h * 60) + 'm';
+    }
+    function escHtml(s) { var el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
+
+    /* Daily chart */
+    function loadDaily(days) {
+        _selectedDays = days;
+        document.querySelectorAll('.days-btn').forEach(function(b) {
+            b.classList.toggle('active', parseInt(b.dataset.days) === days);
+        });
+        document.getElementById('daily-loading').style.display = '';
+        document.getElementById('daily-chart').style.display = 'none';
+
+        fetch('/tiktok/analytics/api/daily?days=' + days)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('daily-loading').style.display = 'none';
+                var intervals = data.intervals || [];
+                if (intervals.length === 0) {
+                    document.getElementById('daily-loading').style.display = '';
+                    document.getElementById('daily-loading').innerHTML = '<span style="color:var(--text-muted);">No daily data available yet. ' +
+                        (data.source === 'local_orders' ? 'Showing local order data.' : 'TikTok API may not have data for this range.') + '</span>';
+                    updateSummaryKpis([]);
+                    return;
+                }
+                document.getElementById('daily-chart').style.display = '';
+                var srcLabel = data.source === 'local_orders' ? ' (from local orders)' : '';
+                renderDailyChart(intervals);
+                updateSummaryKpis(intervals);
+            })
+            .catch(function() {
+                document.getElementById('daily-loading').innerHTML = '<span style="color:var(--red);">Failed to load daily data.</span>';
+            });
+    }
+
+    function renderDailyChart(intervals) {
+        var labels = intervals.map(function(i) { return i.date; });
+        var gmvData = intervals.map(function(i) { return i.gmv || 0; });
+        var ordersData = intervals.map(function(i) { return i.sku_orders || 0; });
+
+        if (_dailyChart) _dailyChart.destroy();
+        var ctx = document.getElementById('daily-chart').getContext('2d');
+        _dailyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'GMV ($)',
+                        data: gmvData,
+                        borderColor: '#fe2c55',
+                        backgroundColor: 'rgba(254,44,85,.1)',
+                        fill: true,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        pointRadius: 2,
+                    },
+                    {
+                        label: 'Orders',
+                        data: ordersData,
+                        borderColor: '#25f4ee',
+                        backgroundColor: 'rgba(37,244,238,.08)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y1',
+                        pointRadius: 2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { labels: { color: '#a09da6', font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                if (ctx.datasetIndex === 0) return 'GMV: ' + fmtGmv(ctx.raw);
+                                return 'Orders: ' + ctx.raw;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#5d5b66', font: { size: 10 }, maxRotation: 45 }, grid: { color: '#222228' } },
+                    y: { position: 'left', ticks: { color: '#fe2c55', callback: function(v) { return fmtGmv(v); } }, grid: { color: '#222228' } },
+                    y1: { position: 'right', ticks: { color: '#25f4ee' }, grid: { display: false } },
+                },
+            },
+        });
+    }
+
+    function updateSummaryKpis(intervals) {
+        var totalGmv = 0, totalOrders = 0, totalCustomers = 0, bestDay = '', bestGmv = 0;
+        intervals.forEach(function(i) {
+            totalGmv += (i.gmv || 0);
+            totalOrders += (i.sku_orders || 0);
+            totalCustomers += (i.customers || 0);
+            if ((i.gmv || 0) > bestGmv) { bestGmv = i.gmv; bestDay = i.date; }
+        });
+        var daysWithData = intervals.filter(function(i) { return i.gmv > 0; }).length;
+        document.getElementById('kpi-total-gmv').textContent = fmtGmv(totalGmv);
+        document.getElementById('kpi-total-orders').textContent = totalOrders.toLocaleString();
+        document.getElementById('kpi-total-customers').textContent = totalCustomers.toLocaleString();
+        document.getElementById('kpi-avg-daily').textContent = daysWithData > 0 ? fmtGmv(totalGmv / daysWithData) : '--';
+        document.getElementById('kpi-best-day').textContent = bestDay || '--';
+    }
+
+    /* Streams */
+    function loadStreams() {
+        document.getElementById('streams-loading').style.display = '';
+        fetch('/tiktok/analytics/api/streams?days=' + Math.max(_selectedDays, 30))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                _streams = data.streams || [];
+                document.getElementById('streams-loading').style.display = 'none';
+                document.getElementById('stream-count').textContent = _streams.length;
+                document.getElementById('kpi-streams').textContent = _streams.length;
+                if (_streams.length === 0) {
+                    document.getElementById('streams-loading').style.display = '';
+                    document.getElementById('streams-loading').innerHTML =
+                        '<span style="color:var(--text-muted);">No live stream sessions found. ' +
+                        (data.source === 'none' ? 'The TikTok LIVE Performance API may not be activated for your app, or there are no streams in this date range.' : '') +
+                        '</span>';
+                } else {
+                    document.getElementById('stream-table').style.display = '';
+                    renderStreamTable();
+                }
+            })
+            .catch(function() {
+                document.getElementById('streams-loading').innerHTML = '<span style="color:var(--red);">Failed to load streams.</span>';
+            });
+    }
+
+    function renderStreamTable() {
+        var tbody = document.getElementById('stream-tbody');
+        tbody.innerHTML = '';
+        _streams.forEach(function(s) {
+            var tr = document.createElement('tr');
+            tr.dataset.id = s.id;
+            if (s.id === _selectedStreamId) tr.className = 'active';
+            var delta = '';
+            if (s.gmv_delta_pct != null) {
+                if (s.gmv_delta_pct > 0) delta = '<span class="delta-up">+' + s.gmv_delta_pct.toFixed(1) + '%</span>';
+                else if (s.gmv_delta_pct < 0) delta = '<span class="delta-down">' + s.gmv_delta_pct.toFixed(1) + '%</span>';
+                else delta = '0%';
+            } else {
+                delta = '<span style="color:var(--text-muted);">--</span>';
+            }
+            tr.innerHTML =
+                '<td>' + escHtml(s.title || 'Untitled') + '</td>' +
+                '<td>' + fmtDate(s.start_time) + ' ' + fmtTime(s.start_time) + '</td>' +
+                '<td>' + fmtDuration(s.duration_hours) + '</td>' +
+                '<td style="font-weight:700;">' + fmtGmv(s.gmv || 0) + '</td>' +
+                '<td>' + (s.sku_orders || 0) + '</td>' +
+                '<td>' + (s.customers || 0) + '</td>' +
+                '<td>' + (s.items_sold || 0) + '</td>' +
+                '<td>' + (s.revenue_per_hour ? fmtGmv(s.revenue_per_hour) : '--') + '</td>' +
+                '<td>' + delta + '</td>';
+            tr.addEventListener('click', function() { selectStream(s.id); });
+            tbody.appendChild(tr);
+        });
+    }
+
+    /* Stream detail */
+    function selectStream(id) {
+        _selectedStreamId = id;
+        renderStreamTable();
+        var panel = document.getElementById('detail-panel');
+        panel.classList.add('visible');
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('detail-loading').style.display = '';
+        document.getElementById('per-minute-wrap').querySelector('canvas').style.display = 'none';
+        document.getElementById('per-minute-unavailable').style.display = 'none';
+        document.getElementById('detail-kpis').innerHTML = '';
+        document.getElementById('detail-top-sellers').innerHTML = '';
+        document.getElementById('detail-top-buyers').innerHTML = '';
+
+        var info = _streams.find(function(s) { return s.id === id; });
+        document.getElementById('detail-title').innerHTML = 'Stream Detail' +
+            (info ? ' &mdash; <span style="color:var(--text-secondary);font-weight:400;">' + escHtml(info.title || 'Untitled') + '</span>' : '');
+
+        fetch('/tiktok/analytics/api/stream/' + encodeURIComponent(id))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('detail-loading').style.display = 'none';
+                renderDetail(data, info);
+            })
+            .catch(function() {
+                document.getElementById('detail-loading').textContent = 'Failed to load detail.';
+            });
+    }
+
+    function renderDetail(data, streamInfo) {
+        var local = data.local || {};
+        var perMin = data.per_minutes;
+        var stream = data.stream || streamInfo || {};
+
+        /* KPIs */
+        var kpis = [
+            { label: 'TikTok GMV', value: fmtGmv(stream.gmv || 0), cls: 'green' },
+            { label: 'Local GMV', value: fmtGmv(local.gmv || 0), cls: '' },
+            { label: 'Paid Orders', value: (local.paid_orders || 0).toString(), cls: '' },
+            { label: 'Items Sold', value: (local.total_items || stream.items_sold || 0).toString(), cls: '' },
+            { label: 'Customers', value: (stream.customers || 0).toString(), cls: '' },
+            { label: 'Avg Order Value', value: local.aov ? '$' + local.aov.toFixed(2) : '--', cls: '' },
+            { label: 'Refund Rate', value: local.refund_rate != null ? local.refund_rate.toFixed(1) + '%' : '--', cls: local.refund_rate > 5 ? 'red' : '' },
+        ];
+        if (stream.revenue_per_hour) {
+            kpis.push({ label: 'Revenue/hr', value: fmtGmv(stream.revenue_per_hour), cls: '' });
+        }
+        var kpiHtml = kpis.map(function(k) {
+            return '<div class="kpi-card"><div class="kpi-value ' + k.cls + '">' + k.value + '</div><div class="kpi-label">' + k.label + '</div></div>';
+        }).join('');
+        document.getElementById('detail-kpis').innerHTML = kpiHtml;
+
+        /* Per-minute chart */
+        if (perMin && perMin.intervals && perMin.intervals.length > 0) {
+            document.getElementById('per-minute-wrap').querySelector('canvas').style.display = '';
+            renderPerMinuteChart(perMin.intervals);
+        } else {
+            document.getElementById('per-minute-unavailable').style.display = '';
+        }
+
+        /* Top sellers */
+        var sellers = local.top_sellers || [];
+        var sellHtml = sellers.map(function(s, i) {
+            var img = s.sku_image ? '<img class="lb-img" src="' + escHtml(s.sku_image) + '" alt="">' : '';
+            var variant = s.variant ? '<div class="lb-variant">' + escHtml(s.variant) + '</div>' : '';
+            return '<li class="lb-item"><span class="lb-rank">' + (i + 1) + '</span>' + img +
+                '<div class="lb-name">' + escHtml(s.title) + variant + '</div>' +
+                '<span class="lb-val" style="color:var(--green);">' + fmtGmv(s.revenue) + '</span>' +
+                '<span class="lb-val" style="color:var(--text-muted);margin-left:8px;">' + s.qty + ' sold</span></li>';
+        }).join('');
+        document.getElementById('detail-top-sellers').innerHTML = sellHtml || '<li class="lb-item" style="color:var(--text-muted);">No local order data for this stream window.</li>';
+
+        /* Top buyers */
+        var buyers = local.top_buyers || [];
+        var buyHtml = buyers.map(function(b, i) {
+            return '<li class="lb-item"><span class="lb-rank">' + (i + 1) + '</span>' +
+                '<div class="lb-name">' + escHtml(b.name) + '</div>' +
+                '<span class="lb-val" style="color:var(--green);">' + fmtGmv(b.spent) + '</span>' +
+                '<span class="lb-val" style="color:var(--text-muted);margin-left:8px;">' + b.orders + ' orders</span></li>';
+        }).join('');
+        document.getElementById('detail-top-buyers').innerHTML = buyHtml || '<li class="lb-item" style="color:var(--text-muted);">No local order data.</li>';
+    }
+
+    function renderPerMinuteChart(intervals) {
+        var labels = intervals.map(function(iv) {
+            if (!iv.timestamp) return '';
+            var d = new Date(iv.timestamp * 1000);
+            return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        });
+        var cumGmv = [];
+        var running = 0;
+        intervals.forEach(function(iv) { running += (iv.gmv || 0); cumGmv.push(running); });
+
+        if (_perMinChart) _perMinChart.destroy();
+        var ctx = document.getElementById('per-minute-chart').getContext('2d');
+        _perMinChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Cumulative GMV',
+                    data: cumGmv,
+                    borderColor: '#fe2c55',
+                    backgroundColor: 'rgba(254,44,85,.12)',
+                    fill: true,
+                    tension: 0.2,
+                    pointRadius: 0,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: function(ctx) { return fmtGmv(ctx.raw); } } },
+                },
+                scales: {
+                    x: { ticks: { color: '#5d5b66', font: { size: 9 }, maxTicksLimit: 15 }, grid: { color: '#222228' } },
+                    y: { ticks: { color: '#fe2c55', callback: function(v) { return fmtGmv(v); } }, grid: { color: '#222228' } },
+                },
+            },
+        });
+    }
+
+    /* Days picker */
+    document.querySelectorAll('.days-btn').forEach(function(b) {
+        b.addEventListener('click', function() {
+            loadDaily(parseInt(b.dataset.days));
+            loadStreams();
+        });
+    });
+
+    /* Init */
+    loadDaily(30);
+    loadStreams();
+})();
+</script>
+</body>
+</html>

@@ -58,6 +58,8 @@ CATEGORY_ATTRIBUTES_PATH = f"/product/{TIKTOK_API_VERSION}/categories"
 BRANDS_PATH = f"/product/{TIKTOK_API_VERSION}/brands"
 LIVE_ANALYTICS_PATH = "/analytics/202509/shop_lives/overview_performance"
 LIVE_CORE_STATS_PATH_TEMPLATE = "/analytics/202502/live_rooms/{live_room_id}/core_stats"
+LIVE_SESSION_LIST_PATH = "/analytics/202509/shop_lives/performance"
+LIVE_PER_MINUTES_PATH_TEMPLATE = "/analytics/202510/shop_lives/{live_id}/performance_per_minutes"
 DEFAULT_SHOP_API_BASE_URL = "https://open-api.tiktokglobalshop.com"
 
 
@@ -917,6 +919,246 @@ def fetch_tiktok_live_analytics(
     best["latest_available_date"] = latest_date
     best["realtime"] = False
     return best
+
+
+def fetch_live_session_list(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    app_key: str,
+    app_secret: str,
+    access_token: str,
+    shop_cipher: str,
+    start_date: str,
+    end_date: str,
+    currency: str = "USD",
+) -> list[dict[str, Any]]:
+    """Fetch a list of LIVE stream sessions from the Performance List endpoint.
+
+    Returns a list of dicts with keys:
+        id, title, username, start_time, end_time, gmv, items_sold, customers, sku_orders
+    Returns an empty list on any failure (403, rpc_error, etc.).
+    """
+    extra_query: dict[str, Any] = {
+        "start_date_ge": start_date,
+        "end_date_lt": end_date,
+        "sort_field": "gmv",
+        "sort_order": "DESC",
+        "currency": currency,
+        "account_type": "OFFICIAL_ACCOUNTS",
+        "page_size": 20,
+    }
+    url, _body_json, headers = build_tiktok_request(
+        base_url=base_url,
+        path=LIVE_SESSION_LIST_PATH,
+        app_key=app_key,
+        app_secret=app_secret,
+        shop_id="",
+        shop_cipher=shop_cipher,
+        access_token=access_token,
+        body=None,
+        extra_query=extra_query,
+        api_version="",
+    )
+    headers["Content-Type"] = "application/json"
+    try:
+        resp = client.request("GET", url, headers=headers)
+    except Exception:
+        return []
+    try:
+        payload = resp.json()
+    except Exception:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    if resp.status_code == 403 or payload.get("code") not in (0, "0"):
+        return []
+
+    data = payload.get("data") or {}
+    sessions_raw = data.get("live_stream_sessions") or []
+    results: list[dict[str, Any]] = []
+    for s in sessions_raw:
+        if not isinstance(s, dict):
+            continue
+        gmv_obj = (s.get("sales_performance") or {}).get("gmv") or {}
+        try:
+            gmv = float(gmv_obj.get("amount") or 0)
+        except (TypeError, ValueError):
+            gmv = 0.0
+        sp = s.get("sales_performance") or {}
+        try:
+            start_ts = int(s.get("start_time") or 0)
+        except (TypeError, ValueError):
+            start_ts = 0
+        try:
+            end_ts = int(s.get("end_time") or 0)
+        except (TypeError, ValueError):
+            end_ts = 0
+        results.append({
+            "id": str(s.get("id") or ""),
+            "title": str(s.get("title") or ""),
+            "username": str(s.get("username") or ""),
+            "start_time": start_ts,
+            "end_time": end_ts,
+            "gmv": gmv,
+            "currency": str(gmv_obj.get("currency") or currency),
+            "items_sold": int(sp.get("items_sold") or 0),
+            "customers": int(sp.get("customers") or 0),
+            "sku_orders": int(sp.get("sku_orders") or 0),
+        })
+    return results
+
+
+def fetch_overview_performance_daily(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    app_key: str,
+    app_secret: str,
+    access_token: str,
+    shop_cipher: str,
+    start_date: str,
+    end_date: str,
+    currency: str = "USD",
+) -> list[dict[str, Any]]:
+    """Fetch daily LIVE performance intervals from overview_performance with granularity=1D.
+
+    Returns a list of dicts: {date, gmv, sku_orders, customers, items_sold,
+    click_to_order_rate, click_through_rate}. Empty list on failure.
+    """
+    extra_query: dict[str, Any] = {
+        "start_date_ge": start_date,
+        "end_date_lt": end_date,
+        "granularity": "1D",
+        "currency": currency,
+    }
+    url, _body_json, headers = build_tiktok_request(
+        base_url=base_url,
+        path=LIVE_ANALYTICS_PATH,
+        app_key=app_key,
+        app_secret=app_secret,
+        shop_id="",
+        shop_cipher=shop_cipher,
+        access_token=access_token,
+        body=None,
+        extra_query=extra_query,
+        api_version="",
+    )
+    headers["Content-Type"] = "application/json"
+    try:
+        resp = client.request("GET", url, headers=headers)
+    except Exception:
+        return []
+    try:
+        payload = resp.json()
+    except Exception:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    if resp.status_code == 403 or payload.get("code") not in (0, "0"):
+        return []
+
+    data = payload.get("data") or {}
+    perf = data.get("performance") or {}
+    intervals = perf.get("intervals") or []
+    results: list[dict[str, Any]] = []
+    for iv in intervals:
+        gmv_obj = iv.get("gmv") or {}
+        try:
+            amt = float(gmv_obj.get("amount") or 0)
+        except (TypeError, ValueError):
+            amt = 0.0
+        results.append({
+            "date": iv.get("start_date") or "",
+            "gmv": amt,
+            "currency": gmv_obj.get("currency") or currency,
+            "sku_orders": int(iv.get("sku_orders") or 0),
+            "customers": int(iv.get("customers") or 0),
+            "items_sold": int(iv.get("items_sold") or 0),
+            "click_to_order_rate": str(iv.get("click_to_order_rate") or ""),
+            "click_through_rate": str(iv.get("click_through_rate") or ""),
+        })
+    return results
+
+
+def fetch_stream_performance_per_minutes(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    app_key: str,
+    app_secret: str,
+    access_token: str,
+    shop_cipher: str,
+    live_id: str,
+    currency: str = "USD",
+) -> Optional[dict[str, Any]]:
+    """Fetch per-minute performance for a single ended LIVE stream.
+
+    Returns {overall: {start_time, end_time, duration, gmv}, intervals: [...]}
+    or None on failure. Only works after a stream has ended.
+    """
+    path = LIVE_PER_MINUTES_PATH_TEMPLATE.format(live_id=live_id)
+    extra_query: dict[str, Any] = {
+        "currency": currency,
+    }
+    url, _body_json, headers = build_tiktok_request(
+        base_url=base_url,
+        path=path,
+        app_key=app_key,
+        app_secret=app_secret,
+        shop_id="",
+        shop_cipher=shop_cipher,
+        access_token=access_token,
+        body=None,
+        extra_query=extra_query,
+        api_version="",
+    )
+    headers["Content-Type"] = "application/json"
+    try:
+        resp = client.request("GET", url, headers=headers)
+    except Exception:
+        return None
+    try:
+        payload = resp.json()
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if resp.status_code == 403 or payload.get("code") not in (0, "0"):
+        return None
+
+    data = payload.get("data") or {}
+    overall_raw = data.get("overall") or {}
+    gmv_obj = overall_raw.get("gmv") or {}
+    try:
+        overall_gmv = float(gmv_obj.get("amount") or 0)
+    except (TypeError, ValueError):
+        overall_gmv = 0.0
+    overall = {
+        "start_time": int(overall_raw.get("start_time") or 0),
+        "end_time": int(overall_raw.get("end_time") or 0),
+        "duration": int(overall_raw.get("duration") or 0),
+        "gmv": overall_gmv,
+        "currency": gmv_obj.get("currency") or currency,
+    }
+
+    intervals_raw = data.get("intervals") or []
+    intervals: list[dict[str, Any]] = []
+    for iv in intervals_raw:
+        iv_gmv_obj = iv.get("gmv") or {}
+        try:
+            iv_gmv = float(iv_gmv_obj.get("amount") or 0)
+        except (TypeError, ValueError):
+            iv_gmv = 0.0
+        intervals.append({
+            "timestamp": int(iv.get("timestamp") or 0),
+            "gmv": iv_gmv,
+            "sku_orders": int(iv.get("sku_orders") or 0),
+            "customers": int(iv.get("customers") or 0),
+            "items_sold": int(iv.get("items_sold") or 0),
+        })
+
+    return {"overall": overall, "intervals": intervals}
 
 
 def fetch_tiktok_product_list_page(

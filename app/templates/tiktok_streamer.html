@@ -58,16 +58,6 @@
             max-width: 860px;
             margin: 0 auto;
         }
-        .chat-panel {
-            width: var(--chat-width);
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: column;
-            border-left: 1px solid var(--border);
-            background: var(--bg);
-            height: 100vh;
-        }
-
         /* ---- TikTok-branded header ---- */
         .streamer-header {
             display: flex;
@@ -109,16 +99,27 @@
             transition: all .2s;
         }
         .badge-live {
-            color: var(--accent);
-            border-color: rgba(254, 44, 85, .4);
-            animation: live-pulse 2s ease-in-out infinite;
+            color: var(--text-muted);
+            border-color: var(--border);
+            transition: all .4s;
         }
         .badge-live .live-dot {
             width: 7px; height: 7px;
             border-radius: 50%;
+            background: var(--text-muted);
+            transition: background .4s;
+        }
+        .badge-live.is-live {
+            color: var(--accent);
+            border-color: rgba(254, 44, 85, .4);
+            animation: live-pulse 2s ease-in-out infinite;
+        }
+        .badge-live.is-live .live-dot {
             background: var(--accent);
             animation: dot-blink 1.5s ease-in-out infinite;
         }
+        .badge-live:not(.is-live) .live-text-on { display: none; }
+        .badge-live.is-live .live-text-off { display: none; }
         @keyframes live-pulse {
             0%, 100% { box-shadow: 0 0 0 0 transparent; }
             50% { box-shadow: 0 0 14px 2px var(--accent-glow); }
@@ -421,6 +422,30 @@
         }
 
         /* ---- Order row ---- */
+        .stream-divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+        }
+        .stream-divider::before, .stream-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        .stream-divider-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: var(--text-muted);
+            white-space: nowrap;
+            padding: 3px 10px;
+            border-radius: 6px;
+            background: rgba(254, 44, 85, .08);
+            border: 1px solid rgba(254, 44, 85, .15);
+        }
         .order-row {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -730,6 +755,49 @@
             color: var(--text-muted);
             margin-left: auto;
         }
+        .chat-toggle-tab {
+            position: fixed;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-right: none;
+            border-radius: 10px 0 0 10px;
+            padding: 16px 9px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            cursor: pointer;
+            z-index: 100;
+            transition: color .2s, background .2s, right .3s;
+            letter-spacing: .03em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .chat-toggle-tab:hover { color: var(--text); background: var(--bg-hover); }
+        .chat-toggle-tab .chat-toggle-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .chat-panel {
+            width: var(--chat-width);
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--border);
+            background: var(--bg);
+            height: 100vh;
+            margin-right: calc(-1 * var(--chat-width));
+            transition: margin-right .3s ease;
+        }
+        .chat-panel.is-open {
+            margin-right: 0;
+        }
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -835,6 +903,7 @@
         /* ---- Responsive ---- */
         @media (max-width: 768px) {
             .chat-panel { display: none !important; }
+            .chat-toggle-tab { display: none !important; }
             .badge-chat-toggle { display: inline-flex; }
             .chat-drawer-toggle { display: block; }
             .chat-mobile-drawer { display: flex; }
@@ -1049,9 +1118,10 @@
                     </div>
                     <div class="streamer-title">Live Orders</div>
                     <div class="header-right">
-                        <span class="badge badge-live">
+                        <span class="badge badge-live" id="live-badge">
                             <span class="live-dot"></span>
-                            LIVE
+                            <span class="live-text-on">LIVE</span>
+                            <span class="live-text-off">OFFLINE</span>
                         </span>
                         <span class="badge" style="color:var(--green);" id="order-count-badge">
                             <span id="order-count">{{ total_count }}</span> orders
@@ -1078,6 +1148,9 @@
                                 <a href="/deals">Deals</a>
                                 <a href="/hits">Live Hits</a>
                                 <a href="/stream-manager">Stream Manager</a>
+                                <div class="nav-dropdown-label">TikTok</div>
+                                <a href="/tiktok/analytics">Stream Analytics</a>
+                                <a href="/tiktok/streamer/config">Stream Config</a>
                                 <div class="nav-dropdown-label">Operators</div>
                                 <a href="/table">Table</a>
                                 <a href="/status">Status</a>
@@ -1096,11 +1169,14 @@
                         </div>
                         <div class="gmv-stats">
                             <div class="gmv-live-stat" id="stream-gmv-wrap" style="display:none;">
-                                <div class="gmv-label">Stream GMV</div>
+                                <div class="gmv-label" id="stream-gmv-label">Stream GMV</div>
                                 <div class="gmv-live-value" id="stream-gmv-value">--</div>
                                 <div class="gmv-live-sub">
                                     <span><strong id="stream-items-sold">0</strong> items</span>
                                     <span><strong id="stream-orders">0</strong> orders</span>
+                                </div>
+                                <div class="gmv-live-sub" id="tiktok-gmv-row" style="display:none;">
+                                    <span style="color:var(--text-muted);font-size:10px;">TikTok: <strong id="tiktok-gmv-value" style="color:var(--green);">--</strong></span>
                                 </div>
                             </div>
                             <div class="gmv-stat">
@@ -1161,6 +1237,10 @@
             </div>
             <div class="chat-messages" id="chat-messages-desktop"></div>
         </div>
+    </div>
+    <div class="chat-toggle-tab" id="chat-toggle-tab">
+        <span class="chat-toggle-dot" id="chat-toggle-tab-dot"></span>
+        Live Chat
     </div>
 
     <!-- ===== Mobile: bottom toggle + drawer ===== -->
@@ -1283,6 +1363,9 @@
         try { _liveAnalytics = {{ live_analytics_json|safe }}; } catch (e) {}
         var _streamData = {};
         try { _streamData = {{ stream_data_json|safe }}; } catch (e) {}
+        var _streamSessions = [];
+        try { _streamSessions = {{ stream_sessions_json|safe }}; } catch (e) {}
+        _streamSessions.sort(function(a, b) { return (b.end_time || 0) - (a.end_time || 0); });
 
         /* ---- Chat state ---- */
         var _chatIdx = 0;
@@ -1316,6 +1399,9 @@
         var chatMobileDrawer = document.getElementById('chat-mobile-drawer');
         var chatDrawerClose = document.getElementById('chat-drawer-close');
         var chatToggleBtn = document.getElementById('chat-toggle-btn');
+        var chatPanelDesktop = document.getElementById('chat-panel-desktop');
+        var chatToggleTab = document.getElementById('chat-toggle-tab');
+        var chatToggleTabDot = document.getElementById('chat-toggle-tab-dot');
 
         var leaderboardSection = document.getElementById('leaderboard-section');
         var lbToggle = document.getElementById('lb-toggle');
@@ -1604,6 +1690,37 @@
             });
         }
 
+        function findStreamForOrder(order) {
+            if (!order.created_at || _streamSessions.length === 0) return null;
+            var ts = new Date(order.created_at).getTime() / 1000;
+            for (var i = 0; i < _streamSessions.length; i++) {
+                var s = _streamSessions[i];
+                var st = s.start_time || 0;
+                var et = s.end_time || (Date.now() / 1000);
+                if (ts >= st && ts <= et) return s;
+            }
+            return null;
+        }
+
+        function orderDateKey(order) {
+            if (!order.created_at) return '';
+            var d = new Date(order.created_at);
+            return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        }
+
+        function streamDividerHtml(session) {
+            var label = session.title || 'Livestream';
+            var d = new Date((session.start_time || 0) * 1000);
+            var dateStr = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+            return '<div class="stream-divider"><span class="stream-divider-label">' +
+                esc(label) + ' \u2014 ' + esc(dateStr) + '</span></div>';
+        }
+
+        function dateDividerHtml(dateStr) {
+            return '<div class="stream-divider"><span class="stream-divider-label">' +
+                esc(dateStr) + ' Livestream</span></div>';
+        }
+
         function renderAll() {
             if (_orders.length === 0) {
                 list.style.display = 'none';
@@ -1612,16 +1729,110 @@
             }
             emptyState.style.display = 'none';
             list.style.display = '';
-            list.innerHTML = _orders.map(function(o) { return renderRow(o, false); }).join('');
+
+            var html = '';
+            var lastGroupKey = null;
+            var useStreams = _streamSessions.length > 0;
+            var totalGroups = countGroups(useStreams);
+            for (var i = 0; i < _orders.length; i++) {
+                var o = _orders[i];
+                var groupKey, divider;
+                if (useStreams) {
+                    var stream = findStreamForOrder(o);
+                    groupKey = stream ? stream.id : '__none__';
+                    divider = (stream && groupKey !== lastGroupKey) ? streamDividerHtml(stream) : null;
+                } else {
+                    groupKey = orderDateKey(o);
+                    divider = (groupKey && groupKey !== lastGroupKey) ? dateDividerHtml(groupKey) : null;
+                }
+                if (divider && totalGroups > 1) html += divider;
+                lastGroupKey = groupKey;
+                html += renderRow(o, false);
+            }
+            list.innerHTML = html;
             bindRowClicks();
+        }
+
+        function countGroups(useStreams) {
+            var seen = {};
+            var count = 0;
+            for (var i = 0; i < _orders.length; i++) {
+                var key;
+                if (useStreams) {
+                    var s = findStreamForOrder(_orders[i]);
+                    key = s ? s.id : '__none__';
+                } else {
+                    key = orderDateKey(_orders[i]);
+                }
+                if (!seen[key]) { seen[key] = true; count++; }
+            }
+            return count;
         }
 
         function prependRows(newOrders) {
             if (newOrders.length === 0) return;
             emptyState.style.display = 'none';
             list.style.display = '';
+
+            var useStreams = _streamSessions.length > 0;
+
+            var firstExistingRow = list.querySelector('.order-row');
+            var existingGroupKey = null;
+            if (firstExistingRow) {
+                var oid = firstExistingRow.getAttribute('data-order-id');
+                var existingOrder = _orders.find(function(o) { return o.tiktok_order_id === oid; });
+                if (existingOrder) {
+                    if (useStreams) {
+                        var es = findStreamForOrder(existingOrder);
+                        existingGroupKey = es ? es.id : '__none__';
+                    } else {
+                        existingGroupKey = orderDateKey(existingOrder);
+                    }
+                }
+            }
+
+            var newGroupKey;
+            if (useStreams) {
+                var ns = findStreamForOrder(newOrders[0]);
+                newGroupKey = ns ? ns.id : '__none__';
+            } else {
+                newGroupKey = orderDateKey(newOrders[0]);
+            }
+
+            var needDivider = existingGroupKey && newGroupKey !== existingGroupKey;
+
+            if (needDivider) {
+                var existingDivider = list.querySelector('.stream-divider');
+                if (!existingDivider && existingGroupKey !== '__none__') {
+                    var divEl = document.createElement('div');
+                    if (useStreams) {
+                        var eStream = null;
+                        if (firstExistingRow) {
+                            var eOid = firstExistingRow.getAttribute('data-order-id');
+                            var eOrder = _orders.find(function(o) { return o.tiktok_order_id === eOid; });
+                            if (eOrder) eStream = findStreamForOrder(eOrder);
+                        }
+                        if (eStream) divEl.innerHTML = streamDividerHtml(eStream);
+                        else divEl.innerHTML = dateDividerHtml(existingGroupKey);
+                    } else {
+                        divEl.innerHTML = dateDividerHtml(existingGroupKey);
+                    }
+                    if (divEl.firstChild) list.insertBefore(divEl.firstChild, list.firstChild);
+                }
+            }
+
             var fragment = document.createElement('div');
-            fragment.innerHTML = newOrders.map(function(o) { return renderRow(o, true); }).join('');
+            var rowsHtml = newOrders.map(function(o) { return renderRow(o, true); }).join('');
+            if (needDivider && newGroupKey !== '__none__') {
+                if (useStreams) {
+                    var nStream = findStreamForOrder(newOrders[0]);
+                    if (nStream) rowsHtml = streamDividerHtml(nStream) + rowsHtml;
+                    else rowsHtml = dateDividerHtml(newGroupKey) + rowsHtml;
+                } else {
+                    rowsHtml = dateDividerHtml(newGroupKey) + rowsHtml;
+                }
+            }
+            fragment.innerHTML = rowsHtml;
             while (fragment.lastChild) {
                 list.insertBefore(fragment.lastChild, list.firstChild);
             }
@@ -1702,17 +1913,42 @@
             return '$' + val.toFixed(2);
         }
 
+        var tiktokGmvRow = document.getElementById('tiktok-gmv-row');
+        var tiktokGmvValue = document.getElementById('tiktok-gmv-value');
+        var streamGmvLabel = document.getElementById('stream-gmv-label');
+
         function updateStreamGmv(data) {
             if (data.stream_gmv != null && data.stream_start_utc) {
                 streamGmvWrap.style.display = '';
                 streamGmvValue.textContent = formatGmv(data.stream_gmv);
                 streamItemsSold.textContent = data.stream_items || 0;
                 streamOrdersEl.textContent = data.stream_orders || 0;
+                if (data.stream_range_source === 'auto') {
+                    streamGmvLabel.textContent = 'Stream GMV (auto)';
+                } else {
+                    streamGmvLabel.textContent = 'Stream GMV';
+                }
             } else {
                 streamGmvWrap.style.display = 'none';
             }
+            if (data.tiktok_gmv != null && data.tiktok_gmv > 0) {
+                tiktokGmvRow.style.display = '';
+                tiktokGmvValue.textContent = formatGmv(data.tiktok_gmv);
+            } else {
+                tiktokGmvRow.style.display = 'none';
+            }
         }
         updateStreamGmv(_streamData);
+
+        var liveBadge = document.getElementById('live-badge');
+        function updateLiveBadge(isLive) {
+            if (isLive) {
+                liveBadge.classList.add('is-live');
+            } else {
+                liveBadge.classList.remove('is-live');
+            }
+        }
+        updateLiveBadge(_streamData.is_live);
 
         function updateGMV(data) {
             if (data.session_gmv != null) gmvEl.textContent = '$' + data.session_gmv.toFixed(2);
@@ -1722,13 +1958,21 @@
                 stream_gmv: data.stream_gmv,
                 stream_orders: data.stream_orders,
                 stream_items: data.stream_items,
-                stream_start_utc: data.stream_start_utc
+                stream_start_utc: data.stream_start_utc,
+                tiktok_gmv: data.tiktok_gmv,
+                stream_range_source: data.stream_range_source
             });
+            if (data.is_live != null) updateLiveBadge(data.is_live);
             if (data.top_sellers) _topSellers = data.top_sellers;
             if (data.top_buyers) _topBuyers = data.top_buyers;
             if (data.stream_top_sellers) _streamTopSellers = data.stream_top_sellers;
             if (data.stream_top_buyers) _streamTopBuyers = data.stream_top_buyers;
             renderLeaderboard();
+            if (data.stream_sessions && data.stream_sessions.length > 0) {
+                var oldLen = _streamSessions.length;
+                _streamSessions = data.stream_sessions.slice().sort(function(a, b) { return (b.end_time || 0) - (a.end_time || 0); });
+                if (_streamSessions.length !== oldLen) renderAll();
+            }
         }
 
         /* ---- Order polling ---- */
@@ -1860,10 +2104,12 @@
             var cls = 'chat-status-dot ' + chatDotClass(status);
             chatDotDesktop.className = cls;
             chatDotMobile.className = cls;
-            chatDotMobileToggle.className = 'chat-toggle-dot';
-            chatDotMobileToggle.style.background =
-                status === 'connected' ? 'var(--green)' :
+            var dotBg = status === 'connected' ? 'var(--green)' :
                 (status === 'not_configured' || status === 'stopped') ? 'var(--text-muted)' : 'var(--accent)';
+            chatDotMobileToggle.className = 'chat-toggle-dot';
+            chatDotMobileToggle.style.background = dotBg;
+            chatToggleTabDot.className = 'chat-toggle-dot';
+            chatToggleTabDot.style.background = dotBg;
         }
 
         function updateViewerCount(count) {
@@ -1973,6 +2219,25 @@
         chatToggleBtn.addEventListener('click', function() {
             if (_chatDrawerOpen) closeDrawer();
             else openDrawer();
+        });
+
+        /* ---- Desktop chat toggle ---- */
+        var _desktopChatOpen = false;
+        try { _desktopChatOpen = localStorage.getItem('streamer_chat_open') === '1'; } catch (e) {}
+        function applyDesktopChatState() {
+            if (_desktopChatOpen) {
+                chatPanelDesktop.classList.add('is-open');
+                chatToggleTab.style.right = 'var(--chat-width)';
+            } else {
+                chatPanelDesktop.classList.remove('is-open');
+                chatToggleTab.style.right = '0';
+            }
+        }
+        applyDesktopChatState();
+        chatToggleTab.addEventListener('click', function() {
+            _desktopChatOpen = !_desktopChatOpen;
+            try { localStorage.setItem('streamer_chat_open', _desktopChatOpen ? '1' : '0'); } catch (e) {}
+            applyDesktopChatState();
         });
 
         /* ---- Scroll tracking for auto-scroll ---- */

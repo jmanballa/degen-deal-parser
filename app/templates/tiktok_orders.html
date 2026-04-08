@@ -102,14 +102,23 @@
                     <div class="subtle">Slice the TikTok order stream by date, status, source, currency, or customer/order text.</div>
                 </div>
             </div>
-            <form method="get" action="/tiktok/orders" class="filters-form">
+            <form method="get" action="/tiktok/orders" class="filters-form" id="orders-filter-form">
+                <div>
+                    <label>Livestream</label>
+                    <select name="stream" id="stream-filter">
+                        <option value="">All Streams</option>
+                        {% for s in stream_sessions %}
+                        <option value="{{ s.id }}" {% if selected_stream == s.id %}selected{% endif %}>{{ s.title or 'Untitled' }} — ${{ "%.0f"|format(s.gmv or 0) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div>
                     <label>From</label>
-                    <input type="date" name="start" value="{{ selected_start }}">
+                    <input type="date" name="start" id="date-start" value="{{ selected_start }}">
                 </div>
                 <div>
                     <label>To</label>
-                    <input type="date" name="end" value="{{ selected_end }}">
+                    <input type="date" name="end" id="date-end" value="{{ selected_end }}">
                 </div>
                 <div>
                     <label>Financial status</label>
@@ -464,6 +473,19 @@
 
         document.addEventListener('visibilitychange', () => { if (!document.hidden) _pollForNewOrders(); });
         setInterval(_pollForNewOrders, 30000);
+
+        /* Stream filter <-> date range coordination */
+        (function() {
+            var streamSel = document.getElementById('stream-filter');
+            var dateStart = document.getElementById('date-start');
+            var dateEnd = document.getElementById('date-end');
+            if (!streamSel) return;
+            dateStart.addEventListener('change', function() { if (dateStart.value) streamSel.value = ''; });
+            dateEnd.addEventListener('change', function() { if (dateEnd.value) streamSel.value = ''; });
+            streamSel.addEventListener('change', function() {
+                if (streamSel.value) { dateStart.value = ''; dateEnd.value = ''; }
+            });
+        })();
     </script>
 </body>
 </html>
