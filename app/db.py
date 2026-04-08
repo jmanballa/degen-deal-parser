@@ -311,6 +311,10 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
     "live_hits": {
         "order_value": "DOUBLE PRECISION",
     },
+    "stream_schedules": {
+        "stream_account_id": "INTEGER",
+        "is_overnight": "BOOLEAN DEFAULT FALSE",
+    },
 }
 
 
