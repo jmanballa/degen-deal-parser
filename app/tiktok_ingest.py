@@ -913,6 +913,9 @@ def verify_tiktok_webhook_signature(
     )
 
 
+WEBHOOK_MAX_AGE_SECONDS: int = 5 * 60
+
+
 def parse_tiktok_webhook_payload(
     raw_body: bytes,
     *,
@@ -920,6 +923,7 @@ def parse_tiktok_webhook_payload(
     headers: Optional[MutableMapping[str, str]] = None,
     request_path: Optional[str] = None,
     strict_signature: bool = True,
+    max_age_seconds: Optional[int] = None,
 ) -> dict[str, Any]:
     normalized_secret = (app_secret or "").strip()
     if not normalized_secret and strict_signature:
@@ -971,6 +975,19 @@ def parse_tiktok_webhook_payload(
         if not signature:
             raise TikTokIngestError("TikTok webhook signature is missing")
         raise TikTokIngestError("TikTok webhook signature verification failed")
+
+    effective_max_age = max_age_seconds if max_age_seconds is not None else WEBHOOK_MAX_AGE_SECONDS
+    if sig_verified and strict_signature and timestamp and effective_max_age > 0:
+        try:
+            ts_epoch = int(timestamp)
+            ts_dt = datetime.fromtimestamp(ts_epoch, tz=timezone.utc)
+            age = datetime.now(timezone.utc) - ts_dt
+            if abs(age) > timedelta(seconds=effective_max_age):
+                raise TikTokIngestError(
+                    f"TikTok webhook timestamp too old or too far in future (age={age})"
+                )
+        except (ValueError, TypeError, OSError):
+            pass
 
     payload["_signature_verified"] = sig_verified
     return payload

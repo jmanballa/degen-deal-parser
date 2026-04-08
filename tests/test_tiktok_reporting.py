@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import shutil
+import time
 import unittest
 import uuid
 from contextlib import contextmanager
@@ -441,7 +442,7 @@ class TikTokRegressionTests(unittest.TestCase):
 
     def test_tiktok_webhook_uses_app_secret_when_webhook_secret_is_blank(self) -> None:
         secret = "app-secret"
-        timestamp = "1710000000"
+        timestamp = str(int(time.time()))
         body = json.dumps({"order_id": "tt-3", "status": "PAID"}).encode("utf-8")
         signature = hmac.new(
             secret.encode("utf-8"),
@@ -480,7 +481,7 @@ class TikTokRegressionTests(unittest.TestCase):
 
     def test_tiktok_webhook_accepts_signed_json_and_stubs_background_enrichment(self) -> None:
         secret = "app-secret"
-        timestamp = "1710000000"
+        timestamp = str(int(time.time()))
         body = json.dumps({"order_id": "tt-2", "status": "PAID"}).encode("utf-8")
         signature = hmac.new(
             secret.encode("utf-8"),
@@ -539,8 +540,8 @@ class TikTokRegressionTests(unittest.TestCase):
 
     def test_tiktok_webhook_signature_parsing_accepts_timestamped_payload(self) -> None:
         secret = "super-secret"
-        timestamp = "1710000000"
-        raw_body = b'{"order_id":"tt-1","status":"PAID","timestamp":"1710000000"}'
+        timestamp = str(int(time.time()))
+        raw_body = json.dumps({"order_id": "tt-1", "status": "PAID", "timestamp": timestamp}, separators=(",", ":")).encode("utf-8")
         expected_digest = hmac.new(
             secret.encode("utf-8"),
             f"{timestamp}.{raw_body.decode('utf-8')}".encode("utf-8"),
@@ -566,7 +567,7 @@ class TikTokRegressionTests(unittest.TestCase):
 
     def test_tiktok_webhook_signature_parsing_accepts_combined_header_format(self) -> None:
         secret = "super-secret"
-        timestamp = "1710000000"
+        timestamp = str(int(time.time()))
         raw_body = b'{"order_id":"tt-9","status":"PAID"}'
         signature = hmac.new(
             secret.encode("utf-8"),
@@ -586,7 +587,7 @@ class TikTokRegressionTests(unittest.TestCase):
         """TikTok-Signature t+s must stay paired; a bogus x-tiktok-timestamp must not break verification."""
         secret = "app-secret"
         raw_body = json.dumps({"order_id": "tt-pair", "status": "PAID"}, separators=(",", ":")).encode("utf-8")
-        good_ts = "1710000000"
+        good_ts = str(int(time.time()))
         bad_ts = "9999999999"
         signature = hmac.new(
             secret.encode("utf-8"),
@@ -604,7 +605,7 @@ class TikTokRegressionTests(unittest.TestCase):
 
     def test_tiktok_webhook_accepts_uppercase_hex_signature(self) -> None:
         secret = "app-secret"
-        timestamp = "1710000000"
+        timestamp = str(int(time.time()))
         raw_body = b'{"order_id":"tt-upper","status":"PAID"}'
         digest = hmac.new(
             secret.encode("utf-8"),

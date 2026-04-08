@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
@@ -403,6 +404,10 @@ PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 _live_analytics_cache: dict[str, object] = {}
 _live_analytics_lock = threading.Lock()
 _LIVE_ANALYTICS_POLL_SECONDS = 60
+
+_gmv_cache: dict[str, Any] = {}
+_gmv_cache_lock = threading.Lock()
+_GMV_CACHE_TTL_SECONDS = 10
 
 _stream_range: dict[str, Optional[datetime]] = {"start": None, "end": None}
 _stream_range_source: str = "manual"
@@ -4693,7 +4698,10 @@ def login_form(
         )
 
     request.session["user_id"] = user.id
-    redirect_target = next or app_home_for_role(user.role)
+    if next and next.startswith("/") and not next.startswith("//"):
+        redirect_target = next
+    else:
+        redirect_target = app_home_for_role(user.role)
     return RedirectResponse(url=redirect_target, status_code=303)
 
 
@@ -7818,6 +7826,20 @@ def _resolve_tiktok_api_creds() -> tuple[str, str, str]:
 
 
 def _streamer_session_gmv(session: Session) -> dict:
+    """Cached wrapper — returns GMV data, recomputing at most once per _GMV_CACHE_TTL_SECONDS."""
+    now = time.monotonic()
+    with _gmv_cache_lock:
+        cached_at = _gmv_cache.get("at", 0)
+        if now - cached_at < _GMV_CACHE_TTL_SECONDS and "data" in _gmv_cache:
+            return _gmv_cache["data"]
+    result = _streamer_session_gmv_uncached(session)
+    with _gmv_cache_lock:
+        _gmv_cache["data"] = result
+        _gmv_cache["at"] = time.monotonic()
+    return result
+
+
+def _streamer_session_gmv_uncached(session: Session) -> dict:
     """Calculate today's GMV and top sellers for the streamer dashboard (Pacific time)."""
     now_pacific = datetime.now(PACIFIC_TZ)
     today_start_pacific = now_pacific.replace(hour=0, minute=0, second=0, microsecond=0)
