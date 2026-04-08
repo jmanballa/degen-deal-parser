@@ -104,6 +104,7 @@ from .models import (
     PLATFORMS,
     ReparseRun,
     ShopifyOrder,
+    StreamAccount,
     Streamer,
     STREAMERS,
     StreamSchedule,
@@ -8421,7 +8422,7 @@ def tiktok_streamer_page(
         "current_user": getattr(request.state, "current_user", None),
         "streamers": get_streamer_names(session),
         "platforms": PLATFORMS,
-        "current_streamer": get_current_streamer(session) or "",
+        "current_streamer": _get_default_streamer_for_tiktok(session) or "",
     })
 
 
@@ -10928,21 +10929,53 @@ def _now_pacific() -> datetime:
     return datetime.now(ZoneInfo("America/Los_Angeles"))
 
 
-def get_current_streamer(session: Session) -> Optional[str]:
-    """Return the streamer name for whoever is scheduled right now (Pacific time), or None."""
+def get_current_streamer(session: Session, stream_account_id: Optional[int] = None) -> Optional[str]:
+    """Return the streamer name for whoever is scheduled right now (Pacific time), or None.
+
+    Handles overnight shifts (e.g. 18:00-06:00) by also checking yesterday's schedules
+    that extend past midnight into today.
+    """
     now = _now_pacific()
     today = now.strftime("%Y-%m-%d")
+    yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M")
 
-    schedules = session.exec(
-        select(StreamSchedule).where(StreamSchedule.date == today)
-    ).all()
-    for sched in schedules:
-        if sched.start_time <= current_time <= sched.end_time:
+    today_q = select(StreamSchedule).where(StreamSchedule.date == today)
+    yesterday_q = select(StreamSchedule).where(
+        StreamSchedule.date == yesterday, StreamSchedule.is_overnight == True
+    )
+    if stream_account_id is not None:
+        today_q = today_q.where(StreamSchedule.stream_account_id == stream_account_id)
+        yesterday_q = yesterday_q.where(StreamSchedule.stream_account_id == stream_account_id)
+
+    for sched in session.exec(today_q).all():
+        if sched.is_overnight:
+            if current_time >= sched.start_time:
+                streamer = session.get(Streamer, sched.streamer_id)
+                if streamer and streamer.is_active:
+                    return streamer.display_name or streamer.name
+        else:
+            if sched.start_time <= current_time <= sched.end_time:
+                streamer = session.get(Streamer, sched.streamer_id)
+                if streamer and streamer.is_active:
+                    return streamer.display_name or streamer.name
+
+    for sched in session.exec(yesterday_q).all():
+        if current_time <= sched.end_time:
             streamer = session.get(Streamer, sched.streamer_id)
             if streamer and streamer.is_active:
                 return streamer.display_name or streamer.name
+
     return None
+
+
+def _get_default_streamer_for_tiktok(session: Session) -> Optional[str]:
+    """Return the streamer on shift for the default (main) stream account."""
+    default_acct = session.exec(
+        select(StreamAccount).where(StreamAccount.is_default == True, StreamAccount.is_active == True)
+    ).first()
+    acct_id = default_acct.id if default_acct else None
+    return get_current_streamer(session, stream_account_id=acct_id)
 
 
 # ===========================================================================
@@ -11402,6 +11435,58 @@ def hits_api_recent(
 # ===========================================================================
 
 
+def _format_time_12h(t24: str) -> str:
+    """Convert 'HH:MM' 24-hour to '12:00 AM/PM'."""
+    try:
+        h, m = int(t24.split(":")[0]), t24.split(":")[1]
+        suffix = "AM" if h < 12 else "PM"
+        h12 = h % 12 or 12
+        return f"{h12}:{m} {suffix}"
+    except Exception:
+        return t24
+
+
+def _ensure_default_stream_account(session: Session) -> None:
+    """Create the default '@degencollectibles' stream account if none exist.
+
+    Also backfills stream_account_id and is_overnight on legacy schedules.
+    """
+    existing = session.exec(select(StreamAccount).where(StreamAccount.is_active == True)).first()
+    if not existing:
+        acct = StreamAccount(
+            name="Main Stream",
+            platform="TikTok",
+            handle="@degencollectibles",
+            is_default=True,
+            sort_order=0,
+        )
+        session.add(acct)
+        session.commit()
+        session.refresh(acct)
+
+    default_acct = session.exec(
+        select(StreamAccount).where(StreamAccount.is_default == True)
+    ).first()
+
+    if default_acct:
+        needs_fix = session.exec(
+            select(StreamSchedule).where(
+                (StreamSchedule.stream_account_id == None) | (StreamSchedule.is_overnight == False)
+            )
+        ).all()
+        changed = False
+        for s in needs_fix:
+            if s.stream_account_id is None:
+                s.stream_account_id = default_acct.id
+                changed = True
+            if not s.is_overnight and s.end_time < s.start_time:
+                s.is_overnight = True
+                changed = True
+            session.add(s)
+        if changed:
+            session.commit()
+
+
 @app.get("/stream-manager", response_class=HTMLResponse)
 def stream_manager_page(
     request: Request,
@@ -11410,11 +11495,18 @@ def stream_manager_page(
     if denial := require_role_response(request, "viewer"):
         return denial
 
+    _ensure_default_stream_account(session)
+
     streamers = session.exec(
         select(Streamer).where(Streamer.is_active == True).order_by(Streamer.name)
     ).all()
 
-    # Get schedule for the next 7 days (Pacific time)
+    stream_accounts = session.exec(
+        select(StreamAccount)
+        .where(StreamAccount.is_active == True)
+        .order_by(StreamAccount.sort_order, StreamAccount.name)
+    ).all()
+
     now_pst = _now_pacific()
     today = now_pst.strftime("%Y-%m-%d")
     end_date = (now_pst + timedelta(days=7)).strftime("%Y-%m-%d")
@@ -11424,24 +11516,30 @@ def stream_manager_page(
         .order_by(StreamSchedule.date, StreamSchedule.start_time)
     ).all()
 
-    # Build a lookup for streamer names by id
     streamer_map = {s.id: s for s in streamers}
 
-    # Enrich schedules with streamer info
-    schedule_items = []
+    schedule_by_account: dict[int, list[dict]] = {a.id: [] for a in stream_accounts}
     for sched in schedules:
         s = streamer_map.get(sched.streamer_id)
-        schedule_items.append({
+        acct_id = sched.stream_account_id or (stream_accounts[0].id if stream_accounts else 0)
+        item = {
             "id": sched.id,
             "date": sched.date,
             "start_time": sched.start_time,
             "end_time": sched.end_time,
+            "start_display": _format_time_12h(sched.start_time),
+            "end_display": _format_time_12h(sched.end_time),
+            "is_overnight": sched.is_overnight,
             "title": sched.title or "",
             "notes": sched.notes or "",
             "streamer_name": (s.display_name or s.name) if s else "Unknown",
             "streamer_color": (s.color or "#fe2c55") if s else "#fe2c55",
             "streamer_emoji": (s.avatar_emoji or "🎮") if s else "🎮",
-        })
+        }
+        if acct_id in schedule_by_account:
+            schedule_by_account[acct_id].append(item)
+        else:
+            schedule_by_account.setdefault(acct_id, []).append(item)
 
     current_streamer = get_current_streamer(session)
 
@@ -11451,7 +11549,8 @@ def stream_manager_page(
         "current_user": getattr(request.state, "current_user", None),
         "streamers": streamers,
         "streamer_colors": STREAMER_COLORS,
-        "schedules": schedule_items,
+        "stream_accounts": stream_accounts,
+        "schedule_by_account": schedule_by_account,
         "current_streamer": current_streamer,
         "today": today,
     })
@@ -11532,6 +11631,7 @@ def stream_manager_add_schedule(
     date: str = Form(...),
     start_time: str = Form(...),
     end_time: str = Form(...),
+    stream_account_id: Optional[str] = Form(default=None),
     title: Optional[str] = Form(default=None),
     notes: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
@@ -11539,11 +11639,25 @@ def stream_manager_add_schedule(
     if denial := require_role_response(request, "viewer"):
         return denial
 
+    st = start_time.strip()
+    et = end_time.strip()
+    is_overnight = et < st  # e.g. start 18:00, end 06:00
+
+    acct_id = int(stream_account_id) if stream_account_id else None
+    if acct_id is None:
+        default_acct = session.exec(
+            select(StreamAccount).where(StreamAccount.is_default == True)
+        ).first()
+        if default_acct:
+            acct_id = default_acct.id
+
     sched = StreamSchedule(
         streamer_id=int(streamer_id),
+        stream_account_id=acct_id,
         date=date.strip(),
-        start_time=start_time.strip(),
-        end_time=end_time.strip(),
+        start_time=st,
+        end_time=et,
+        is_overnight=is_overnight,
         title=(title or "").strip() or None,
         notes=(notes or "").strip() or None,
     )
@@ -11566,6 +11680,68 @@ def stream_manager_delete_schedule(
         session.delete(sched)
         session.commit()
     return RedirectResponse(url="/stream-manager?success=Shift+removed", status_code=303)
+
+
+@app.post("/stream-manager/account/add")
+def stream_manager_add_account(
+    request: Request,
+    name: str = Form(...),
+    platform: str = Form(default="TikTok"),
+    handle: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    max_order = session.exec(select(StreamAccount.sort_order).order_by(StreamAccount.sort_order.desc())).first() or 0
+    acct = StreamAccount(
+        name=name.strip(),
+        platform=platform.strip(),
+        handle=(handle or "").strip() or None,
+        is_default=False,
+        sort_order=max_order + 1,
+    )
+    session.add(acct)
+    session.commit()
+    return RedirectResponse(url="/stream-manager?success=Stream+added", status_code=303)
+
+
+@app.post("/stream-manager/account/{account_id}/edit")
+def stream_manager_edit_account(
+    request: Request,
+    account_id: int,
+    name: str = Form(...),
+    platform: str = Form(default="TikTok"),
+    handle: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    acct = session.get(StreamAccount, account_id)
+    if acct:
+        acct.name = name.strip()
+        acct.platform = platform.strip()
+        acct.handle = (handle or "").strip() or None
+        acct.updated_at = utcnow()
+        session.add(acct)
+        session.commit()
+    return RedirectResponse(url="/stream-manager?success=Stream+updated", status_code=303)
+
+
+@app.post("/stream-manager/account/{account_id}/delete")
+def stream_manager_delete_account(
+    request: Request,
+    account_id: int,
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+    acct = session.get(StreamAccount, account_id)
+    if acct:
+        acct.is_active = False
+        acct.updated_at = utcnow()
+        session.add(acct)
+        session.commit()
+    return RedirectResponse(url="/stream-manager?success=Stream+removed", status_code=303)
 
 
 @app.get("/api/stream-manager/current-streamer")

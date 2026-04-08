@@ -2351,7 +2351,7 @@
                     : '<div class="order-pick-thumb-placeholder">&#x1F4E6;</div>';
                 var isSelected = o.tiktok_order_id === _selectedOrderId;
                 var time = o.created_at ? new Date(o.created_at) : null;
-                var timeStr = time ? time.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+                var timeStr = time ? time.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 
                 return '<div class="order-pick-row' + (isSelected ? ' is-selected' : '') + '" data-order-id="' + escHtml(o.tiktok_order_id) + '">'
                     + thumbHtml

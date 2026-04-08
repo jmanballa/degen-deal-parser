@@ -184,6 +184,11 @@
         .schedule-info { flex: 1; min-width: 0; }
         .schedule-who { font-size: 14px; font-weight: 800; }
         .schedule-when { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .schedule-overnight-tag {
+            display: inline-block; font-size: 10px; font-weight: 700;
+            color: var(--accent); background: rgba(254,44,85,.12);
+            padding: 1px 6px; border-radius: 6px; margin-left: 6px; vertical-align: middle;
+        }
         .schedule-title-text { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
         .schedule-date-group {
             font-size: 12px; font-weight: 800; color: var(--text-muted);
@@ -193,6 +198,41 @@
         }
         .schedule-date-group:first-child { margin-top: 0; }
         .schedule-today { color: var(--green); }
+
+        /* Stream account tabs */
+        .stream-tabs {
+            display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;
+            align-items: center;
+        }
+        .stream-tab {
+            padding: 8px 16px; border-radius: 12px; font-size: 13px; font-weight: 700;
+            border: 1px solid var(--border); background: var(--bg-card);
+            color: var(--text-secondary); cursor: pointer; transition: all .15s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .stream-tab:hover { background: var(--bg-card-hover); color: var(--text); }
+        .stream-tab.is-active {
+            background: rgba(62,207,142,.12); border-color: rgba(62,207,142,.3);
+            color: var(--green);
+        }
+        .stream-tab .tab-handle {
+            font-size: 11px; color: var(--text-muted); font-weight: 600;
+        }
+        .stream-tab.is-active .tab-handle { color: rgba(62,207,142,.7); }
+        .stream-tab-add {
+            padding: 8px 14px; border-radius: 12px; font-size: 13px; font-weight: 700;
+            border: 1px dashed var(--border); background: transparent;
+            color: var(--text-muted); cursor: pointer; transition: all .15s;
+        }
+        .stream-tab-add:hover { border-color: var(--green); color: var(--green); }
+        .tab-pane { display: none; }
+        .tab-pane.is-active { display: block; }
+        .stream-acct-handle {
+            font-size: 12px; color: var(--text-muted); font-weight: 600;
+        }
+        .stream-acct-actions {
+            display: flex; gap: 4px; margin-left: auto;
+        }
 
         /* Edit modal */
         .edit-backdrop {
@@ -382,78 +422,143 @@
             {% endif %}
         </div>
 
-        <!-- ===== SCHEDULE ===== -->
+        <!-- ===== SCHEDULES (Tabbed by Stream Account) ===== -->
         <div class="section">
             <div class="section-header">
                 <div>
                     <div class="section-title">Schedule</div>
                     <div class="section-subtitle">Next 7 days. The streamer on shift auto-selects in the hit tracker.</div>
                 </div>
-                {% if streamers %}
-                <button class="btn btn-green btn-sm" onclick="document.getElementById('add-schedule-form').style.display = document.getElementById('add-schedule-form').style.display === 'none' ? 'block' : 'none'">+ Add Shift</button>
-                {% endif %}
             </div>
 
-            {% if streamers %}
-            <!-- Add schedule form (hidden by default) -->
-            <div class="add-form" id="add-schedule-form" style="display:none;">
-                <form method="post" action="/stream-manager/schedule/add">
+            {% if stream_accounts %}
+            <div class="stream-tabs">
+                {% for acct in stream_accounts %}
+                <button class="stream-tab {% if loop.first %}is-active{% endif %}"
+                        onclick="switchScheduleTab({{ acct.id }})"
+                        data-account-id="{{ acct.id }}">
+                    {{ acct.name }}
+                    {% if acct.handle %}<span class="tab-handle">{{ acct.handle }}</span>{% endif %}
+                </button>
+                {% endfor %}
+                <button class="stream-tab-add" onclick="document.getElementById('add-account-form').style.display = document.getElementById('add-account-form').style.display === 'none' ? 'block' : 'none'">+ Add Stream</button>
+            </div>
+
+            <!-- Add stream account form (hidden) -->
+            <div class="add-form" id="add-account-form" style="display:none;margin-bottom:16px;">
+                <form method="post" action="/stream-manager/account/add">
                     <div class="form-row">
-                        <label class="form-label">Who's streaming? *
-                            <select class="form-select" name="streamer_id" required>
-                                <option value="">— pick streamer —</option>
-                                {% for s in streamers %}
-                                <option value="{{ s.id }}">{{ s.display_name or s.name }}</option>
-                                {% endfor %}
+                        <label class="form-label">Stream Name *
+                            <input class="form-input" type="text" name="name" placeholder="e.g. Second Stream" required>
+                        </label>
+                        <label class="form-label">Platform
+                            <select class="form-select" name="platform">
+                                <option value="TikTok" selected>TikTok</option>
+                                <option value="Whatnot">Whatnot</option>
+                                <option value="YouTube">YouTube</option>
+                                <option value="Other">Other</option>
                             </select>
                         </label>
-                        <label class="form-label">Date *
-                            <input class="form-input" type="date" name="date" value="{{ today }}" required>
-                        </label>
-                        <label class="form-label">Start Time *
-                            <input class="form-input" type="time" name="start_time" value="18:00" required>
-                        </label>
-                        <label class="form-label">End Time *
-                            <input class="form-input" type="time" name="end_time" value="22:00" required>
-                        </label>
-                        <label class="form-label form-full">Title (optional)
-                            <input class="form-input" type="text" name="title" placeholder="e.g. Friday Night Pokemon Breaks">
+                        <label class="form-label">Account Handle
+                            <input class="form-input" type="text" name="handle" placeholder="e.g. @secondaccount">
                         </label>
                     </div>
                     <div style="margin-top:14px;display:flex;gap:8px;">
-                        <button type="submit" class="btn btn-green">Add Shift</button>
-                        <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-schedule-form').style.display='none'">Cancel</button>
+                        <button type="submit" class="btn btn-green">Add Stream</button>
+                        <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-account-form').style.display='none'">Cancel</button>
                     </div>
                 </form>
             </div>
-            {% endif %}
 
-            {% if schedules %}
-            <div class="schedule-list">
-                {% set current_date = namespace(value='') %}
-                {% for sched in schedules %}
-                    {% if sched.date != current_date.value %}
-                        {% set current_date.value = sched.date %}
-                        <div class="schedule-date-group {% if sched.date == today %}schedule-today{% endif %}">
-                            {% if sched.date == today %}Today{% else %}{{ sched.date }}{% endif %}
-                        </div>
-                    {% endif %}
-                    <div class="schedule-row">
-                        <div class="schedule-dot" style="background:{{ sched.streamer_color }};"></div>
-                        <div style="font-size:18px;flex-shrink:0;">{{ sched.streamer_emoji }}</div>
-                        <div class="schedule-info">
-                            <div class="schedule-who">{{ sched.streamer_name }}</div>
-                            <div class="schedule-when">{{ sched.start_time }} — {{ sched.end_time }}</div>
-                            {% if sched.title %}<div class="schedule-title-text">{{ sched.title }}</div>{% endif %}
-                        </div>
-                        <form method="post" action="/stream-manager/schedule/{{ sched.id }}/delete" style="display:inline;" onsubmit="return confirm('Remove this shift?')">
+            {% for acct in stream_accounts %}
+            <div class="tab-pane {% if loop.first %}is-active{% endif %}" id="schedule-tab-{{ acct.id }}">
+                <!-- Account info bar -->
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+                    <span style="font-size:13px;font-weight:800;color:var(--text-secondary);">{{ acct.name }}</span>
+                    {% if acct.handle %}<span class="stream-acct-handle">{{ acct.handle }}</span>{% endif %}
+                    <span style="font-size:11px;color:var(--text-muted);padding:2px 8px;border-radius:6px;background:rgba(255,255,255,.05);">{{ acct.platform }}</span>
+                    <div class="stream-acct-actions">
+                        {% if streamers %}
+                        <button class="btn btn-green btn-sm" onclick="toggleAddShift({{ acct.id }})">+ Add Shift</button>
+                        {% endif %}
+                        {% if not acct.is_default %}
+                        <button class="btn-icon" title="Edit stream" onclick="openEditAccount({{ acct.id }}, '{{ acct.name }}', '{{ acct.platform }}', '{{ acct.handle or '' }}')">&#x270E;</button>
+                        <form method="post" action="/stream-manager/account/{{ acct.id }}/delete" style="display:inline;" onsubmit="return confirm('Remove this stream? Shifts will be preserved.')">
                             <button class="btn-icon btn-icon-danger" title="Remove" type="submit">&#x2715;</button>
                         </form>
+                        {% endif %}
                     </div>
-                {% endfor %}
+                </div>
+
+                {% if streamers %}
+                <div class="add-form" id="add-schedule-form-{{ acct.id }}" style="display:none;margin-bottom:14px;">
+                    <form method="post" action="/stream-manager/schedule/add">
+                        <input type="hidden" name="stream_account_id" value="{{ acct.id }}">
+                        <div class="form-row">
+                            <label class="form-label">Who's streaming? *
+                                <select class="form-select" name="streamer_id" required>
+                                    <option value="">— pick streamer —</option>
+                                    {% for s in streamers %}
+                                    <option value="{{ s.id }}">{{ s.display_name or s.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="form-label">Date *
+                                <input class="form-input" type="date" name="date" value="{{ today }}" required>
+                            </label>
+                            <label class="form-label">Start Time *
+                                <input class="form-input" type="time" name="start_time" value="18:00" required>
+                            </label>
+                            <label class="form-label">End Time *
+                                <input class="form-input" type="time" name="end_time" value="06:00" required>
+                            </label>
+                            <label class="form-label form-full">Title (optional)
+                                <input class="form-input" type="text" name="title" placeholder="e.g. Friday Night Pokemon Breaks">
+                            </label>
+                        </div>
+                        <div style="margin-top:14px;display:flex;gap:8px;">
+                            <button type="submit" class="btn btn-green">Add Shift</button>
+                            <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-schedule-form-{{ acct.id }}').style.display='none'">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+                {% endif %}
+
+                {% set acct_schedules = schedule_by_account.get(acct.id, []) %}
+                {% if acct_schedules %}
+                <div class="schedule-list">
+                    {% set current_date = namespace(value='') %}
+                    {% for sched in acct_schedules %}
+                        {% if sched.date != current_date.value %}
+                            {% set current_date.value = sched.date %}
+                            <div class="schedule-date-group {% if sched.date == today %}schedule-today{% endif %}">
+                                {% if sched.date == today %}Today{% else %}{{ sched.date }}{% endif %}
+                            </div>
+                        {% endif %}
+                        <div class="schedule-row">
+                            <div class="schedule-dot" style="background:{{ sched.streamer_color }};"></div>
+                            <div style="font-size:18px;flex-shrink:0;">{{ sched.streamer_emoji }}</div>
+                            <div class="schedule-info">
+                                <div class="schedule-who">{{ sched.streamer_name }}</div>
+                                <div class="schedule-when">
+                                    {{ sched.start_display }} — {{ sched.end_display }}
+                                    {% if sched.is_overnight %}<span class="schedule-overnight-tag">next day</span>{% endif %}
+                                </div>
+                                {% if sched.title %}<div class="schedule-title-text">{{ sched.title }}</div>{% endif %}
+                            </div>
+                            <form method="post" action="/stream-manager/schedule/{{ sched.id }}/delete" style="display:inline;" onsubmit="return confirm('Remove this shift?')">
+                                <button class="btn-icon btn-icon-danger" title="Remove" type="submit">&#x2715;</button>
+                            </form>
+                        </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty">No shifts scheduled for this stream. {% if streamers %}Click "+ Add Shift" to schedule someone.{% else %}Add streamers first.{% endif %}</div>
+                {% endif %}
             </div>
+            {% endfor %}
             {% else %}
-            <div class="empty">No shifts scheduled. {% if streamers %}Click "+ Add Shift" to schedule someone.{% else %}Add streamers first.{% endif %}</div>
+            <div class="empty">No stream accounts configured yet.</div>
             {% endif %}
         </div>
     </div>
@@ -501,7 +606,74 @@
         </div>
     </div>
 
+    <!-- Edit Stream Account Modal -->
+    <div class="edit-backdrop" id="edit-account-backdrop">
+        <div class="edit-modal">
+            <div class="edit-header">
+                <span class="edit-title">Edit Stream</span>
+                <button class="edit-close" onclick="closeEditAccount()">&#x2715;</button>
+            </div>
+            <form method="post" id="edit-account-form">
+                <div class="form-row">
+                    <label class="form-label">Stream Name *
+                        <input class="form-input" type="text" name="name" id="edit-acct-name" required>
+                    </label>
+                    <label class="form-label">Platform
+                        <select class="form-select" name="platform" id="edit-acct-platform">
+                            <option value="TikTok">TikTok</option>
+                            <option value="Whatnot">Whatnot</option>
+                            <option value="YouTube">YouTube</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </label>
+                    <label class="form-label form-full">Account Handle
+                        <input class="form-input" type="text" name="handle" id="edit-acct-handle" placeholder="e.g. @secondaccount">
+                    </label>
+                </div>
+                <div style="margin-top:14px;display:flex;gap:8px;">
+                    <button type="submit" class="btn btn-green">Save</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeEditAccount()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
+    /* ---- Schedule tab switching ---- */
+    function switchScheduleTab(accountId) {
+        var tabs = document.querySelectorAll('.stream-tab');
+        for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('is-active');
+        var panes = document.querySelectorAll('.tab-pane');
+        for (var i = 0; i < panes.length; i++) panes[i].classList.remove('is-active');
+        var activeTab = document.querySelector('.stream-tab[data-account-id="' + accountId + '"]');
+        if (activeTab) activeTab.classList.add('is-active');
+        var activePane = document.getElementById('schedule-tab-' + accountId);
+        if (activePane) activePane.classList.add('is-active');
+    }
+
+    function toggleAddShift(accountId) {
+        var form = document.getElementById('add-schedule-form-' + accountId);
+        if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    /* ---- Edit Account Modal ---- */
+    function openEditAccount(id, name, platform, handle) {
+        document.getElementById('edit-account-form').action = '/stream-manager/account/' + id + '/edit';
+        document.getElementById('edit-acct-name').value = name;
+        document.getElementById('edit-acct-handle').value = handle;
+        var sel = document.getElementById('edit-acct-platform');
+        for (var i = 0; i < sel.options.length; i++) {
+            sel.options[i].selected = sel.options[i].value === platform;
+        }
+        document.getElementById('edit-account-backdrop').classList.add('is-open');
+    }
+    function closeEditAccount() {
+        document.getElementById('edit-account-backdrop').classList.remove('is-open');
+    }
+    document.getElementById('edit-account-backdrop').addEventListener('click', function(e) {
+        if (e.target === this) closeEditAccount();
+    });
+
     /* ---- Emoji picker ---- */
     var EMOJIS = [
         '🎮', '🎬', '🎤', '🎯', '🔥', '💎', '⭐',
@@ -592,7 +764,7 @@
         if (e.target === this) closeEditStreamer();
     });
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeEditStreamer();
+        if (e.key === 'Escape') { closeEditStreamer(); closeEditAccount(); }
     });
     </script>
 </body>

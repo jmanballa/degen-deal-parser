@@ -515,14 +515,30 @@ class Streamer(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class StreamAccount(SQLModel, table=True):
+    __tablename__ = "stream_accounts"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    platform: str = Field(default="TikTok")
+    handle: Optional[str] = Field(default=None)
+    is_default: bool = Field(default=False)
+    is_active: bool = Field(default=True, index=True)
+    sort_order: int = Field(default=0)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class StreamSchedule(SQLModel, table=True):
     __tablename__ = "stream_schedules"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     streamer_id: int = Field(index=True)
+    stream_account_id: Optional[int] = Field(default=None, index=True)
     date: str = Field(index=True)  # YYYY-MM-DD
     start_time: str  # HH:MM (24h)
     end_time: str    # HH:MM (24h)
+    is_overnight: bool = Field(default=False)
     title: Optional[str] = Field(default=None)
     notes: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
