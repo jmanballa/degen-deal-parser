@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <title>Review Batch — Inventory</title>
+    <style>
+        :root {
+            --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8;
+            --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338;
+            --accent-strong:#9f311d; --green:#166647; --green-bg:#edf9f2;
+            --yellow-bg:#fff5df; --red-bg:#fff0ef;
+            --shadow:0 20px 44px rgba(77,46,20,.13);
+        }
+        * { box-sizing:border-box; }
+        body {
+            margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+            -webkit-font-smoothing:antialiased; color:var(--text);
+            background:radial-gradient(circle at top left,rgba(240,196,107,.26),transparent 24%),
+                radial-gradient(circle at 84% 10%,rgba(213,83,56,.10),transparent 18%),
+                linear-gradient(180deg,#fcf7f0 0%,var(--bg) 46%,var(--bg-deep) 100%);
+            min-height:100vh;
+        }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:960px; margin:0 auto; padding:28px 20px 80px; }
+        .back-link { color:var(--muted); font-size:13px; font-weight:600; margin-bottom:12px; display:inline-block; }
+        .back-link:hover { color:var(--text); }
+
+        .card {
+            background:linear-gradient(180deg,var(--card-strong),var(--card));
+            border:1px solid var(--line); border-radius:24px;
+            box-shadow:var(--shadow); margin-bottom:20px;
+        }
+        .card-inner { padding:24px 28px; }
+
+        /* Header row */
+        .page-header {
+            display:flex; align-items:center; justify-content:space-between;
+            gap:16px; flex-wrap:wrap; margin-bottom:24px;
+        }
+        .page-title { font-size:24px; font-weight:900; letter-spacing:-.03em; margin:0; }
+        .page-sub { font-size:13px; color:var(--muted); font-weight:500; margin:4px 0 0; }
+        .header-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+        .btn-primary {
+            appearance:none; border:none; border-radius:14px; padding:13px 22px;
+            font:inherit; font-size:15px; font-weight:800;
+            background:linear-gradient(180deg,var(--accent),var(--accent-strong));
+            color:#fff; cursor:pointer; transition:all .15s;
+        }
+        .btn-primary:hover { opacity:.9; }
+        .btn-primary:disabled { opacity:.4; cursor:not-allowed; }
+        .btn-outline {
+            appearance:none; border:1.5px solid var(--line); border-radius:14px; padding:12px 18px;
+            font:inherit; font-size:14px; font-weight:700;
+            background:linear-gradient(180deg,#fffdfa,#fff4e8);
+            color:var(--text); cursor:pointer; transition:all .15s;
+        }
+        .btn-outline:hover { border-color:#c9b8a0; }
+
+        /* Empty state */
+        .empty-state {
+            text-align:center; padding:60px 20px; color:var(--muted);
+        }
+        .empty-state .icon { font-size:48px; margin-bottom:12px; }
+        .empty-state h2 { font-size:20px; font-weight:800; margin:0 0 8px; color:var(--text); }
+        .empty-state p { font-size:14px; margin:0 0 20px; }
+
+        /* Review table */
+        .table-wrap { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; }
+        th {
+            font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em;
+            color:var(--muted); padding:0 12px 10px; text-align:left; white-space:nowrap;
+        }
+        td { padding:10px 12px; border-top:1px solid var(--line); vertical-align:top; }
+        tr:first-child td { border-top:none; }
+        tr:hover td { background:rgba(255,255,255,.5); }
+
+        .thumb-cell { width:48px; padding-right:4px; }
+        .thumb {
+            width:40px; height:56px; object-fit:cover; border-radius:6px;
+            border:1px solid var(--line); display:block; background:#f0e8dc;
+        }
+        .thumb-placeholder {
+            width:40px; height:56px; border-radius:6px; background:#f0e8dc;
+            border:1px solid var(--line); display:flex; align-items:center;
+            justify-content:center; font-size:18px; color:var(--muted);
+        }
+
+        .name-input {
+            width:100%; padding:7px 10px; border-radius:10px; border:1.5px solid transparent;
+            background:transparent; font:inherit; font-size:13px; font-weight:700;
+            color:var(--text); outline:none; transition:border-color .15s, background .15s;
+            min-width:140px;
+        }
+        .name-input:focus { border-color:var(--accent); background:#fff; }
+        .set-input {
+            width:100%; padding:6px 10px; border-radius:10px; border:1.5px solid transparent;
+            background:transparent; font:inherit; font-size:12px; font-weight:500;
+            color:var(--muted); outline:none; transition:border-color .15s, background .15s;
+            min-width:100px;
+        }
+        .set-input:focus { border-color:var(--accent); background:#fff; color:var(--text); }
+
+        .cond-select {
+            padding:5px 8px; border-radius:10px; border:1.5px solid var(--line);
+            background:#fff; font:inherit; font-size:12px; font-weight:700;
+            color:var(--text); cursor:pointer;
+        }
+
+        .price-cell { font-size:13px; font-weight:700; white-space:nowrap; }
+        .price-na { color:var(--muted); font-weight:500; }
+
+        .row-del {
+            appearance:none; border:none; background:none; cursor:pointer;
+            font-size:16px; color:var(--muted); padding:6px; border-radius:8px;
+            transition:all .15s; line-height:1;
+        }
+        .row-del:hover { color:var(--accent); background:var(--red-bg); }
+
+        /* Footer bar */
+        .confirm-bar {
+            position:sticky; bottom:0; background:rgba(252,247,240,.95);
+            border-top:1px solid var(--line); padding:16px 28px;
+            display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+            backdrop-filter:blur(10px); border-radius:0 0 24px 24px;
+        }
+        .confirm-summary { font-size:14px; font-weight:700; flex:1; }
+        .confirm-summary span { color:var(--accent); }
+
+        /* Success state */
+        .success-card {
+            padding:32px 28px; text-align:center; display:none;
+        }
+        .success-icon { font-size:52px; margin-bottom:12px; }
+        .success-title { font-size:22px; font-weight:900; letter-spacing:-.025em; margin:0 0 8px; }
+        .success-sub { font-size:14px; color:var(--muted); margin:0 0 20px; }
+        .barcode-pills { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-bottom:20px; }
+        .barcode-pill {
+            padding:5px 12px; border-radius:999px; font-size:12px; font-weight:800;
+            background:rgba(213,83,56,.1); color:var(--accent);
+            border:1px solid rgba(213,83,56,.2);
+        }
+        .success-actions { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+
+        .spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:5px; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+
+        @keyframes row-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+        tr { animation:row-in .25s ease both; }
+    </style>
+    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+</head>
+<body>
+<div class="page">
+    {% include "_workspace_nav.html" %}
+    <a href="/inventory/scan/singles" class="back-link">← Back to Camera Scan</a>
+
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Review Batch</h1>
+            <p class="page-sub">Edit card names, sets, and conditions before adding to inventory.</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn-outline" onclick="clearBatch()">Clear Batch</button>
+        </div>
+    </div>
+
+    <!-- Main table card -->
+    <div class="card" id="main-card">
+        <!-- Empty state (shown when batch is empty) -->
+        <div class="empty-state" id="empty-state" style="display:none;">
+            <div class="icon">&#128247;</div>
+            <h2>No cards in batch</h2>
+            <p>Go back to the camera scanner and scan some cards first.</p>
+            <a href="/inventory/scan/singles" class="btn-primary" style="display:inline-block;text-decoration:none;padding:13px 22px;border-radius:14px;font-weight:800;font-size:15px;background:linear-gradient(180deg,var(--accent),var(--accent-strong));color:#fff;">
+                Open Camera Scan
+            </a>
+        </div>
+
+        <!-- Table -->
+        <div id="table-wrap" class="table-wrap" style="display:none;">
+            <table id="review-table">
+                <thead>
+                    <tr>
+                        <th class="thumb-cell"></th>
+                        <th>Card Name</th>
+                        <th>Set</th>
+                        <th>Condition</th>
+                        <th>Market Price</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="review-body"></tbody>
+            </table>
+        </div>
+
+        <!-- Confirm bar -->
+        <div class="confirm-bar" id="confirm-bar" style="display:none;">
+            <div class="confirm-summary">
+                <span id="confirm-count">0</span> cards ready to add to inventory
+            </div>
+            <button class="btn-outline" onclick="window.location.href='/inventory/scan/singles'">+ Scan More</button>
+            <button class="btn-primary" id="confirm-btn" onclick="confirmBatch()">
+                Confirm &amp; Add All
+            </button>
+        </div>
+
+        <!-- Success state (swaps in after confirm) -->
+        <div class="success-card" id="success-card">
+            <div class="success-icon">&#10003;</div>
+            <div class="success-title" id="success-title">Added to Inventory!</div>
+            <div class="success-sub" id="success-sub"></div>
+            <div class="barcode-pills" id="barcode-pills"></div>
+            <div class="success-actions">
+                <a href="/inventory" class="btn-outline" style="display:inline-block;">View Inventory</a>
+                <button class="btn-primary" onclick="printLabels()">Print Labels</button>
+                <button class="btn-outline" onclick="scanMore()">Scan More Cards</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var CONDITIONS = {{ conditions | tojson }};
+    var batch = JSON.parse(localStorage.getItem('scan_batch') || '[]');
+    var confirmedIds = [];
+
+    // ------------------------------------------------------------------
+    // Render
+    // ------------------------------------------------------------------
+    function render() {
+        var emptyEl = document.getElementById('empty-state');
+        var tableWrap = document.getElementById('table-wrap');
+        var confirmBar = document.getElementById('confirm-bar');
+
+        if (!batch.length) {
+            emptyEl.style.display = '';
+            tableWrap.style.display = 'none';
+            confirmBar.style.display = 'none';
+            return;
+        }
+
+        emptyEl.style.display = 'none';
+        tableWrap.style.display = '';
+        confirmBar.style.display = '';
+
+        document.getElementById('confirm-count').textContent = batch.length;
+
+        var tbody = document.getElementById('review-body');
+        tbody.innerHTML = '';
+
+        batch.forEach(function(item, idx) {
+            var tr = document.createElement('tr');
+            tr.dataset.idx = idx;
+
+            // Thumbnail
+            var thumbHtml = item.image_url
+                ? '<img class="thumb" src="' + escHtml(item.image_url) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';">'
+                : '<div class="thumb-placeholder">&#127183;</div>';
+
+            // Condition options
+            var condOpts = CONDITIONS.map(function(c) {
+                return '<option value="' + c + '"' + (item.condition === c ? ' selected' : '') + '>' + c + '</option>';
+            }).join('');
+
+            // Price
+            var priceHtml = item.auto_price != null
+                ? '$' + Number(item.auto_price).toFixed(2)
+                : '<span class="price-na">—</span>';
+
+            tr.innerHTML =
+                '<td class="thumb-cell">' + thumbHtml + '</td>' +
+                '<td>' +
+                    '<input class="name-input" type="text" value="' + escHtml(item.card_name) + '" data-field="card_name" data-idx="' + idx + '" placeholder="Card name">' +
+                '</td>' +
+                '<td>' +
+                    '<input class="set-input" type="text" value="' + escHtml(item.set_name || '') + '" data-field="set_name" data-idx="' + idx + '" placeholder="Set">' +
+                '</td>' +
+                '<td>' +
+                    '<select class="cond-select" data-field="condition" data-idx="' + idx + '">' + condOpts + '</select>' +
+                '</td>' +
+                '<td class="price-cell">' + priceHtml + '</td>' +
+                '<td><button class="row-del" data-idx="' + idx + '" title="Remove">&#x2715;</button></td>';
+
+            tbody.appendChild(tr);
+        });
+
+        // Bind events after rendering
+        tbody.querySelectorAll('[data-field]').forEach(function(el) {
+            var evt = el.tagName === 'SELECT' ? 'change' : 'input';
+            el.addEventListener(evt, function(e) {
+                var idx = parseInt(e.target.dataset.idx);
+                var field = e.target.dataset.field;
+                batch[idx][field] = e.target.value;
+                localStorage.setItem('scan_batch', JSON.stringify(batch));
+            });
+        });
+
+        tbody.querySelectorAll('.row-del').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                var idx = parseInt(e.target.dataset.idx);
+                batch.splice(idx, 1);
+                localStorage.setItem('scan_batch', JSON.stringify(batch));
+                render();
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Confirm
+    // ------------------------------------------------------------------
+    window.confirmBatch = async function() {
+        if (!batch.length) return;
+        var btn = document.getElementById('confirm-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Adding…';
+
+        try {
+            var resp = await fetch('/inventory/batch/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(batch)
+            });
+            var data = await resp.json();
+
+            if (!resp.ok) {
+                alert('Error: ' + (data.error || 'Unknown error'));
+                btn.disabled = false;
+                btn.textContent = 'Confirm & Add All';
+                return;
+            }
+
+            confirmedIds = (data.items || []).map(function(i) { return i.id; });
+            localStorage.removeItem('scan_batch');
+            batch = [];
+            showSuccess(data);
+        } catch(e) {
+            alert('Network error: ' + e.message);
+            btn.disabled = false;
+            btn.textContent = 'Confirm & Add All';
+        }
+    };
+
+    function showSuccess(data) {
+        document.getElementById('table-wrap').style.display = 'none';
+        document.getElementById('confirm-bar').style.display = 'none';
+        var sc = document.getElementById('success-card');
+        sc.style.display = '';
+        document.getElementById('success-title').textContent = 'Added ' + data.created + ' card' + (data.created !== 1 ? 's' : '') + ' to Inventory!';
+        document.getElementById('success-sub').textContent = 'Barcodes generated and items are now in stock.';
+
+        var pills = document.getElementById('barcode-pills');
+        pills.innerHTML = '';
+        (data.items || []).forEach(function(item) {
+            var pill = document.createElement('a');
+            pill.className = 'barcode-pill';
+            pill.href = '/inventory/' + item.id;
+            pill.textContent = item.barcode;
+            pills.appendChild(pill);
+        });
+    }
+
+    window.printLabels = function() {
+        if (!confirmedIds.length) return;
+        window.open('/inventory/labels?ids=' + confirmedIds.join(','), '_blank');
+    };
+
+    window.scanMore = function() {
+        batch = [];
+        localStorage.removeItem('scan_batch');
+        window.location.href = '/inventory/scan/singles';
+    };
+
+    window.clearBatch = function() {
+        if (!batch.length) return;
+        if (!confirm('Clear all ' + batch.length + ' cards from the batch?')) return;
+        batch = [];
+        localStorage.removeItem('scan_batch');
+        render();
+    };
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    render();
+})();
+</script>
+</body>
+</html>

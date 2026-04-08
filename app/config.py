@@ -163,6 +163,9 @@ class Settings(BaseSettings):
     inventory_auto_shopify_push: bool = Field(default=False, alias="INVENTORY_AUTO_SHOPIFY_PUSH")
     inventory_price_refresh_interval_hours: float = Field(default=6.0, alias="INVENTORY_PRICE_REFRESH_INTERVAL_HOURS")
     inventory_price_stale_hours: float = Field(default=24.0, alias="INVENTORY_PRICE_STALE_HOURS")
+    # Card scanning
+    psa_api_key: str = Field(default="", alias="PSA_API_KEY")
+    pokemon_tcg_api_key: str = Field(default="", alias="POKEMON_TCG_API_KEY")
 
     @property
     def channel_ids(self) -> List[int]:

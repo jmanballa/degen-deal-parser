@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <title>Scan Singles — Inventory</title>
+    <style>
+        :root {
+            --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8;
+            --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338;
+            --accent-strong:#9f311d; --green:#166647; --green-bg:#edf9f2;
+            --yellow-bg:#fff5df; --red-bg:#fff0ef;
+            --shadow:0 20px 44px rgba(77,46,20,.13);
+        }
+        * { box-sizing:border-box; }
+        body {
+            margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+            -webkit-font-smoothing:antialiased; color:var(--text);
+            background:radial-gradient(circle at top left,rgba(240,196,107,.26),transparent 24%),
+                radial-gradient(circle at 84% 10%,rgba(213,83,56,.10),transparent 18%),
+                linear-gradient(180deg,#fcf7f0 0%,var(--bg) 46%,var(--bg-deep) 100%);
+            min-height:100vh;
+        }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:800px; margin:0 auto; padding:28px 20px 80px; }
+        .back-link { color:var(--muted); font-size:13px; font-weight:600; margin-bottom:12px; display:inline-block; }
+        .back-link:hover { color:var(--text); }
+
+        /* Layout: two-column on wide, stacked on mobile */
+        .scan-layout { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+        @media(max-width:640px) { .scan-layout { grid-template-columns:1fr; } }
+
+        .card {
+            background:linear-gradient(180deg,var(--card-strong),var(--card));
+            border:1px solid var(--line); border-radius:24px;
+            box-shadow:var(--shadow); overflow:hidden;
+        }
+        .card-header {
+            padding:20px 22px 0;
+        }
+        .card-title { font-size:17px; font-weight:800; margin:0 0 4px; letter-spacing:-.02em; }
+        .card-sub { font-size:12px; color:var(--muted); font-weight:500; margin:0 0 14px; }
+
+        /* Camera */
+        .camera-wrap {
+            position:relative; width:100%; aspect-ratio:4/3;
+            background:#1a1208; overflow:hidden;
+        }
+        video { width:100%; height:100%; object-fit:cover; display:block; }
+        canvas { display:none; }
+        .camera-overlay {
+            position:absolute; inset:0; display:flex; flex-direction:column;
+            align-items:center; justify-content:center; gap:10px;
+        }
+        .camera-placeholder {
+            color:rgba(255,255,255,.4); text-align:center; font-size:13px; font-weight:600;
+        }
+        .capture-btn {
+            position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+            width:72px; height:72px; border-radius:50%;
+            border:4px solid #fff; background:rgba(255,255,255,.15);
+            cursor:pointer; transition:all .15s; display:flex; align-items:center; justify-content:center;
+        }
+        .capture-btn:hover { background:rgba(255,255,255,.28); }
+        .capture-btn:active { transform:translateX(-50%) scale(.92); }
+        .capture-btn-inner {
+            width:52px; height:52px; border-radius:50%;
+            background:var(--accent); transition:background .15s;
+        }
+        .capture-btn:disabled .capture-btn-inner { background:rgba(255,255,255,.3); }
+        .capture-btn:disabled { cursor:not-allowed; }
+
+        /* Result flash */
+        .flash-bar {
+            padding:10px 14px; font-size:13px; font-weight:700; display:none;
+            border-top:1px solid var(--line);
+        }
+        .flash-bar.ok { background:var(--green-bg); color:var(--green); display:block; }
+        .flash-bar.low { background:var(--yellow-bg); color:#7a5200; display:block; }
+        .flash-bar.err { background:var(--red-bg); color:#9d2f2b; display:block; }
+
+        /* Camera controls below viewfinder */
+        .camera-controls { padding:14px 22px 20px; display:flex; gap:10px; flex-wrap:wrap; }
+        .btn-outline {
+            appearance:none; border:1px solid var(--line); border-radius:12px;
+            padding:9px 14px; font:inherit; font-size:13px; font-weight:700;
+            background:linear-gradient(180deg,#fffdfa,#fff4e8);
+            color:var(--text); cursor:pointer; transition:all .15s;
+        }
+        .btn-outline:hover { background:#fff7ee; border-color:#c9b8a0; }
+        .btn-primary {
+            appearance:none; border:none; border-radius:12px;
+            padding:9px 16px; font:inherit; font-size:13px; font-weight:700;
+            background:linear-gradient(180deg,var(--accent),var(--accent-strong));
+            color:#fff; cursor:pointer; transition:all .15s;
+        }
+        .btn-primary:hover { opacity:.9; }
+
+        /* Batch sidebar */
+        .batch-header { padding:20px 22px 0; display:flex; align-items:center; justify-content:space-between; }
+        .batch-count {
+            display:inline-flex; align-items:center; padding:4px 10px;
+            border-radius:999px; font-size:12px; font-weight:800;
+            background:rgba(213,83,56,.1); color:var(--accent);
+        }
+        .batch-list { padding:12px 14px; max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+        .batch-list:empty::after {
+            content:"No cards scanned yet."; display:block; color:var(--muted);
+            font-size:13px; font-weight:500; text-align:center; padding:20px 0;
+        }
+
+        .batch-item {
+            display:flex; align-items:center; gap:10px;
+            padding:10px 12px; border-radius:14px;
+            background:var(--card-strong); border:1px solid var(--line);
+        }
+        .batch-thumb {
+            width:40px; height:56px; border-radius:6px; object-fit:cover;
+            background:#f0e8dc; flex-shrink:0; border:1px solid var(--line);
+        }
+        .batch-thumb-placeholder {
+            width:40px; height:56px; border-radius:6px; background:#f0e8dc;
+            border:1px solid var(--line); flex-shrink:0; display:flex;
+            align-items:center; justify-content:center; font-size:18px; color:var(--muted);
+        }
+        .batch-info { flex:1; min-width:0; }
+        .batch-name { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .batch-meta { font-size:11px; color:var(--muted); font-weight:500; margin-top:2px; }
+        .batch-cond {
+            font-size:12px; font-weight:700; padding:3px 8px; border-radius:8px;
+            border:1px solid var(--line); background:#fff; cursor:pointer;
+            font-family:inherit; color:var(--text); flex-shrink:0;
+        }
+        .batch-del {
+            appearance:none; border:none; background:none; cursor:pointer;
+            font-size:16px; color:var(--muted); padding:4px; flex-shrink:0;
+            border-radius:6px; line-height:1;
+        }
+        .batch-del:hover { color:var(--accent); background:var(--red-bg); }
+
+        .batch-footer { padding:14px 22px 22px; border-top:1px solid var(--line); display:flex; gap:10px; flex-wrap:wrap; }
+        .btn-done {
+            flex:1; appearance:none; border:none; border-radius:14px;
+            padding:14px; font:inherit; font-size:15px; font-weight:800;
+            background:linear-gradient(180deg,var(--accent),var(--accent-strong));
+            color:#fff; cursor:pointer; transition:all .15s;
+        }
+        .btn-done:hover { opacity:.9; }
+        .btn-done:disabled { opacity:.4; cursor:not-allowed; }
+
+        .spinner { display:inline-block; width:18px; height:18px; border:2.5px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:6px; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+
+        /* Condition pill colours */
+        .cond-NM { background:#edf9f2; border-color:#a6e2bf; color:var(--green); }
+        .cond-LP { background:#f0f9ff; border-color:#93d5f5; color:#1d5c8a; }
+        .cond-MP { background:#fff5df; border-color:#f0cda0; color:#7a5200; }
+        .cond-HP { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
+        .cond-DMG { background:#f8f0f8; border-color:#d8b0d8; color:#6a286a; }
+
+        @keyframes item-in { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+        .batch-item { animation:item-in .25s ease both; }
+    </style>
+    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+</head>
+<body>
+<div class="page">
+    {% include "_workspace_nav.html" %}
+    <a href="/inventory" class="back-link">← Back to Inventory</a>
+
+    <div class="scan-layout">
+        <!-- Camera card -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Camera Scanner</div>
+                <div class="card-sub">Point at card, press the capture button. AI will identify it.</div>
+            </div>
+
+            <div class="camera-wrap">
+                <video id="video" autoplay playsinline muted></video>
+                <canvas id="canvas"></canvas>
+                <div id="camera-placeholder" class="camera-overlay">
+                    <div class="camera-placeholder">
+                        <div style="font-size:36px;margin-bottom:8px;">&#128247;</div>
+                        Tap "Start Camera" to begin
+                    </div>
+                </div>
+                <button class="capture-btn" id="capture-btn" disabled title="Capture card">
+                    <div class="capture-btn-inner"></div>
+                </button>
+            </div>
+
+            <div id="flash-bar" class="flash-bar"></div>
+
+            <div class="camera-controls">
+                <button class="btn-outline" id="start-btn" onclick="startCamera()">Start Camera</button>
+                <button class="btn-outline" id="flip-btn" style="display:none" onclick="flipCamera()">Flip &#8635;</button>
+                <button class="btn-outline" id="stop-btn" style="display:none" onclick="stopCamera()">Stop</button>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-left:auto;">
+                    <input type="checkbox" id="auto-capture" style="accent-color:var(--accent);">
+                    Auto next
+                </label>
+            </div>
+        </div>
+
+        <!-- Batch sidebar -->
+        <div class="card">
+            <div class="batch-header">
+                <div>
+                    <div class="card-title">Scanned Batch</div>
+                    <div class="card-sub">Review and adjust conditions before adding to inventory.</div>
+                </div>
+                <span class="batch-count" id="batch-count">0 cards</span>
+            </div>
+
+            <div id="batch-list" class="batch-list"></div>
+
+            <div class="batch-footer">
+                <button class="btn-outline" onclick="clearBatch()" id="clear-btn" disabled>Clear</button>
+                <button class="btn-done" id="done-btn" onclick="goReview()" disabled>Review Batch &#8594;</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var CONDITIONS = ["NM","LP","MP","HP","DMG"];
+    var batch = JSON.parse(localStorage.getItem('scan_batch') || '[]');
+    var stream = null;
+    var facingMode = 'environment'; // rear camera by default
+    var capturing = false;
+
+    // ------------------------------------------------------------------
+    // Camera
+    // ------------------------------------------------------------------
+    window.startCamera = async function() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 960 } }
+            });
+            var video = document.getElementById('video');
+            video.srcObject = stream;
+            document.getElementById('camera-placeholder').style.display = 'none';
+            document.getElementById('capture-btn').disabled = false;
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('flip-btn').style.display = '';
+            document.getElementById('stop-btn').style.display = '';
+        } catch(e) {
+            showFlash('Camera access denied: ' + e.message, 'err');
+        }
+    };
+
+    window.stopCamera = function() {
+        if (stream) { stream.getTracks().forEach(function(t) { t.stop(); }); stream = null; }
+        document.getElementById('video').srcObject = null;
+        document.getElementById('camera-placeholder').style.display = '';
+        document.getElementById('capture-btn').disabled = true;
+        document.getElementById('start-btn').style.display = '';
+        document.getElementById('flip-btn').style.display = 'none';
+        document.getElementById('stop-btn').style.display = 'none';
+    };
+
+    window.flipCamera = async function() {
+        facingMode = facingMode === 'environment' ? 'user' : 'environment';
+        stopCamera();
+        await startCamera();
+    };
+
+    // ------------------------------------------------------------------
+    // Capture
+    // ------------------------------------------------------------------
+    document.getElementById('capture-btn').addEventListener('click', captureFrame);
+
+    async function captureFrame() {
+        if (capturing) return;
+        capturing = true;
+        var btn = document.getElementById('capture-btn');
+        btn.disabled = true;
+        showFlash('Identifying card…', '');
+        document.getElementById('flash-bar').innerHTML = '<span class="spinner"></span> Identifying…';
+        document.getElementById('flash-bar').className = 'flash-bar';
+        document.getElementById('flash-bar').style.display = 'block';
+
+        try {
+            var video = document.getElementById('video');
+            var canvas = document.getElementById('canvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            var b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+            var resp = await fetch('/inventory/scan/identify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: b64 })
+            });
+            var data = await resp.json();
+
+            if (!resp.ok || data.error) {
+                var conf = data.confidence != null ? (' (' + Math.round((data.confidence||0)*100) + '% confident)') : '';
+                showFlash((data.error || 'Could not identify card') + conf, 'low');
+            } else {
+                addToBatch(data);
+                showFlash('Added: ' + data.card_name + ' — ' + (data.condition || 'NM'), 'ok');
+                if (document.getElementById('auto-capture').checked) {
+                    setTimeout(function() {
+                        capturing = false;
+                        btn.disabled = false;
+                        captureFrame();
+                    }, 1200);
+                    return;
+                }
+            }
+        } catch(e) {
+            showFlash('Error: ' + e.message, 'err');
+        }
+
+        capturing = false;
+        btn.disabled = false;
+    }
+
+    // ------------------------------------------------------------------
+    // Batch management
+    // ------------------------------------------------------------------
+    function addToBatch(card) {
+        batch.push({
+            card_name: card.card_name || '',
+            game: card.game || 'Other',
+            condition: card.condition || 'NM',
+            set_name: card.set_name || '',
+            card_number: card.card_number || '',
+            image_url: card.image_url || '',
+            auto_price: card.market_price || null,
+            is_foil: !!card.is_foil,
+            notes: card.notes || '',
+        });
+        saveBatch();
+        renderBatch();
+    }
+
+    function removeBatchItem(idx) {
+        batch.splice(idx, 1);
+        saveBatch();
+        renderBatch();
+    }
+
+    function setBatchCond(idx, cond) {
+        if (batch[idx]) { batch[idx].condition = cond; saveBatch(); }
+    }
+
+    function clearBatch() {
+        if (!batch.length) return;
+        if (!confirm('Clear all ' + batch.length + ' scanned cards?')) return;
+        batch = [];
+        saveBatch();
+        renderBatch();
+    }
+
+    function saveBatch() {
+        localStorage.setItem('scan_batch', JSON.stringify(batch));
+    }
+
+    function goReview() {
+        if (!batch.length) return;
+        window.location.href = '/inventory/scan/batch-review';
+    }
+
+    function renderBatch() {
+        var list = document.getElementById('batch-list');
+        var countEl = document.getElementById('batch-count');
+        var doneBtn = document.getElementById('done-btn');
+        var clearBtn = document.getElementById('clear-btn');
+
+        countEl.textContent = batch.length + (batch.length === 1 ? ' card' : ' cards');
+        doneBtn.disabled = !batch.length;
+        clearBtn.disabled = !batch.length;
+
+        list.innerHTML = '';
+        for (var i = 0; i < batch.length; i++) {
+            (function(idx, item) {
+                var el = document.createElement('div');
+                el.className = 'batch-item';
+
+                var thumb = '';
+                if (item.image_url) {
+                    thumb = '<img class="batch-thumb" src="' + escHtml(item.image_url) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';">';
+                } else {
+                    thumb = '<div class="batch-thumb-placeholder">&#127183;</div>';
+                }
+
+                var condOptions = CONDITIONS.map(function(c) {
+                    return '<option value="' + c + '"' + (item.condition === c ? ' selected' : '') + '>' + c + '</option>';
+                }).join('');
+
+                var price = item.auto_price ? ('$' + Number(item.auto_price).toFixed(2)) : '';
+
+                el.innerHTML =
+                    thumb +
+                    '<div class="batch-info">' +
+                        '<div class="batch-name">' + escHtml(item.card_name) + '</div>' +
+                        '<div class="batch-meta">' + escHtml(item.set_name || item.game || '') + (price ? ' · ' + price : '') + '</div>' +
+                    '</div>' +
+                    '<select class="batch-cond" data-idx="' + idx + '">' + condOptions + '</select>' +
+                    '<button class="batch-del" data-idx="' + idx + '" title="Remove">&#x2715;</button>';
+
+                el.querySelector('select').addEventListener('change', function(e) {
+                    setBatchCond(parseInt(e.target.dataset.idx), e.target.value);
+                });
+                el.querySelector('.batch-del').addEventListener('click', function(e) {
+                    removeBatchItem(parseInt(e.target.dataset.idx));
+                });
+
+                list.appendChild(el);
+            })(i, batch[i]);
+        }
+    }
+
+    function showFlash(msg, cls) {
+        var bar = document.getElementById('flash-bar');
+        bar.textContent = msg;
+        bar.className = 'flash-bar ' + (cls || '');
+        bar.style.display = msg ? 'block' : 'none';
+    }
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Initial render (restore any previous batch)
+    renderBatch();
+})();
+</script>
+</body>
+</html>

@@ -21,6 +21,8 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 from .auth import has_role
+from .card_scanner import identify_card_from_image, lookup_card_image_and_price
+from .cert_lookup import lookup_cert
 from .config import get_settings
 from .db import get_session
 from .inventory_barcode import (
@@ -576,6 +578,219 @@ async def inventory_barcode_svg(
         return HTMLResponse("Not found.", status_code=404)
     svg = render_barcode_svg(item.barcode)
     return Response(content=svg, media_type="image/svg+xml")
+
+
+# ---------------------------------------------------------------------------
+# Camera scan pages
+# ---------------------------------------------------------------------------
+
+@router.get("/inventory/scan/singles", response_class=HTMLResponse)
+async def inventory_scan_singles_page(request: Request):
+    if denial := _require_viewer(request):
+        return denial
+    return _templates.TemplateResponse(
+        "inventory_scan_singles.html",
+        {"request": request, "current_user": _current_user(request)},
+    )
+
+
+@router.get("/inventory/scan/slabs", response_class=HTMLResponse)
+async def inventory_scan_slabs_page(request: Request):
+    if denial := _require_viewer(request):
+        return denial
+    return _templates.TemplateResponse(
+        "inventory_scan_slabs.html",
+        {
+            "request": request,
+            "current_user": _current_user(request),
+            "grading_companies": GRADING_COMPANIES,
+        },
+    )
+
+
+@router.get("/inventory/scan/batch-review", response_class=HTMLResponse)
+async def inventory_batch_review_page(request: Request):
+    if denial := _require_viewer(request):
+        return denial
+    return _templates.TemplateResponse(
+        "inventory_batch_review.html",
+        {"request": request, "current_user": _current_user(request), "conditions": CONDITIONS},
+    )
+
+
+# ---------------------------------------------------------------------------
+# AI card identification (JSON API)
+# ---------------------------------------------------------------------------
+
+@router.post("/inventory/scan/identify")
+async def inventory_scan_identify(request: Request):
+    """
+    Accept a base64-encoded card image, run AI identification, then fetch
+    the stock image + market price from Scryfall / Pokemon TCG API.
+
+    Request body: {"image": "<base64 string>"}
+    Response: card info + image_url + market_price
+    """
+    if denial := _require_viewer(request):
+        return denial
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    base64_image = (body.get("image") or "").strip()
+    if not base64_image:
+        return JSONResponse({"error": "Missing image field"}, status_code=400)
+
+    # Strip data URI prefix if the client sent it
+    if "," in base64_image:
+        base64_image = base64_image.split(",", 1)[1]
+
+    card_info = await identify_card_from_image(base64_image)
+
+    if card_info.get("error"):
+        return JSONResponse(
+            {"error": card_info["error"], "confidence": card_info.get("confidence", 0)},
+            status_code=422,
+        )
+
+    confidence = float(card_info.get("confidence") or 0)
+    if confidence < 0.3:
+        return JSONResponse(
+            {
+                "error": "Could not identify card clearly",
+                "confidence": confidence,
+                "notes": card_info.get("notes"),
+            },
+            status_code=422,
+        )
+
+    # Enrich with stock image + market price
+    try:
+        lookup = await lookup_card_image_and_price(
+            card_info.get("card_name", ""),
+            game=card_info.get("game", ""),
+            set_code=card_info.get("set_code"),
+            card_number=card_info.get("card_number"),
+            pokemon_tcg_api_key=settings.pokemon_tcg_api_key,
+        )
+    except Exception as exc:
+        logger.warning("[inventory/scan] image lookup failed: %s", exc)
+        lookup = {}
+
+    return JSONResponse({**card_info, **lookup, "confidence": confidence})
+
+
+# ---------------------------------------------------------------------------
+# Slab cert lookup (JSON API)
+# ---------------------------------------------------------------------------
+
+@router.post("/inventory/scan/cert")
+async def inventory_scan_cert(request: Request):
+    """
+    Look up a graded slab by certificate number.
+
+    Request body: {"cert_number": "...", "grading_company": "PSA"|"BGS"|"CGC"|"SGC"}
+    Response: card details + last_solds + suggested_price
+    """
+    if denial := _require_viewer(request):
+        return denial
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    cert_number = (body.get("cert_number") or "").strip()
+    grading_company = (body.get("grading_company") or "PSA").strip().upper()
+
+    if not cert_number:
+        return JSONResponse({"error": "cert_number is required"}, status_code=400)
+
+    result = await lookup_cert(
+        cert_number,
+        grading_company,
+        psa_api_key=settings.psa_api_key,
+    )
+
+    if result.get("error") and not result.get("card_name"):
+        return JSONResponse(result, status_code=422)
+
+    return JSONResponse(result)
+
+
+# ---------------------------------------------------------------------------
+# Batch confirm — bulk create inventory items from camera scan batch
+# ---------------------------------------------------------------------------
+
+@router.post("/inventory/batch/confirm")
+async def inventory_batch_confirm(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """
+    Accept a JSON array of scanned card objects and create InventoryItem records.
+
+    Request body: [
+      {
+        "card_name": "...",
+        "game": "...",
+        "condition": "NM",
+        "set_name": "...",
+        "card_number": "...",
+        "image_url": "...",
+        "auto_price": 4.99,
+        "is_foil": false,
+        "notes": "..."
+      },
+      ...
+    ]
+
+    Response: {"created": N, "items": [{"id": ..., "barcode": ..., "card_name": ...}]}
+    """
+    if denial := _require_reviewer(request):
+        return denial
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    if not isinstance(body, list) or not body:
+        return JSONResponse({"error": "Expected a non-empty JSON array"}, status_code=400)
+
+    created = []
+    for raw in body:
+        if not isinstance(raw, dict):
+            continue
+        card_name = (raw.get("card_name") or "").strip()
+        if not card_name:
+            continue
+
+        item = InventoryItem(
+            barcode="PENDING",
+            item_type=ITEM_TYPE_SINGLE,
+            game=(raw.get("game") or "Other").strip(),
+            card_name=card_name,
+            set_name=(raw.get("set_name") or "").strip() or None,
+            card_number=(raw.get("card_number") or "").strip() or None,
+            condition=(raw.get("condition") or "").strip() or None,
+            image_url=(raw.get("image_url") or "").strip() or None,
+            auto_price=_parse_float(str(raw.get("auto_price") or "")),
+            notes=(raw.get("notes") or "").strip() or None,
+            status=INVENTORY_IN_STOCK,
+            created_at=utcnow(),
+        )
+        session.add(item)
+        session.flush()  # get item.id without full commit
+
+        item.barcode = generate_barcode_value(item.id)
+        session.add(item)
+        created.append({"id": item.id, "barcode": item.barcode, "card_name": item.card_name})
+
+    session.commit()
+    return JSONResponse({"created": len(created), "items": created})
 
 
 # ---------------------------------------------------------------------------

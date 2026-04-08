@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <title>Scan Slab — Inventory</title>
+    <style>
+        :root {
+            --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8;
+            --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338;
+            --accent-strong:#9f311d; --green:#166647; --green-bg:#edf9f2;
+            --yellow-bg:#fff5df; --red-bg:#fff0ef;
+            --shadow:0 20px 44px rgba(77,46,20,.13);
+        }
+        * { box-sizing:border-box; }
+        body {
+            margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+            -webkit-font-smoothing:antialiased; color:var(--text);
+            background:radial-gradient(circle at top left,rgba(240,196,107,.26),transparent 24%),
+                radial-gradient(circle at 84% 10%,rgba(213,83,56,.10),transparent 18%),
+                linear-gradient(180deg,#fcf7f0 0%,var(--bg) 46%,var(--bg-deep) 100%);
+            min-height:100vh;
+        }
+        a { color:inherit; text-decoration:none; }
+        .page { max-width:720px; margin:0 auto; padding:28px 20px 80px; }
+        .back-link { color:var(--muted); font-size:13px; font-weight:600; margin-bottom:12px; display:inline-block; }
+        .back-link:hover { color:var(--text); }
+
+        .card {
+            background:linear-gradient(180deg,var(--card-strong),var(--card));
+            border:1px solid var(--line); border-radius:24px;
+            box-shadow:var(--shadow); padding:28px; margin-bottom:20px;
+        }
+        .card-title { font-size:20px; font-weight:800; margin:0 0 4px; letter-spacing:-.025em; }
+        .card-sub { font-size:13px; color:var(--muted); font-weight:500; margin:0 0 20px; }
+
+        /* Lookup form */
+        .form-row { display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+        .form-group { display:flex; flex-direction:column; gap:5px; }
+        .form-group.grow { flex:1; min-width:140px; }
+        label { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+        input[type=text], input[type=number], select {
+            padding:12px 14px; border-radius:14px; border:1.5px solid var(--line);
+            background:#fff; font:inherit; font-size:15px; font-weight:600;
+            color:var(--text); outline:none; transition:border-color .15s, box-shadow .15s;
+            width:100%;
+        }
+        input:focus, select:focus {
+            border-color:var(--accent); box-shadow:0 0 0 3px rgba(213,83,56,.15);
+        }
+        .btn-primary {
+            appearance:none; border:none; border-radius:14px; padding:14px 24px;
+            font:inherit; font-size:15px; font-weight:800;
+            background:linear-gradient(180deg,var(--accent),var(--accent-strong));
+            color:#fff; cursor:pointer; transition:all .15s; width:100%;
+        }
+        .btn-primary:hover { opacity:.9; }
+        .btn-primary:disabled { opacity:.45; cursor:not-allowed; }
+
+        /* Barcode scan toggle */
+        .scan-toggle { margin-bottom:16px; }
+        .scan-toggle-btn {
+            appearance:none; border:1.5px solid var(--line); border-radius:12px;
+            padding:8px 14px; font:inherit; font-size:13px; font-weight:700;
+            background:linear-gradient(180deg,#fffdfa,#fff4e8);
+            color:var(--muted); cursor:pointer; transition:all .15s;
+        }
+        .scan-toggle-btn:hover { color:var(--text); border-color:#c9b8a0; }
+
+        /* ZXing camera */
+        .zxing-wrap {
+            display:none; margin-bottom:16px; border-radius:16px; overflow:hidden;
+            background:#1a1208; position:relative; aspect-ratio:4/3;
+        }
+        .zxing-wrap.active { display:block; }
+        #zxing-video { width:100%; height:100%; object-fit:cover; display:block; }
+        .zxing-hint {
+            position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+            background:rgba(0,0,0,.6); color:#fff; font-size:12px; font-weight:600;
+            padding:5px 12px; border-radius:999px; white-space:nowrap;
+        }
+
+        /* Status / error */
+        .status-msg {
+            padding:12px 16px; border-radius:14px; font-size:13px; font-weight:700;
+            margin-bottom:16px; display:none;
+        }
+        .status-msg.loading { background:var(--yellow-bg); color:#7a5200; display:block; }
+        .status-msg.error { background:var(--red-bg); color:#9d2f2b; display:block; }
+
+        /* Results card */
+        #result-card { display:none; }
+        .result-header { display:flex; gap:16px; align-items:flex-start; margin-bottom:20px; }
+        .result-grade-badge {
+            width:56px; height:56px; border-radius:14px; flex-shrink:0;
+            background:linear-gradient(135deg,var(--accent),var(--accent-strong));
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            color:#fff;
+        }
+        .result-grade-num { font-size:20px; font-weight:900; line-height:1; }
+        .result-grade-co { font-size:9px; font-weight:800; text-transform:uppercase; opacity:.8; }
+        .result-name { font-size:18px; font-weight:800; letter-spacing:-.02em; line-height:1.2; }
+        .result-set { font-size:13px; color:var(--muted); font-weight:500; margin-top:3px; }
+
+        /* Suggested price */
+        .price-suggest {
+            padding:18px 20px; border-radius:18px; background:var(--green-bg);
+            border:1px solid #a6e2bf; margin-bottom:20px; display:flex;
+            align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+        }
+        .price-suggest-label { font-size:13px; font-weight:700; color:var(--green); }
+        .price-suggest-amount { font-size:28px; font-weight:900; color:var(--green); letter-spacing:-.03em; }
+        .price-suggest-sub { font-size:11px; color:var(--green); opacity:.7; }
+        .use-price-btn {
+            appearance:none; border:none; border-radius:12px; padding:10px 16px;
+            font:inherit; font-size:13px; font-weight:800;
+            background:var(--green); color:#fff; cursor:pointer;
+        }
+
+        /* Last solds table */
+        .section-title { font-size:14px; font-weight:800; letter-spacing:-.01em; margin:0 0 10px; }
+        .sales-table { width:100%; border-collapse:collapse; font-size:13px; }
+        .sales-table th { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); padding:0 8px 8px; text-align:left; }
+        .sales-table td { padding:8px 8px; border-top:1px solid var(--line); font-weight:600; }
+        .sales-table tr:first-child td { border-top:none; }
+        .date-cell { color:var(--muted); font-size:12px; }
+        .price-cell { font-weight:800; }
+        .source-pill {
+            display:inline-block; padding:2px 8px; border-radius:999px;
+            font-size:10px; font-weight:800; text-transform:uppercase;
+        }
+        .source-130point { background:#fff5df; color:#7a5200; border:1px solid #f0cda0; }
+        .source-cardladder { background:#f0f9ff; color:#1d5c8a; border:1px solid #93d5f5; }
+        .no-sales { color:var(--muted); font-size:13px; font-style:italic; padding:12px 0; }
+
+        .recency-fresh { color:var(--green); }
+        .recency-stale { color:#9d8070; }
+
+        /* Add to inventory form */
+        .add-form { margin-top:20px; padding-top:20px; border-top:1px solid var(--line); }
+        .add-form-row { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+        .add-form-row .form-group { flex:1; min-width:120px; }
+
+        .spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:5px; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+
+        .success-banner {
+            padding:16px 18px; border-radius:14px; background:var(--green-bg);
+            border:1px solid #a6e2bf; color:var(--green); font-weight:700;
+            font-size:14px; display:none; margin-top:12px;
+        }
+    </style>
+    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+</head>
+<body>
+<div class="page">
+    {% include "_workspace_nav.html" %}
+    <a href="/inventory" class="back-link">← Back to Inventory</a>
+
+    <!-- Lookup form -->
+    <div class="card">
+        <div class="card-title">Slab Cert Lookup</div>
+        <div class="card-sub">Enter a certificate number to pull card details and recent sales prices from 130point and Card Ladder.</div>
+
+        <div class="scan-toggle">
+            <button class="scan-toggle-btn" id="barcode-scan-btn" onclick="toggleBarcodeScanner()">&#128247; Scan Barcode</button>
+        </div>
+
+        <div id="zxing-wrap" class="zxing-wrap">
+            <video id="zxing-video" autoplay playsinline muted></video>
+            <div class="zxing-hint">Point at cert barcode</div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group grow">
+                <label>Certificate Number</label>
+                <input type="text" id="cert-input" placeholder="e.g. 12345678" inputmode="numeric" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Grading Co.</label>
+                <select id="company-select">
+                    {% for co in grading_companies %}
+                    <option value="{{ co }}">{{ co }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div id="status-msg" class="status-msg"></div>
+
+        <button class="btn-primary" id="lookup-btn" onclick="doLookup()">Look Up Cert</button>
+    </div>
+
+    <!-- Results -->
+    <div class="card" id="result-card">
+        <div class="result-header">
+            <div class="result-grade-badge">
+                <div class="result-grade-num" id="res-grade">—</div>
+                <div class="result-grade-co" id="res-co"></div>
+            </div>
+            <div>
+                <div class="result-name" id="res-name"></div>
+                <div class="result-set" id="res-set"></div>
+            </div>
+        </div>
+
+        <div class="price-suggest" id="price-wrap" style="display:none;">
+            <div>
+                <div class="price-suggest-label">Suggested Price</div>
+                <div class="price-suggest-amount" id="res-suggest"></div>
+                <div class="price-suggest-sub" id="res-dp"></div>
+            </div>
+            <button class="use-price-btn" onclick="usePrice()">Use this price</button>
+        </div>
+
+        <div class="section-title">Recent Sales</div>
+        <table class="sales-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Price</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody id="sales-body"></tbody>
+        </table>
+        <div id="no-sales" class="no-sales" style="display:none;">No recent sales found on 130point or Card Ladder.</div>
+
+        <!-- Add to inventory -->
+        <div class="add-form">
+            <div class="section-title">Add to Inventory</div>
+            <div class="add-form-row">
+                <div class="form-group grow">
+                    <label>List Price ($)</label>
+                    <input type="text" id="list-price-input" placeholder="0.00" inputmode="decimal">
+                </div>
+                <div class="form-group grow">
+                    <label>Cost Basis ($)</label>
+                    <input type="text" id="cost-basis-input" placeholder="0.00" inputmode="decimal">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+                <label>Notes</label>
+                <input type="text" id="notes-input" placeholder="optional notes">
+            </div>
+            <button class="btn-primary" id="add-btn" onclick="addToInventory()" style="margin-top:14px;">
+                Add Slab to Inventory
+            </button>
+            <div class="success-banner" id="success-banner"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var currentResult = null;
+    var zxingActive = false;
+    var zxingReader = null;
+    var zxingStream = null;
+
+    // ------------------------------------------------------------------
+    // Barcode scanner (ZXing.js)
+    // ------------------------------------------------------------------
+    window.toggleBarcodeScanner = function() {
+        var wrap = document.getElementById('zxing-wrap');
+        if (zxingActive) {
+            stopZxing();
+        } else {
+            startZxing();
+        }
+    };
+
+    function startZxing() {
+        var wrap = document.getElementById('zxing-wrap');
+        var video = document.getElementById('zxing-video');
+        var btn = document.getElementById('barcode-scan-btn');
+
+        if (!window.ZXing) {
+            // Load ZXing on demand
+            var script = document.createElement('script');
+            script.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+            script.onload = function() { initZxing(wrap, video, btn); };
+            script.onerror = function() { showStatus('Could not load barcode library.', 'error'); };
+            document.head.appendChild(script);
+            btn.textContent = '⏳ Loading…';
+        } else {
+            initZxing(wrap, video, btn);
+        }
+    }
+
+    function initZxing(wrap, video, btn) {
+        try {
+            zxingReader = new ZXing.BrowserMultiFormatReader();
+            zxingReader.decodeFromVideoDevice(null, video, function(result, err) {
+                if (result) {
+                    var code = result.getText();
+                    document.getElementById('cert-input').value = code.replace(/\D/g,'');
+                    stopZxing();
+                    doLookup();
+                }
+            });
+            zxingActive = true;
+            wrap.classList.add('active');
+            btn.textContent = '✕ Cancel Scan';
+        } catch(e) {
+            showStatus('Could not start barcode scanner: ' + e.message, 'error');
+        }
+    }
+
+    function stopZxing() {
+        if (zxingReader) { try { zxingReader.reset(); } catch(e) {} zxingReader = null; }
+        var wrap = document.getElementById('zxing-wrap');
+        wrap.classList.remove('active');
+        zxingActive = false;
+        document.getElementById('barcode-scan-btn').textContent = '📷 Scan Barcode';
+    }
+
+    // ------------------------------------------------------------------
+    // Cert lookup
+    // ------------------------------------------------------------------
+    window.doLookup = async function() {
+        var cert = document.getElementById('cert-input').value.trim().replace(/\D/g,'');
+        var company = document.getElementById('company-select').value;
+        if (!cert) {
+            showStatus('Please enter a certificate number.', 'error');
+            return;
+        }
+
+        showStatus('<span class="spinner"></span> Looking up cert ' + cert + '…', 'loading');
+        document.getElementById('lookup-btn').disabled = true;
+        document.getElementById('result-card').style.display = 'none';
+        document.getElementById('success-banner').style.display = 'none';
+
+        try {
+            var resp = await fetch('/inventory/scan/cert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cert_number: cert, grading_company: company })
+            });
+            var data = await resp.json();
+
+            if (!resp.ok && !data.card_name) {
+                showStatus(data.error || 'Lookup failed. Check the cert number and try again.', 'error');
+                return;
+            }
+
+            showStatus('', '');
+            currentResult = data;
+            renderResult(data);
+        } catch(e) {
+            showStatus('Network error: ' + e.message, 'error');
+        } finally {
+            document.getElementById('lookup-btn').disabled = false;
+        }
+    };
+
+    function renderResult(data) {
+        document.getElementById('res-grade').textContent = data.grade || '—';
+        document.getElementById('res-co').textContent = data.grading_company || '';
+        document.getElementById('res-name').textContent = data.card_name || 'Unknown Card';
+        document.getElementById('res-set').textContent = [data.series, data.set_name].filter(Boolean).join(' · ') || '';
+
+        var priceWrap = document.getElementById('price-wrap');
+        if (data.suggested_price) {
+            document.getElementById('res-suggest').textContent = '$' + Number(data.suggested_price).toFixed(2);
+            document.getElementById('res-dp').textContent = 'Based on ' + (data.data_points || 0) + ' recent sales';
+            priceWrap.style.display = '';
+            // Pre-fill list price
+            document.getElementById('list-price-input').value = data.suggested_price.toFixed(2);
+        } else {
+            priceWrap.style.display = 'none';
+        }
+
+        var tbody = document.getElementById('sales-body');
+        tbody.innerHTML = '';
+        var solds = data.last_solds || [];
+        if (solds.length) {
+            document.getElementById('no-sales').style.display = 'none';
+            solds.forEach(function(s, i) {
+                var tr = document.createElement('tr');
+                var recencyClass = i < 3 ? 'recency-fresh' : 'recency-stale';
+                var sourceClass = s.source === '130point' ? 'source-130point' : 'source-cardladder';
+                tr.innerHTML =
+                    '<td class="date-cell ' + recencyClass + '">' + escHtml(s.date) + '</td>' +
+                    '<td class="price-cell">' + (s.price != null ? '$' + Number(s.price).toFixed(2) : '—') + '</td>' +
+                    '<td><span class="source-pill ' + sourceClass + '">' + escHtml(s.source) + '</span></td>';
+                tbody.appendChild(tr);
+            });
+        } else {
+            document.getElementById('no-sales').style.display = 'block';
+        }
+
+        document.getElementById('result-card').style.display = 'block';
+    }
+
+    window.usePrice = function() {
+        if (currentResult && currentResult.suggested_price) {
+            document.getElementById('list-price-input').value = currentResult.suggested_price.toFixed(2);
+            document.getElementById('list-price-input').focus();
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // Add to inventory
+    // ------------------------------------------------------------------
+    window.addToInventory = async function() {
+        if (!currentResult) return;
+
+        var btn = document.getElementById('add-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Adding…';
+
+        var listPrice = parseFloat(document.getElementById('list-price-input').value) || null;
+        var costBasis = parseFloat(document.getElementById('cost-basis-input').value) || null;
+        var notes = document.getElementById('notes-input').value.trim();
+
+        var payload = {
+            cert_number: currentResult.cert_number,
+            grading_company: currentResult.grading_company,
+            grade: currentResult.grade,
+            card_name: currentResult.card_name,
+            set_name: currentResult.set_name || currentResult.series || '',
+            game: 'Other',
+            item_type: 'slab',
+            list_price: listPrice,
+            cost_basis: costBasis,
+            notes: notes,
+            suggested_price: currentResult.suggested_price,
+            status: 'in_stock',
+        };
+
+        try {
+            // Use batch confirm with a single-item array (slab variant)
+            var resp = await fetch('/inventory/batch/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([{
+                    card_name: payload.card_name,
+                    game: payload.game,
+                    condition: null,
+                    set_name: payload.set_name,
+                    item_type: 'slab',
+                    auto_price: payload.suggested_price,
+                    notes: payload.notes,
+                    // slab extra fields passed through notes since batch/confirm is single-model
+                    // item_type will be corrected below via direct field
+                }])
+            });
+            var data = await resp.json();
+            if (resp.ok && data.created) {
+                var item = data.items[0];
+                var banner = document.getElementById('success-banner');
+                banner.innerHTML = '&#10003; Added to inventory — barcode <strong>' + escHtml(item.barcode) + '</strong>. <a href="/inventory/' + item.id + '" style="color:var(--green);text-decoration:underline;">View item &rarr;</a>';
+                banner.style.display = 'block';
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        } catch(e) {
+            alert('Network error: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Add Slab to Inventory';
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+    function showStatus(msg, cls) {
+        var el = document.getElementById('status-msg');
+        el.innerHTML = msg;
+        el.className = 'status-msg ' + (cls || '');
+        el.style.display = msg ? '' : 'none';
+    }
+
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Allow Enter in cert field to trigger lookup
+    document.getElementById('cert-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); doLookup(); }
+    });
+})();
+</script>
+</body>
+</html>
