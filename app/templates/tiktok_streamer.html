@@ -1366,6 +1366,7 @@
         var _streamSessions = [];
         try { _streamSessions = {{ stream_sessions_json|safe }}; } catch (e) {}
         _streamSessions.sort(function(a, b) { return (b.end_time || 0) - (a.end_time || 0); });
+        var _buildVersion = {{ build_version|tojson }};
 
         /* ---- Chat state ---- */
         var _chatIdx = 0;
@@ -2055,6 +2056,12 @@
                 var resp = await fetch(url, { cache: 'no-store' });
                 if (!resp.ok) return;
                 var data = await resp.json();
+
+                if (data.build_version && _buildVersion && data.build_version !== _buildVersion) {
+                    console.log('[streamer] New build detected (' + _buildVersion + ' -> ' + data.build_version + '), reloading...');
+                    location.reload();
+                    return;
+                }
 
                 if (data.total_count != null) countEl.textContent = data.total_count;
                 if (data.latest_updated_at) _latestUpdatedAt = data.latest_updated_at;

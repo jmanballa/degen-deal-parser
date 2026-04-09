@@ -418,6 +418,25 @@ _live_session_lock = threading.Lock()
 _live_sessions_list_cache: list[dict] = []
 _live_sessions_list_lock = threading.Lock()
 
+def _compute_build_version() -> str:
+    import subprocess as _sp
+    try:
+        return _sp.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            stderr=_sp.DEVNULL,
+            text=True,
+        ).strip()
+    except Exception:
+        try:
+            return hashlib.md5(
+                str(Path(__file__).stat().st_mtime).encode()
+            ).hexdigest()[:10]
+        except Exception:
+            return "unknown"
+
+_BUILD_VERSION: str = _compute_build_version()
+
 PARSE_STATUS_OPTIONS = [
     PARSE_PENDING,
     PARSE_PROCESSING,
@@ -8464,6 +8483,7 @@ def tiktok_streamer_page(
         "live_analytics_json": json.dumps(live_analytics),
         "stream_data_json": json.dumps(stream_data),
         "stream_sessions_json": json.dumps(_get_live_sessions_list()),
+        "build_version": _BUILD_VERSION,
         "chat_status": chat_info["status"],
         "current_user": getattr(request.state, "current_user", None),
         "streamers": get_streamer_names(session),
@@ -8539,6 +8559,7 @@ def tiktok_streamer_poll(
         "stream_range_source": _stream_range_source,
         "stream_sessions": _get_live_sessions_list(),
         "is_live": _is_currently_live(),
+        "build_version": _BUILD_VERSION,
     }
 
 
