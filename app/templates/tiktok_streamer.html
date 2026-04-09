@@ -1722,6 +1722,12 @@
                 esc(dateStr) + ' Livestream</span></div>';
         }
 
+        function orderGroupInfo(order) {
+            var stream = findStreamForOrder(order);
+            if (stream) return { key: stream.id, stream: stream };
+            return { key: 'date_' + orderDateKey(order), stream: null };
+        }
+
         function renderAll() {
             if (_orders.length === 0) {
                 list.style.display = 'none';
@@ -1739,9 +1745,15 @@
                 var o = _orders[i];
                 var groupKey, divider;
                 if (useStreams) {
-                    var stream = findStreamForOrder(o);
-                    groupKey = stream ? stream.id : '__none__';
-                    divider = (stream && groupKey !== lastGroupKey) ? streamDividerHtml(stream) : null;
+                    var info = orderGroupInfo(o);
+                    groupKey = info.key;
+                    if (groupKey !== lastGroupKey) {
+                        divider = info.stream
+                            ? streamDividerHtml(info.stream)
+                            : (lastGroupKey !== null ? dateDividerHtml(orderDateKey(o)) : null);
+                    } else {
+                        divider = null;
+                    }
                 } else {
                     groupKey = orderDateKey(o);
                     divider = (groupKey && groupKey !== lastGroupKey) ? dateDividerHtml(groupKey) : null;
@@ -1760,8 +1772,7 @@
             for (var i = 0; i < _orders.length; i++) {
                 var key;
                 if (useStreams) {
-                    var s = findStreamForOrder(_orders[i]);
-                    key = s ? s.id : '__none__';
+                    key = orderGroupInfo(_orders[i]).key;
                 } else {
                     key = orderDateKey(_orders[i]);
                 }
@@ -1779,23 +1790,25 @@
 
             var firstExistingRow = list.querySelector('.order-row');
             var existingGroupKey = null;
+            var existingInfo = null;
             if (firstExistingRow) {
                 var oid = firstExistingRow.getAttribute('data-order-id');
                 var existingOrder = _orders.find(function(o) { return o.tiktok_order_id === oid; });
                 if (existingOrder) {
                     if (useStreams) {
-                        var es = findStreamForOrder(existingOrder);
-                        existingGroupKey = es ? es.id : '__none__';
+                        existingInfo = orderGroupInfo(existingOrder);
+                        existingGroupKey = existingInfo.key;
                     } else {
                         existingGroupKey = orderDateKey(existingOrder);
                     }
                 }
             }
 
+            var newInfo = null;
             var newGroupKey;
             if (useStreams) {
-                var ns = findStreamForOrder(newOrders[0]);
-                newGroupKey = ns ? ns.id : '__none__';
+                newInfo = orderGroupInfo(newOrders[0]);
+                newGroupKey = newInfo.key;
             } else {
                 newGroupKey = orderDateKey(newOrders[0]);
             }
@@ -1804,38 +1817,43 @@
 
             if (needDivider) {
                 var existingDivider = list.querySelector('.stream-divider');
-                if (!existingDivider && existingGroupKey !== '__none__') {
+                if (!existingDivider) {
                     var divEl = document.createElement('div');
-                    if (useStreams) {
-                        var eStream = null;
-                        if (firstExistingRow) {
-                            var eOid = firstExistingRow.getAttribute('data-order-id');
-                            var eOrder = _orders.find(function(o) { return o.tiktok_order_id === eOid; });
-                            if (eOrder) eStream = findStreamForOrder(eOrder);
-                        }
-                        if (eStream) divEl.innerHTML = streamDividerHtml(eStream);
-                        else divEl.innerHTML = dateDividerHtml(existingGroupKey);
-                    } else {
-                        divEl.innerHTML = dateDividerHtml(existingGroupKey);
+                    if (useStreams && existingInfo && existingInfo.stream) {
+                        divEl.innerHTML = streamDividerHtml(existingInfo.stream);
+                    } else if (existingGroupKey) {
+                        var eDateStr = firstExistingRow ? orderDateKey(
+                            _orders.find(function(o) { return o.tiktok_order_id === firstExistingRow.getAttribute('data-order-id'); }) || {}
+                        ) : '';
+                        if (eDateStr) divEl.innerHTML = dateDividerHtml(eDateStr);
                     }
-                    if (divEl.firstChild) list.insertBefore(divEl.firstChild, list.firstChild);
+                    if (divEl.firstChild) list.insertBefore(divEl.firstChild, firstExistingRow || list.firstChild);
                 }
             }
 
             var fragment = document.createElement('div');
             var rowsHtml = newOrders.map(function(o) { return renderRow(o, true); }).join('');
-            if (needDivider && newGroupKey !== '__none__') {
-                if (useStreams) {
-                    var nStream = findStreamForOrder(newOrders[0]);
-                    if (nStream) rowsHtml = streamDividerHtml(nStream) + rowsHtml;
-                    else rowsHtml = dateDividerHtml(newGroupKey) + rowsHtml;
+            if (needDivider) {
+                if (useStreams && newInfo && newInfo.stream) {
+                    rowsHtml = streamDividerHtml(newInfo.stream) + rowsHtml;
                 } else {
-                    rowsHtml = dateDividerHtml(newGroupKey) + rowsHtml;
+                    var nDateStr = orderDateKey(newOrders[0]);
+                    if (nDateStr) rowsHtml = dateDividerHtml(nDateStr) + rowsHtml;
                 }
             }
             fragment.innerHTML = rowsHtml;
-            while (fragment.lastChild) {
-                list.insertBefore(fragment.lastChild, list.firstChild);
+
+            var topDivider = list.firstChild && list.firstChild.classList &&
+                             list.firstChild.classList.contains('stream-divider') ? list.firstChild : null;
+            if (!needDivider && topDivider) {
+                var refNode = topDivider.nextSibling;
+                while (fragment.firstChild) {
+                    list.insertBefore(fragment.firstChild, refNode);
+                }
+            } else {
+                while (fragment.lastChild) {
+                    list.insertBefore(fragment.lastChild, list.firstChild);
+                }
             }
             bindRowClicks();
         }
