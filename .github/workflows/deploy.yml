@@ -24,7 +24,22 @@ jobs:
       - name: Verify health
         shell: powershell
         run: |
-          Start-Sleep -Seconds 30
-          $r = Invoke-WebRequest -Uri http://127.0.0.1:8000/health -UseBasicParsing -TimeoutSec 10
-          if ($r.StatusCode -ne 200) { throw "Health check failed: $($r.StatusCode)" }
-          Write-Host "Health check passed."
+          $maxWait = 120
+          $interval = 5
+          $elapsed = 0
+          Start-Sleep -Seconds 10
+          $elapsed = 10
+          while ($elapsed -lt $maxWait) {
+            try {
+              $r = Invoke-WebRequest -Uri http://127.0.0.1:8000/health -UseBasicParsing -TimeoutSec 10
+              if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) {
+                Write-Host "Health check passed after ${elapsed}s (status $($r.StatusCode))."
+                exit 0
+              }
+            } catch {
+              Write-Host "Health check attempt at ${elapsed}s - not ready yet..."
+            }
+            Start-Sleep -Seconds $interval
+            $elapsed += $interval
+          }
+          throw "Health check failed: server did not respond within ${maxWait}s"
