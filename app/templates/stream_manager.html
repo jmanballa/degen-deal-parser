@@ -546,8 +546,13 @@
                                 </div>
                                 {% if sched.title %}<div class="schedule-title-text">{{ sched.title }}</div>{% endif %}
                             </div>
-                            <button class="btn-icon" title="Edit shift" type="button"
-                                    onclick="openEditShift({{ sched.id }}, '{{ sched.streamer_id }}', '{{ sched.date }}', '{{ sched.start_time }}', '{{ sched.end_time }}', {{ sched.title | tojson }})">&#x270E;</button>
+                            <button class="btn-icon edit-shift-btn" title="Edit shift" type="button"
+                                    data-id="{{ sched.id }}"
+                                    data-streamer-id="{{ sched.streamer_id }}"
+                                    data-date="{{ sched.date }}"
+                                    data-start="{{ sched.start_time }}"
+                                    data-end="{{ sched.end_time }}"
+                                    data-title="{{ sched.title | e }}">&#x270E;</button>
                             <form method="post" action="/stream-manager/schedule/{{ sched.id }}/delete" style="display:inline;" onsubmit="return confirm('Remove this shift?')">
                                 <button class="btn-icon btn-icon-danger" title="Remove" type="submit">&#x2715;</button>
                             </form>
@@ -808,12 +813,18 @@
     });
 
     /* ---- Edit Shift Modal ---- */
-    function openEditShift(id, streamerId, date, startTime, endTime, title) {
+    function openEditShiftFromBtn(btn) {
+        var id = btn.getAttribute('data-id');
+        var streamerId = btn.getAttribute('data-streamer-id');
+        var date = btn.getAttribute('data-date');
+        var startTime = btn.getAttribute('data-start');
+        var endTime = btn.getAttribute('data-end');
+        var title = btn.getAttribute('data-title') || '';
         document.getElementById('edit-shift-form').action = '/stream-manager/schedule/' + id + '/edit';
         document.getElementById('edit-shift-date').value = date;
         document.getElementById('edit-shift-start').value = startTime;
         document.getElementById('edit-shift-end').value = endTime;
-        document.getElementById('edit-shift-title').value = title || '';
+        document.getElementById('edit-shift-title').value = title;
         var sel = document.getElementById('edit-shift-streamer');
         for (var i = 0; i < sel.options.length; i++) {
             sel.options[i].selected = sel.options[i].value === String(streamerId);
@@ -823,6 +834,10 @@
     function closeEditShift() {
         document.getElementById('edit-shift-backdrop').classList.remove('is-open');
     }
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.edit-shift-btn');
+        if (btn) { e.preventDefault(); openEditShiftFromBtn(btn); }
+    });
     document.getElementById('edit-shift-backdrop').addEventListener('click', function(e) {
         if (e.target === this) closeEditShift();
     });
