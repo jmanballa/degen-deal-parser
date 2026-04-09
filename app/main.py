@@ -6623,9 +6623,10 @@ async def tiktok_orders_webhook(request: Request):
         payload = parse_tiktok_webhook_payload(
             raw_body,
             app_secret=primary_secret,
+            app_key=(settings.tiktok_app_key or "").strip(),
             headers=request.headers,
             request_path=str(request.url.path),
-            strict_signature=False,
+            strict_signature=True,
         )
     except Exception as exc:
         update_tiktok_integration_state(
@@ -6691,6 +6692,7 @@ async def tiktok_orders_webhook(request: Request):
         candidates = _build_webhook_signature_candidates(
             raw_body=raw_body,
             app_secret=primary_secret,
+            app_key=(settings.tiktok_app_key or "").strip(),
             received_timestamp=ts_for_candidates,
             request_path=str(request.url.path),
         )

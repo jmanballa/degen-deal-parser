@@ -838,6 +838,7 @@ def _build_webhook_signature_candidates(
     *,
     raw_body: bytes,
     app_secret: str,
+    app_key: str = "",
     received_timestamp: Optional[str] = None,
     request_path: Optional[str] = None,
 ) -> list[tuple[str, str]]:
@@ -846,38 +847,22 @@ def _build_webhook_signature_candidates(
     if not secret:
         return []
     secret_bytes = secret.encode("utf-8")
-    body_text = raw_body.decode("utf-8", errors="ignore")
-    path = (request_path or "").strip()
+    key = (app_key or "").strip()
     ts = (received_timestamp or "").strip()
 
-    candidates: list[tuple[str, bytes]] = []
-
-    # --- HMAC-based candidates ---
-    candidates.append(("hmac(body)", raw_body))
-    if ts:
-        candidates.append(("hmac(ts.body)", f"{ts}.{body_text}".encode("utf-8")))
-        candidates.append(("hmac(ts+body)", f"{ts}{body_text}".encode("utf-8")))
-    candidates.append(("hmac(s+body+s)", f"{secret}{body_text}{secret}".encode("utf-8")))
-    if path:
-        candidates.append(("hmac(s+path+body+s)", f"{secret}{path}{body_text}{secret}".encode("utf-8")))
-    if ts and path:
-        candidates.append(("hmac(s+path+ts+body+s)", f"{secret}{path}{ts}{body_text}{secret}".encode("utf-8")))
-
     results: list[tuple[str, str]] = []
-    for label, payload in candidates:
-        digest = hmac.new(secret_bytes, payload, hashlib.sha256).hexdigest()
-        results.append((label, digest))
 
-    # --- Plain SHA256 (non-HMAC) candidates ---
-    sha_candidates: list[tuple[str, bytes]] = [
-        ("sha256(s+body)", f"{secret}{body_text}".encode("utf-8")),
-        ("sha256(body+s)", f"{body_text}{secret}".encode("utf-8")),
-        ("sha256(s+body+s)", f"{secret}{body_text}{secret}".encode("utf-8")),
-    ]
-    if path:
-        sha_candidates.append(("sha256(s+path+body+s)", f"{secret}{path}{body_text}{secret}".encode("utf-8")))
-    for label, payload in sha_candidates:
-        results.append((label, hashlib.sha256(payload).hexdigest()))
+    # TikTok Shop V2 webhook signing: HMAC-SHA256(app_secret, app_key + raw_body)
+    if key:
+        results.append((
+            "hmac(secret, key+body)",
+            hmac.new(secret_bytes, key.encode("utf-8") + raw_body, hashlib.sha256).hexdigest(),
+        ))
+
+    # Fallback candidates for other TikTok webhook formats
+    results.append(("hmac(secret, body)", hmac.new(secret_bytes, raw_body, hashlib.sha256).hexdigest()))
+    if ts:
+        results.append(("hmac(secret, ts.body)", hmac.new(secret_bytes, f"{ts}.".encode("utf-8") + raw_body, hashlib.sha256).hexdigest()))
 
     return results
 
@@ -893,6 +878,7 @@ def verify_tiktok_webhook_signature(
     *,
     raw_body: bytes,
     app_secret: str,
+    app_key: str = "",
     received_signature: Optional[str] = None,
     received_timestamp: Optional[str] = None,
     request_path: Optional[str] = None,
@@ -904,6 +890,7 @@ def verify_tiktok_webhook_signature(
     candidates = _build_webhook_signature_candidates(
         raw_body=raw_body,
         app_secret=app_secret,
+        app_key=app_key,
         received_timestamp=received_timestamp,
         request_path=request_path,
     )
@@ -920,6 +907,7 @@ def parse_tiktok_webhook_payload(
     raw_body: bytes,
     *,
     app_secret: str,
+    app_key: str = "",
     headers: Optional[MutableMapping[str, str]] = None,
     request_path: Optional[str] = None,
     strict_signature: bool = True,
@@ -964,6 +952,7 @@ def parse_tiktok_webhook_payload(
             if verify_tiktok_webhook_signature(
                 raw_body=raw_body,
                 app_secret=normalized_secret,
+                app_key=app_key,
                 received_signature=signature,
                 received_timestamp=ts,
                 request_path=request_path,

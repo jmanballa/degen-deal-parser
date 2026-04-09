@@ -37,15 +37,30 @@ Current stack:
 
 ## Run
 
-**Local dev (web-only, no Discord/worker):**
+**Local dev (web-only, SQLite, no Discord/worker):**
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run_local_web.ps1
+```
+
+**Local dev against production Postgres (Machine B DB via Tailscale, no Discord/worker):**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_local_web_pg.ps1
 ```
 
 **Production (Machine B — web + worker + auto-restart):**
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run_hosted.ps1
 ```
+
+### Script reference
+
+| Script | Purpose |
+|---|---|
+| `scripts/run_local_web.ps1` | Local dev server on Machine A with SQLite. Discord ingest, worker, and backfill disabled. |
+| `scripts/run_local_web_pg.ps1` | Local dev server on Machine A connected to Machine B's PostgreSQL via Tailscale. Same disabled services as above. |
+| `scripts/run_hosted.ps1` | Production server on Machine B. Runs web + Discord ingest + worker with auto-restart. |
+| `scripts/tiktok_backfill.py` | TikTok API utility — order/product backfill, analytics API calls, HMAC signing. |
+| `scripts/sig_debug.py` | Webhook signature debugger — tests signing algorithms against a captured webhook body. |
 
 **Quick compile check after code changes:**
 ```powershell
