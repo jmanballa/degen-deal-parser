@@ -333,6 +333,31 @@ Both are stored in the `TikTokAuth` DB table and auto-refreshed.
 - **Webhook payloads are incomplete** — always fetch full details from API after receiving
 - See `TIKTOK_API.md` for the complete list of gotchas
 
+### TikTok Webhook Signature — DO NOT MODIFY
+
+**The webhook signature verification algorithm in `app/tiktok_ingest.py` is correct and must not be changed.** It was reverse-engineered from live production traffic and confirmed working. TikTok's own documentation is wrong/incomplete about this.
+
+**The proven algorithm:** `HMAC-SHA256(app_secret, app_key + raw_body)`
+
+- **Key** = `app_secret` (from env `TIKTOK_APP_SECRET`)
+- **Message** = `app_key` (from env `TIKTOK_APP_KEY`) concatenated with the raw HTTP request body (bytes)
+- **Digest** = SHA-256 hex
+- **Signature arrives** in the `Authorization` or `X-TT-Signature` header (NOT the `Tiktok-Signature: t=...,s=...` header described in generic TikTok docs)
+
+**Files involved (DO NOT refactor the signing logic in these):**
+- `app/tiktok_ingest.py` — `_build_webhook_signature_candidates()`, `verify_tiktok_webhook_signature()`, `parse_tiktok_webhook_headers()`
+- `app/main.py` — `tiktok_orders_webhook()` handler at `POST /webhooks/tiktok/orders`
+
+**What NOT to do:**
+- Do NOT change the HMAC algorithm or the order of `app_key + raw_body`
+- Do NOT remove fallback candidates (they exist for robustness)
+- Do NOT change which headers are checked for the signature
+- Do NOT switch `strict_signature` to `False` — it is `True` in production and working
+- Do NOT follow TikTok's generic webhook docs blindly — their Shop V2 webhooks use a different algorithm than documented
+- Do NOT add new signing candidates unless you have captured a real failing webhook and proven the new algorithm matches
+
+**History:** This was cracked on 2026-04-07 after extensive debugging. TikTok's official docs describe `HMAC-SHA256(app_secret, timestamp + raw_body)` but that does NOT match what their servers actually send. The correct algorithm was found by capturing live webhook payloads on Machine B and testing every plausible combination until `HMAC-SHA256(app_secret, app_key + raw_body)` matched. This was independently confirmed against an open-source PHP SDK.
+
 ## Streamer Dashboard Features
 
 The streamer dashboard (`/tiktok/streamer`) includes:
