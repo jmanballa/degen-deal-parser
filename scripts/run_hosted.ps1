@@ -109,7 +109,7 @@ try {
                 $consecutiveLivenessFailures++
                 Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Liveness check failed ($consecutiveLivenessFailures/$livenessFailuresBeforeRestart)"
                 if ($consecutiveLivenessFailures -ge $livenessFailuresBeforeRestart) {
-                    Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Web process is hung — killing and restarting."
+                    Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Web process is hung - killing and restarting."
                     try { Stop-Process -Id $webProcess.Id -Force } catch {}
                     Start-Sleep -Seconds 3
                     $webRestarts++
