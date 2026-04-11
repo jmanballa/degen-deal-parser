@@ -13,6 +13,7 @@ from sqlmodel import Session, delete, select
 
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
 from ..db import get_session, managed_session
+from ..discord_ingest import invalidate_available_channels_cache, list_available_discord_channels
 
 router = APIRouter()
 
@@ -674,6 +675,18 @@ def admin_remove_channel(
         url=f"/table?success=Removed+channel+{channel_id}",
         status_code=303,
     )
+@router.post("/admin/channels/rescan")
+def admin_rescan_channels(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    invalidate_available_channels_cache()
+    list_available_discord_channels()
+    return RedirectResponse(
+        url="/table?success=Channel+list+refreshed",
+        status_code=303,
+    )
+
+
 @router.get("/admin/discord/channels")
 def admin_list_discord_channels(request: Request):
     if denial := require_role_response(request, "admin"):

@@ -1536,6 +1536,12 @@ def looks_like_transaction_channel(channel_name: str, category_name: Optional[st
     return any(token in lower_name for token in TRANSACTION_CHANNEL_NAME_HINTS)
 
 
+def invalidate_available_channels_cache() -> None:
+    with _available_channels_cache_lock:
+        _available_channels_cache["expires_at"] = 0.0
+        _available_channels_cache["channels"] = []
+
+
 def list_available_discord_channels() -> list[dict]:
     now = time.monotonic()
     with _available_channels_cache_lock:
