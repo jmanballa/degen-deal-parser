@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, delete, func, select
 
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
 from ..db import get_session, managed_session
@@ -20,34 +20,30 @@ from ..discord_ingest import get_discord_client, invalidate_available_channels_c
 router = APIRouter()
 
 
+def _bulk_clear_all_discord_messages(session: Session) -> int:
+    session.exec(delete(ParseAttempt))
+    count = int(session.exec(select(func.count()).select_from(DiscordMessage)).one())
+    session.exec(delete(DiscordMessage))
+    session.commit()
+    return count
+
+
 @router.post("/admin/clear")
 def clear_all_messages(request: Request):
     if denial := require_role_response(request, "admin"):
         return denial
     with managed_session() as session:
-        attempts = session.exec(select(ParseAttempt)).all()
-        rows = session.exec(select(DiscordMessage)).all()
-        count = len(rows)
-        for attempt in attempts:
-            session.delete(attempt)
-        for row in rows:
-            session.delete(row)
-        session.commit()
+        count = _bulk_clear_all_discord_messages(session)
 
     return {"ok": True, "deleted": count}
+
+
 @router.post("/admin/clear/form")
 def clear_all_messages_form(request: Request):
     if denial := require_role_response(request, "admin"):
         return denial
     with managed_session() as session:
-        attempts = session.exec(select(ParseAttempt)).all()
-        rows = session.exec(select(DiscordMessage)).all()
-        count = len(rows)
-        for attempt in attempts:
-            session.delete(attempt)
-        for row in rows:
-            session.delete(row)
-        session.commit()
+        count = _bulk_clear_all_discord_messages(session)
 
     return RedirectResponse(
         url=f"/table?success=Cleared+{count}+messages",

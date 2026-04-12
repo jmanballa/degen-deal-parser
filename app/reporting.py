@@ -336,7 +336,7 @@ def _tiktok_status_key(row: TikTokOrder) -> str:
     return (row.financial_status or row.order_status or "").strip().lower()
 
 
-_TIKTOK_PAID_STATUSES = {
+TIKTOK_PAID_STATUSES = {
     "paid",
     "completed",
     "awaiting_shipment",
@@ -366,7 +366,7 @@ _TIKTOK_REFUNDED_STATUSES = {
 
 def classify_tiktok_reporting_status(row: TikTokOrder) -> str:
     status = _tiktok_status_key(row)
-    if status in _TIKTOK_PAID_STATUSES:
+    if status in TIKTOK_PAID_STATUSES:
         return "paid"
     if status in _TIKTOK_PENDING_STATUSES:
         return "pending"
@@ -789,15 +789,10 @@ def build_tiktok_buyer_insights(session: Session, days: int = 90) -> list[dict]:
         select(TikTokOrder).where(TikTokOrder.created_at >= cutoff)
     ).all()
 
-    paid_statuses = {
-        "paid", "completed", "awaiting_shipment", "awaiting_collection",
-        "awaiting_delivery", "in_transit", "delivered",
-    }
-
     agg: dict[str, dict] = {}
     for o in orders:
         status = (o.financial_status or o.order_status or "").lower().strip()
-        if status not in paid_statuses:
+        if status not in TIKTOK_PAID_STATUSES:
             continue
         buyer_name = (o.customer_name or "").strip() or "Guest"
         buyer_key = buyer_name.lower()
@@ -852,11 +847,6 @@ def build_tiktok_product_performance(
         select(TikTokOrder).where(TikTokOrder.created_at >= cutoff)
     ).all()
 
-    paid_statuses = {
-        "paid", "completed", "awaiting_shipment", "awaiting_collection",
-        "awaiting_delivery", "in_transit", "delivered",
-    }
-
     def _is_during_stream(ts: datetime | None) -> bool:
         if not ts or not stream_sessions:
             return False
@@ -872,7 +862,7 @@ def build_tiktok_product_performance(
     agg: dict[str, dict] = {}
     for o in orders:
         status = (o.financial_status or o.order_status or "").lower().strip()
-        if status not in paid_statuses:
+        if status not in TIKTOK_PAID_STATUSES:
             continue
         raw_items: list[dict] = []
         try:

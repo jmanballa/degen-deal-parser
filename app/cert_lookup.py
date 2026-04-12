@@ -239,8 +239,13 @@ async def _lookup_cgc(
             ld = json.loads(ld_m.group(1))
             result["card_name"] = ld.get("name")
             result["grade"] = str(ld.get("ratingValue") or "")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "cert_lookup._lookup_cgc: ld+json parse failed (cert=%s): %s",
+                cert_number,
+                exc,
+                exc_info=True,
+            )
 
     if not result["card_name"]:
         name_m = re.search(r'<h[12][^>]*>\s*([^<]{5,120})</h[12]>', html, re.I)

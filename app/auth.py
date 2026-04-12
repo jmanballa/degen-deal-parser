@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from hashlib import pbkdf2_hmac
 import hmac
+import secrets
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -14,18 +15,34 @@ from .models import User, utcnow
 settings = get_settings()
 
 
-def hash_password(password: str) -> str:
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    salt_used = salt if salt is not None else secrets.token_hex(16)
     digest = pbkdf2_hmac(
         "sha256",
         password.encode("utf-8"),
-        settings.session_secret.encode("utf-8"),
+        salt_used.encode("utf-8"),
         200_000,
     )
-    return digest.hex()
+    return (digest.hex(), salt_used)
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    return hmac.compare_digest(hash_password(password), password_hash)
+def verify_password(
+    password: str,
+    password_hash: str,
+    *,
+    salt: Optional[str] = None,
+) -> bool:
+    if salt:
+        salt_bytes = salt.encode("utf-8")
+    else:
+        salt_bytes = settings.session_secret.encode("utf-8")
+    digest = pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt_bytes,
+        200_000,
+    )
+    return hmac.compare_digest(digest.hex(), password_hash)
 
 
 def authenticate_user(session: Session, username: str, password: str) -> Optional[User]:
@@ -38,8 +55,13 @@ def authenticate_user(session: Session, username: str, password: str) -> Optiona
     ).first()
     if not user or not user.is_active:
         return None
-    if not verify_password(password, user.password_hash):
-        return None
+    stored_salt = (user.password_salt or "").strip()
+    if stored_salt:
+        if not verify_password(password, user.password_hash, salt=stored_salt):
+            return None
+    else:
+        if not verify_password(password, user.password_hash):
+            return None
     return user
 
 
@@ -62,9 +84,17 @@ def upsert_seed_user(
 
     if existing:
         changed = False
-        if settings.auth_reseed_passwords and existing.password_hash != hash_password(password):
-            existing.password_hash = hash_password(password)
-            changed = True
+        if settings.auth_reseed_passwords:
+            stored_salt = (existing.password_salt or "").strip()
+            if stored_salt:
+                matches = verify_password(password, existing.password_hash, salt=stored_salt)
+            else:
+                matches = verify_password(password, existing.password_hash)
+            if not matches:
+                h, s = hash_password(password)
+                existing.password_hash = h
+                existing.password_salt = s
+                changed = True
         if existing.display_name != display_name:
             existing.display_name = display_name
             changed = True
@@ -79,10 +109,12 @@ def upsert_seed_user(
             session.add(existing)
         return
 
+    pwd_hash, pwd_salt = hash_password(password)
     session.add(
         User(
             username=normalized_username,
-            password_hash=hash_password(password),
+            password_hash=pwd_hash,
+            password_salt=pwd_salt,
             display_name=display_name,
             role=role,
             is_active=True,

@@ -1,5 +1,6 @@
 import json
 import asyncio
+import logging
 import re
 from typing import Any, Dict, List
 
@@ -8,6 +9,7 @@ from openai import OpenAI
 from .config import get_settings
 from .corrections import get_exact_correction_match, get_learned_rule_match, get_relevant_correction_hints
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 MODEL = "gpt-5-nano"
@@ -171,7 +173,12 @@ def parse_trade_hint(message_text: str) -> Dict[str, Any] | None:
     if payment_match:
         try:
             amount = float(payment_match.group(1))
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "parser.parse_trade_hint: float(payment_match group) failed, amount=None: %s",
+                e,
+                exc_info=True,
+            )
             amount = None
 
         payment_raw = (payment_match.group(2) or "").lower()
@@ -284,7 +291,12 @@ def extract_payment_amount_method(text: str) -> tuple[float | None, str | None]:
             else:
                 payment = match.group(1).lower()
                 amount = float(match.group(2))
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "parser.extract_payment_amount_method: parse failed, returning None: %s",
+                e,
+                exc_info=True,
+            )
             return None, None
         if payment == "tap":
             payment = "card"
@@ -376,7 +388,13 @@ def extract_unlabeled_amount(text: str) -> float | None:
         token = match.group(0).replace("$", "")
         try:
             amount = float(token)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "parser.extract_unlabeled_amount: float(%r) skipped: %s",
+                token,
+                e,
+                exc_info=True,
+            )
             continue
         if has_quantity_unit_after(lower, match.end()):
             continue
@@ -723,7 +741,12 @@ def parse_by_rules(message_text: str, channel_name: str | None = None) -> Dict[s
         if m.lastindex and m.lastindex >= 2:
             try:
                 amount = float(m.group(2))
-            except Exception:
+            except Exception as e:
+                logger.warning(
+                    "parser.parse_by_rules: float(verb-pattern group 2) failed, amount=None: %s",
+                    e,
+                    exc_info=True,
+                )
                 amount = None
             if amount is not None and has_quantity_unit_after(text, m.end(2)):
                 amount = None
@@ -1412,7 +1435,12 @@ async def parse_message(content: str, attachment_urls: list[str], author_name: s
         return parsed
     except TimedOutRowError:
         raise
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "parser.parse_message: AI parse failed, trying rule fallback: %s",
+            e,
+            exc_info=True,
+        )
         fallback = parse_by_rules(content or "", channel_name=channel_name)
         if fallback:
             if learned_rule_event:

@@ -5,7 +5,9 @@ Extracted from app/main.py -- all routes under /tiktok/streamer/.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -33,6 +35,7 @@ from ..shared import (  # noqa: F401 - explicit imports for underscore-prefixed 
     _stream_range_source,
 )
 from ..db import get_session
+from ..reporting import TIKTOK_PAID_STATUSES
 
 router = APIRouter()
 
@@ -143,23 +146,38 @@ def _build_streamer_order_card(order: TikTokOrder) -> dict:
         "items": items,
     }
 
+_buyer_lifetime_cache: dict = {}
+_buyer_lifetime_cache_lock = threading.Lock()
+_BUYER_LIFETIME_CACHE_TTL = 120  # seconds
+
 def _compute_buyer_lifetime_totals(session: Session) -> dict[str, float]:
-    """Return a dict mapping lowercased buyer name -> lifetime GMV across all paid orders."""
-    paid_statuses = {
-        "paid", "completed", "awaiting_shipment", "awaiting_collection",
-        "awaiting_delivery", "in_transit", "delivered",
-    }
+    """Return a dict mapping lowercased buyer name -> lifetime GMV across all paid orders.
+
+    Uses SQL GROUP BY and caches for 120s to avoid full-table scans on every poll.
+    """
+    now = time.monotonic()
+    with _buyer_lifetime_cache_lock:
+        if now - _buyer_lifetime_cache.get("at", 0) < _BUYER_LIFETIME_CACHE_TTL and "data" in _buyer_lifetime_cache:
+            return _buyer_lifetime_cache["data"]
+
+    status_col = func.coalesce(
+        func.lower(func.trim(TikTokOrder.financial_status)),
+        func.lower(func.trim(TikTokOrder.order_status)),
+        "",
+    )
     rows = session.exec(
-        select(TikTokOrder.customer_name, TikTokOrder.subtotal_price, TikTokOrder.total_price, TikTokOrder.financial_status, TikTokOrder.order_status)
+        select(
+            func.lower(func.trim(func.coalesce(TikTokOrder.customer_name, "guest"))),
+            func.sum(func.coalesce(TikTokOrder.subtotal_price, TikTokOrder.total_price, 0.0)),
+        )
+        .where(status_col.in_(list(TIKTOK_PAID_STATUSES)))
+        .group_by(func.lower(func.trim(func.coalesce(TikTokOrder.customer_name, "guest"))))
     ).all()
-    agg: dict[str, float] = {}
-    for name, subtotal, total, fin_status, ord_status in rows:
-        status = (fin_status or ord_status or "").lower().strip()
-        if status not in paid_statuses:
-            continue
-        buyer_key = (name or "").strip().lower() or "guest"
-        gmv = float(subtotal if subtotal is not None else (total or 0))
-        agg[buyer_key] = agg.get(buyer_key, 0.0) + gmv
+    agg = {(name or "guest"): float(total or 0) for name, total in rows}
+
+    with _buyer_lifetime_cache_lock:
+        _buyer_lifetime_cache["data"] = agg
+        _buyer_lifetime_cache["at"] = time.monotonic()
     return agg
 
 def _enrich_cards_with_buyer_totals(cards: list[dict], buyer_totals: dict[str, float]) -> None:
@@ -191,10 +209,6 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
         select(TikTokOrder).where(TikTokOrder.created_at >= today_start_utc)
     ).all()
 
-    paid_statuses = {
-        "paid", "completed", "awaiting_shipment", "awaiting_collection",
-        "awaiting_delivery", "in_transit", "delivered",
-    }
     gmv = 0.0
     paid_count = 0
     product_agg: dict[str, dict] = {}
@@ -202,7 +216,7 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
 
     for o in today_orders:
         status = (o.financial_status or o.order_status or "").lower().strip()
-        if status not in paid_statuses:
+        if status not in TIKTOK_PAID_STATUSES:
             continue
         order_gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
         gmv += order_gmv
@@ -301,7 +315,7 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
         stream_orders_rows = session.exec(q).all()
         for o in stream_orders_rows:
             status = (o.financial_status or o.order_status or "").lower().strip()
-            if status not in paid_statuses:
+            if status not in TIKTOK_PAID_STATUSES:
                 continue
             o_gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
             stream_gmv += o_gmv
@@ -586,7 +600,7 @@ def get_streamer_goal(request: Request, session: Session = Depends(get_session))
 
 @router.post("/tiktok/streamer/goal")
 def set_streamer_goal(request: Request, session: Session = Depends(get_session), body: dict = None):
-    if denial := require_role_response(request, "viewer"):
+    if denial := require_role_response(request, "reviewer"):
         return denial
     if body is None:
         body = {}
@@ -864,3 +878,63 @@ def tiktok_streamer_chat_poll(
         "viewer_count": status_info["viewer_count"],
         "vip_in_chat": vip_in_chat,
     }
+
+
+# ---------------------------------------------------------------------------
+# Giveaway endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/tiktok/streamer/giveaway/start")
+async def tiktok_giveaway_start(request: Request, body: dict = None):
+    if denial := require_role_response(request, "admin"):
+        return denial
+
+    from ..tiktok_giveaway import get_giveaway_state, run_giveaway, _giveaway_task
+    import app.tiktok_giveaway as _gmod
+
+    state = get_giveaway_state()
+    if state.status == "running":
+        return {"ok": False, "error": "A giveaway is already running."}
+
+    body = body or {}
+    product_name = (body.get("product_name") or "").strip()
+    if not product_name:
+        return {"ok": False, "error": "product_name is required."}
+
+    winners = int(body.get("winners", 1))
+    keyword = (body.get("keyword") or "giveaway").strip()
+    duration = (body.get("duration") or "5 min").strip()
+
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(run_giveaway(product_name, winners, keyword, duration))
+    _gmod._giveaway_task = task
+
+    return {"ok": True, "message": "Giveaway started."}
+
+
+@router.get("/tiktok/streamer/giveaway/status")
+def tiktok_giveaway_status(request: Request):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    from ..tiktok_giveaway import get_giveaway_state
+    return get_giveaway_state().to_dict()
+
+
+@router.post("/tiktok/streamer/giveaway/cancel")
+def tiktok_giveaway_cancel(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
+
+    from ..tiktok_giveaway import cancel_giveaway
+    cancelled = cancel_giveaway()
+    return {"ok": cancelled, "message": "Cancelled." if cancelled else "Nothing to cancel."}
+
+
+@router.get("/tiktok/streamer/giveaway/health")
+async def tiktok_giveaway_health(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
+
+    from ..tiktok_giveaway import check_session_health
+    return await check_session_health()

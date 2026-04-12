@@ -91,9 +91,11 @@ def admin_create_user(
     if existing:
         return RedirectResponse(url=f"/admin/users?error=User+{normalized}+already+exists", status_code=303)
     from ..auth import hash_password
+    pwd_hash, pwd_salt = hash_password(password)
     session.add(User(
         username=normalized,
-        password_hash=hash_password(password),
+        password_hash=pwd_hash,
+        password_salt=pwd_salt,
         display_name=(display_name or "").strip() or normalized,
         role=role,
         is_active=True,

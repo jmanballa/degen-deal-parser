@@ -1330,6 +1330,154 @@
         .order-pick-row.is-selected .order-pick-check {
             border-color: var(--green); background: var(--green); color: #fff;
         }
+
+        /* ---- Giveaway Panel ---- */
+        .giveaway-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--card-radius);
+            margin-bottom: 14px;
+            overflow: hidden;
+        }
+        .giveaway-header {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 16px; cursor: pointer; user-select: none;
+        }
+        .giveaway-header:hover { background: var(--bg-card-hover); }
+        .giveaway-header-icon { font-size: 18px; }
+        .giveaway-header-title {
+            font-size: 13px; font-weight: 800; letter-spacing: -.02em;
+            flex: 1;
+        }
+        .giveaway-header-chevron {
+            font-size: 14px; color: var(--text-muted);
+            transition: transform .2s;
+        }
+        .giveaway-panel.is-open .giveaway-header-chevron { transform: rotate(180deg); }
+        .giveaway-body {
+            max-height: 0; overflow: hidden;
+            transition: max-height .3s cubic-bezier(.4, 0, .2, 1);
+        }
+        .giveaway-panel.is-open .giveaway-body { max-height: 700px; }
+        .giveaway-body-inner { padding: 0 16px 16px; }
+        .giveaway-form-row {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+            margin-bottom: 10px;
+        }
+        .giveaway-form-full { grid-column: 1 / -1; }
+        .giveaway-label {
+            display: flex; flex-direction: column; gap: 4px;
+            font-size: 10px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text-muted);
+        }
+        .giveaway-input {
+            width: 100%; padding: 8px 10px;
+            border-radius: 8px; border: 1px solid var(--border);
+            background: rgba(255,255,255,.07); color: var(--text);
+            font: inherit; font-size: 13px;
+        }
+        .giveaway-input:focus {
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+        .giveaway-input::placeholder { color: var(--text-muted); }
+        .giveaway-duration-row {
+            display: flex; gap: 6px; flex-wrap: wrap;
+        }
+        .giveaway-dur-btn {
+            appearance: none; border: 1px solid var(--border);
+            border-radius: 8px; padding: 6px 14px;
+            background: rgba(255,255,255,.06); color: var(--text-secondary);
+            font: inherit; font-size: 12px; font-weight: 700;
+            cursor: pointer; transition: all .15s;
+        }
+        .giveaway-dur-btn.active {
+            border-color: var(--accent); color: var(--accent);
+            background: rgba(254,44,85,.12);
+        }
+        .giveaway-dur-btn:hover:not(.active) { background: rgba(255,255,255,.1); }
+        .giveaway-actions {
+            display: flex; gap: 8px; margin-top: 12px; align-items: center;
+        }
+        .giveaway-start-btn {
+            appearance: none; border: none; border-radius: 10px;
+            padding: 10px 20px; font: inherit; font-size: 13px; font-weight: 800;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--tiktok-pink), #ff6b81);
+            color: #fff;
+            box-shadow: 0 6px 16px var(--accent-glow);
+            transition: filter .15s, opacity .15s;
+        }
+        .giveaway-start-btn:hover { filter: brightness(1.1); }
+        .giveaway-start-btn:disabled {
+            opacity: .4; cursor: not-allowed; filter: none;
+        }
+        .giveaway-cancel-btn {
+            appearance: none; border: 1px solid var(--border);
+            border-radius: 10px; padding: 10px 16px;
+            background: rgba(255,255,255,.08); color: var(--text);
+            font: inherit; font-size: 13px; font-weight: 700;
+            cursor: pointer; display: none;
+        }
+        .giveaway-cancel-btn:hover { background: rgba(255,255,255,.14); }
+        .giveaway-fallback-btn {
+            appearance: none; border: 1px solid var(--border);
+            border-radius: 10px; padding: 10px 16px;
+            background: rgba(255,255,255,.06); color: var(--text-secondary);
+            font: inherit; font-size: 12px; font-weight: 600;
+            cursor: pointer; text-decoration: none; display: none;
+        }
+        .giveaway-fallback-btn:hover { background: rgba(255,255,255,.12); }
+        .giveaway-status {
+            margin-top: 12px; display: none;
+        }
+        .giveaway-status.active { display: block; }
+        .giveaway-status-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(254,44,85,.08);
+            border: 1px solid rgba(254,44,85,.2);
+        }
+        .giveaway-status-bar.is-success {
+            background: rgba(62,207,142,.1);
+            border-color: rgba(62,207,142,.25);
+        }
+        .giveaway-status-bar.is-failed {
+            background: rgba(239,68,68,.1);
+            border-color: rgba(239,68,68,.25);
+        }
+        .giveaway-status-spinner {
+            width: 16px; height: 16px; border-radius: 50%;
+            border: 2px solid transparent;
+            border-top-color: var(--accent);
+            animation: ga-spin .8s linear infinite;
+        }
+        @keyframes ga-spin { to { transform: rotate(360deg); } }
+        .giveaway-status-text {
+            font-size: 12px; font-weight: 700; flex: 1;
+        }
+        .giveaway-status-step {
+            font-size: 11px; color: var(--text-muted); font-weight: 600;
+            white-space: nowrap;
+        }
+        .giveaway-screenshot-wrap {
+            margin-top: 8px; display: none;
+        }
+        .giveaway-screenshot-wrap.active { display: block; }
+        .giveaway-screenshot-wrap img {
+            width: 100%; border-radius: 8px;
+            border: 1px solid var(--border);
+            max-height: 180px; object-fit: cover;
+        }
+        .giveaway-history {
+            margin-top: 10px; font-size: 11px;
+            color: var(--text-muted);
+        }
+        .giveaway-history-item {
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,.04);
+        }
     </style>
 </head>
 <body>
@@ -1494,6 +1642,61 @@
                     <div class="top-buyers-strip" id="top-buyers-strip"></div>
                 </div>
 
+                <!-- Giveaway Panel (collapsible) -->
+                <div class="giveaway-panel" id="giveaway-panel">
+                    <div class="giveaway-header" id="giveaway-toggle">
+                        <span class="giveaway-header-icon">&#x1F381;</span>
+                        <span class="giveaway-header-title">Giveaway</span>
+                        <span class="giveaway-header-chevron">&#x25BE;</span>
+                    </div>
+                    <div class="giveaway-body">
+                        <div class="giveaway-body-inner">
+                            <div class="giveaway-form-row giveaway-form-full">
+                                <label class="giveaway-label">
+                                    Product Name
+                                    <input class="giveaway-input" id="ga-product" type="text" placeholder="Search product on TikTok...">
+                                </label>
+                            </div>
+                            <div class="giveaway-form-row">
+                                <label class="giveaway-label">
+                                    Winners
+                                    <input class="giveaway-input" id="ga-winners" type="number" min="1" max="50" value="1">
+                                </label>
+                                <label class="giveaway-label">
+                                    Keyword
+                                    <input class="giveaway-input" id="ga-keyword" type="text" value="giveaway" placeholder="Comment keyword">
+                                </label>
+                            </div>
+                            <div class="giveaway-form-row giveaway-form-full">
+                                <label class="giveaway-label">
+                                    Duration
+                                    <div class="giveaway-duration-row" id="ga-duration-row">
+                                        <button class="giveaway-dur-btn active" data-dur="5 min">5 min</button>
+                                        <button class="giveaway-dur-btn" data-dur="10 min">10 min</button>
+                                        <button class="giveaway-dur-btn" data-dur="15 min">15 min</button>
+                                    </div>
+                                </label>
+                            </div>
+                            <div class="giveaway-actions">
+                                <button class="giveaway-start-btn" id="ga-start-btn">Start Giveaway</button>
+                                <button class="giveaway-cancel-btn" id="ga-cancel-btn">Cancel</button>
+                                <a class="giveaway-fallback-btn" id="ga-fallback-btn" href="https://shop.tiktok.com/streamer/live/giveaway" target="_blank" rel="noopener">Open TikTok Giveaway &#x2197;</a>
+                            </div>
+                            <div class="giveaway-status" id="ga-status">
+                                <div class="giveaway-status-bar" id="ga-status-bar">
+                                    <div class="giveaway-status-spinner" id="ga-spinner"></div>
+                                    <span class="giveaway-status-text" id="ga-status-text">Initializing...</span>
+                                    <span class="giveaway-status-step" id="ga-status-step"></span>
+                                </div>
+                                <div class="giveaway-screenshot-wrap" id="ga-screenshot-wrap">
+                                    <img id="ga-screenshot-img" src="" alt="Agent view">
+                                </div>
+                            </div>
+                            <div class="giveaway-history" id="ga-history"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="toast-container" id="toast-container"></div>
 
                 <div class="orders-list" id="orders-list"></div>
@@ -1630,37 +1833,39 @@
 
         /* ---- Orders state ---- */
         var _orders = [];
-        try { _orders = {{ orders_json|safe }}; } catch (e) {}
+        try { _orders = JSON.parse({{ orders_json|tojson }}); } catch (e) {}
         window.__streamerOrders = _orders;
         var _latestUpdatedAt = {{ latest_updated_at|tojson }};
         var _topSellers = [];
-        try { _topSellers = {{ top_sellers_json|safe }}; } catch (e) {}
+        try { _topSellers = JSON.parse({{ top_sellers_json|tojson }}); } catch (e) {}
         var _topBuyers = [];
-        try { _topBuyers = {{ top_buyers_json|safe }}; } catch (e) {}
+        try { _topBuyers = JSON.parse({{ top_buyers_json|tojson }}); } catch (e) {}
         var _streamTopSellers = [];
-        try { _streamTopSellers = {{ stream_top_sellers_json|safe }}; } catch (e) {}
+        try { _streamTopSellers = JSON.parse({{ stream_top_sellers_json|tojson }}); } catch (e) {}
         var _streamTopBuyers = [];
-        try { _streamTopBuyers = {{ stream_top_buyers_json|safe }}; } catch (e) {}
+        try { _streamTopBuyers = JSON.parse({{ stream_top_buyers_json|tojson }}); } catch (e) {}
         var _lbMode = 'today';
         var _knownIds = new Set(_orders.map(function(o) { return o.tiktok_order_id; }));
         var _muted = false;
         var _audioCtx = null;
         var _liveAnalytics = {};
-        try { _liveAnalytics = {{ live_analytics_json|safe }}; } catch (e) {}
+        try { _liveAnalytics = JSON.parse({{ live_analytics_json|tojson }}); } catch (e) {}
         var _streamData = {};
-        try { _streamData = {{ stream_data_json|safe }}; } catch (e) {}
+        try { _streamData = JSON.parse({{ stream_data_json|tojson }}); } catch (e) {}
         var _streamSessions = [];
-        try { _streamSessions = {{ stream_sessions_json|safe }}; } catch (e) {}
+        try { _streamSessions = JSON.parse({{ stream_sessions_json|tojson }}); } catch (e) {}
         _streamSessions.sort(function(a, b) { return (b.end_time || 0) - (a.end_time || 0); });
         var _buildVersion = {{ build_version|tojson }};
         var _gmvGoal = {{ gmv_goal|tojson }};
         var _highValueThreshold = {{ high_value_threshold|tojson }};
         var _vipBuyerThreshold = {{ vip_buyer_threshold|tojson }};
-        var _wasLive = {{ stream_data_json|safe }}.is_live || false;
+        var _wasLive = _streamData.is_live || false;
         var _summaryDismissed = false;
+        var _orderPollInFlight = false;
 
         /* ---- Chat state ---- */
         var _chatIdx = 0;
+        var _chatPollInFlight = false;
         var _chatStatus = {{ chat_status|tojson }};
         var _chatAutoScroll = true;
         var _chatDrawerOpen = false;
@@ -1956,7 +2161,7 @@
             html += '<span class="row-last4">#' + esc(l4) + '</span>';
             html += '<span class="refund-badge">&#x26A0; ' + (refund ? refundLabel(order) : 'REFUND') + '</span>';
             html += '<button class="row-copy-btn" title="Copy label" data-label="' + escAttr(labelText(order)) + '" onclick="event.stopPropagation();window._copyRow(this)">&#x1F4CB;</button>';
-            html += '<span class="row-time">' + relativeTime(order.created_at) + '</span>';
+            html += '<span class="row-time" data-created-at="' + escAttr(order.created_at || '') + '">' + relativeTime(order.created_at) + '</span>';
             if (itemCount > 1) html += '<span class="row-items-count">' + itemCount + ' items</span>';
             html += '</div></div>';
             html += '<div class="row-right">';
@@ -2572,10 +2777,15 @@
 
         async function pollOrders() {
             if (document.hidden) return;
+            if (_orderPollInFlight) return;
+            _orderPollInFlight = true;
             try {
                 var url = '/tiktok/streamer/poll' + (_latestUpdatedAt ? '?since=' + encodeURIComponent(_latestUpdatedAt) : '');
                 var resp = await fetch(url, { cache: 'no-store' });
-                if (!resp.ok) return;
+                if (!resp.ok) {
+                    console.warn('Poll error: orders poll HTTP', resp.status, resp.statusText);
+                    return;
+                }
                 var data = await resp.json();
 
                 if (data.build_version && _buildVersion && data.build_version !== _buildVersion) {
@@ -2614,11 +2824,21 @@
                     }
                 });
 
+                var MAX_ORDERS = 500;
                 if (newOrders.length > 0) {
                     newOrders.forEach(function(o) {
                         _knownIds.add(o.tiktok_order_id);
                         _orders.unshift(o);
                     });
+                    while (_orders.length > MAX_ORDERS) {
+                        var removed = _orders.pop();
+                        if (removed) _knownIds.delete(removed.tiktok_order_id);
+                    }
+                    var allRows = list.querySelectorAll('.order-row');
+                    while (allRows.length > MAX_ORDERS) {
+                        list.removeChild(allRows[allRows.length - 1]);
+                        allRows = list.querySelectorAll('.order-row');
+                    }
                     prependRows(newOrders);
                     var nonRefundNew = newOrders.filter(function(o) { return !isRefundOrder(o); });
                     var anySpecial = false;
@@ -2638,7 +2858,11 @@
                 }
 
                 refundUpdates.forEach(function(o) { handleRefundUpdate(o); });
-            } catch (e) {}
+            } catch (e) {
+                console.warn('Poll error:', e);
+            } finally {
+                _orderPollInFlight = false;
+            }
         }
 
         /* ============ Chat ============ */
@@ -2760,9 +2984,14 @@
 
         async function pollChat() {
             if (document.hidden) return;
+            if (_chatPollInFlight) return;
+            _chatPollInFlight = true;
             try {
                 var resp = await fetch('/tiktok/streamer/chat/poll?since=' + _chatIdx, { cache: 'no-store' });
-                if (!resp.ok) return;
+                if (!resp.ok) {
+                    console.warn('Poll error: chat poll HTTP', resp.status, resp.statusText);
+                    return;
+                }
                 var data = await resp.json();
 
                 _chatStatus = data.status || _chatStatus;
@@ -2780,7 +3009,11 @@
                     initChatPanel(chatDesktopMsgs, _chatStatus);
                     initChatPanel(chatMobileMsgs, _chatStatus);
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('Poll error:', e);
+            } finally {
+                _chatPollInFlight = false;
+            }
         }
 
         /* ---- Mobile drawer ---- */
@@ -2828,8 +3061,8 @@
 
         /* ---- Relative time refresh ---- */
         setInterval(function() {
-            document.querySelectorAll('.row-time').forEach(function(el, idx) {
-                if (_orders[idx]) el.textContent = relativeTime(_orders[idx].created_at);
+            document.querySelectorAll('.row-time[data-created-at]').forEach(function(el) {
+                el.textContent = relativeTime(el.getAttribute('data-created-at'));
             });
         }, 30000);
 
@@ -3086,6 +3319,158 @@
         function escHtml(s) {
             if (!s) return '';
             return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+    })();
+    </script>
+
+    <!-- ===== Giveaway Panel JS ===== -->
+    <script>
+    (function() {
+        var gaPanel = document.getElementById('giveaway-panel');
+        var gaToggle = document.getElementById('giveaway-toggle');
+        var gaStartBtn = document.getElementById('ga-start-btn');
+        var gaCancelBtn = document.getElementById('ga-cancel-btn');
+        var gaFallbackBtn = document.getElementById('ga-fallback-btn');
+        var gaStatus = document.getElementById('ga-status');
+        var gaStatusBar = document.getElementById('ga-status-bar');
+        var gaSpinner = document.getElementById('ga-spinner');
+        var gaStatusText = document.getElementById('ga-status-text');
+        var gaStatusStep = document.getElementById('ga-status-step');
+        var gaScreenshotWrap = document.getElementById('ga-screenshot-wrap');
+        var gaScreenshotImg = document.getElementById('ga-screenshot-img');
+        var gaHistory = document.getElementById('ga-history');
+        var gaProduct = document.getElementById('ga-product');
+        var gaWinners = document.getElementById('ga-winners');
+        var gaKeyword = document.getElementById('ga-keyword');
+        var gaDurationRow = document.getElementById('ga-duration-row');
+
+        var _gaPolling = false;
+        var _gaPollTimer = null;
+        var _selectedDuration = '5 min';
+
+        gaToggle.addEventListener('click', function() {
+            gaPanel.classList.toggle('is-open');
+        });
+
+        gaDurationRow.addEventListener('click', function(e) {
+            var btn = e.target.closest('.giveaway-dur-btn');
+            if (!btn) return;
+            gaDurationRow.querySelectorAll('.giveaway-dur-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            _selectedDuration = btn.getAttribute('data-dur');
+        });
+
+        gaStartBtn.addEventListener('click', function() {
+            var product = gaProduct.value.trim();
+            if (!product) { gaProduct.focus(); return; }
+            var winners = parseInt(gaWinners.value) || 1;
+            var keyword = gaKeyword.value.trim() || 'giveaway';
+
+            gaStartBtn.disabled = true;
+            gaCancelBtn.style.display = 'inline-block';
+            gaFallbackBtn.style.display = 'none';
+            gaStatus.classList.add('active');
+            gaStatusBar.className = 'giveaway-status-bar';
+            gaSpinner.style.display = 'block';
+            gaStatusText.textContent = 'Starting giveaway...';
+            gaStatusStep.textContent = '';
+            gaScreenshotWrap.classList.remove('active');
+
+            fetch('/tiktok/streamer/giveaway/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_name: product,
+                    winners: winners,
+                    keyword: keyword,
+                    duration: _selectedDuration,
+                }),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d.ok) {
+                    gaStatusText.textContent = d.error || 'Failed to start';
+                    gaStatusBar.classList.add('is-failed');
+                    gaSpinner.style.display = 'none';
+                    gaStartBtn.disabled = false;
+                    gaCancelBtn.style.display = 'none';
+                    gaFallbackBtn.style.display = 'inline-block';
+                    return;
+                }
+                startGaPoll();
+            })
+            .catch(function(err) {
+                gaStatusText.textContent = 'Network error: ' + err.message;
+                gaStatusBar.classList.add('is-failed');
+                gaSpinner.style.display = 'none';
+                gaStartBtn.disabled = false;
+                gaCancelBtn.style.display = 'none';
+                gaFallbackBtn.style.display = 'inline-block';
+            });
+        });
+
+        gaCancelBtn.addEventListener('click', function() {
+            fetch('/tiktok/streamer/giveaway/cancel', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    gaStatusText.textContent = 'Cancelled.';
+                    gaSpinner.style.display = 'none';
+                    gaStartBtn.disabled = false;
+                    gaCancelBtn.style.display = 'none';
+                    stopGaPoll();
+                })
+                .catch(function() {});
+        });
+
+        function startGaPoll() {
+            if (_gaPolling) return;
+            _gaPolling = true;
+            pollGaStatus();
+        }
+        function stopGaPoll() {
+            _gaPolling = false;
+            if (_gaPollTimer) { clearTimeout(_gaPollTimer); _gaPollTimer = null; }
+        }
+
+        function pollGaStatus() {
+            if (!_gaPolling) return;
+            fetch('/tiktok/streamer/giveaway/status')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    gaStatusText.textContent = d.message || d.status;
+                    if (d.current_step > 0) {
+                        gaStatusStep.textContent = 'Step ' + d.current_step + '/' + d.max_steps;
+                    }
+                    if (d.has_screenshot && d.latest_screenshot_b64) {
+                        gaScreenshotImg.src = 'data:image/png;base64,' + d.latest_screenshot_b64;
+                        gaScreenshotWrap.classList.add('active');
+                    }
+
+                    if (d.status === 'running') {
+                        _gaPollTimer = setTimeout(pollGaStatus, 2000);
+                    } else {
+                        gaSpinner.style.display = 'none';
+                        gaStartBtn.disabled = false;
+                        gaCancelBtn.style.display = 'none';
+
+                        if (d.status === 'success') {
+                            gaStatusBar.classList.add('is-success');
+                        } else if (d.status === 'failed' || d.status === 'cancelled') {
+                            gaStatusBar.classList.add('is-failed');
+                            gaFallbackBtn.style.display = 'inline-block';
+                        }
+                        stopGaPoll();
+                        renderGaHistory(d.history_count);
+                    }
+                })
+                .catch(function() {
+                    _gaPollTimer = setTimeout(pollGaStatus, 4000);
+                });
+        }
+
+        function renderGaHistory(count) {
+            if (!count || count <= 0) { gaHistory.innerHTML = ''; return; }
+            gaHistory.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-top:10px;">Recent Giveaways: ' + count + '</div>';
         }
     })();
     </script>

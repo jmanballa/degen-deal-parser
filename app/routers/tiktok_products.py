@@ -128,7 +128,17 @@ def _get_tiktok_product_filter_options(session: Session) -> dict[str, list[str]]
     def _distinct(col):
         try:
             return sorted({v for v in session.exec(select(col).distinct()).all() if v not in (None, "")})
-        except Exception:
+        except Exception as exc:
+            print(
+                structured_log_line(
+                    runtime="app",
+                    action="tiktok.products.filter_distinct_failed",
+                    success=False,
+                    context="tiktok_products._get_tiktok_product_filter_options._distinct",
+                    column=str(getattr(col, "key", col)),
+                    error=str(exc)[:400],
+                )
+            )
             return []
     return {
         "statuses": _distinct(TikTokProduct.status),

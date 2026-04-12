@@ -15,3 +15,5 @@ Pillow
 tiksync
 python-barcode
 firecrawl-py
+browser-use
+playwright

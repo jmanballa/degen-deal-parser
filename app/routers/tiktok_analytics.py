@@ -7,6 +7,7 @@ Extracted from main.py.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
@@ -15,6 +16,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 
+from ..reporting import TIKTOK_PAID_STATUSES
 from ..shared import (
     PACIFIC_TZ,
     TikTokOrder,
@@ -35,6 +37,7 @@ from ..shared import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -46,10 +49,6 @@ _REFUND_STATUSES = {"refunded", "refund_requested", "cancelled", "cancel_request
 
 def _enrich_orders_for_range(session: Session, start_utc: datetime, end_utc: Optional[datetime]) -> dict:
     """Compute top sellers, top buyers, refund rate, and AOV from local orders in [start, end]."""
-    paid_statuses = {
-        "paid", "completed", "awaiting_shipment", "awaiting_collection",
-        "awaiting_delivery", "in_transit", "delivered",
-    }
     q = select(TikTokOrder).where(TikTokOrder.created_at >= start_utc)
     if end_utc is not None:
         q = q.where(TikTokOrder.created_at <= end_utc)
@@ -66,7 +65,7 @@ def _enrich_orders_for_range(session: Session, start_utc: datetime, end_utc: Opt
         status = (o.financial_status or o.order_status or "").lower().strip()
         if status in _REFUND_STATUSES:
             refund_count += 1
-        if status not in paid_statuses:
+        if status not in TIKTOK_PAID_STATUSES:
             continue
         order_gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
         gmv += order_gmv
@@ -83,8 +82,12 @@ def _enrich_orders_for_range(session: Session, start_utc: datetime, end_utc: Opt
         raw_items: list[dict] = []
         try:
             raw_items = json.loads(o.line_items_json) if o.line_items_json else []
-        except (json.JSONDecodeError, TypeError):
-            pass
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(
+                "tiktok_analytics._enrich_orders_for_range: line_items_json parse failed, using empty list: %s",
+                e,
+                exc_info=True,
+            )
         if not isinstance(raw_items, list):
             raw_items = [raw_items] if isinstance(raw_items, dict) else []
 
@@ -101,7 +104,13 @@ def _enrich_orders_for_range(session: Session, start_utc: datetime, end_utc: Opt
             qty_raw = raw.get("quantity") or raw.get("sku_quantity") or raw.get("count")
             try:
                 qty = max(int(qty_raw or 0), 1)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "tiktok_analytics._enrich_orders_for_range: quantity parse failed, defaulting qty=1 (qty_raw=%r): %s",
+                    qty_raw,
+                    e,
+                    exc_info=True,
+                )
                 qty = 1
             total_items += qty
 
@@ -111,7 +120,14 @@ def _enrich_orders_for_range(session: Session, start_utc: datetime, end_utc: Opt
                 if val is not None:
                     try:
                         unit_price = float(val)
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError) as e:
+                        logger.warning(
+                            "tiktok_analytics._enrich_orders_for_range: unit_price field %r not numeric (%r), trying next key: %s",
+                            pk,
+                            val,
+                            e,
+                            exc_info=True,
+                        )
                         continue
                     break
 
@@ -155,10 +171,6 @@ def _enrich_orders_for_range(session: Session, start_utc: datetime, end_utc: Opt
 
 def _build_daily_from_local_orders(session: Session, days: int) -> list[dict]:
     """Build daily GMV/orders breakdown from local TikTokOrder data as a fallback."""
-    paid_statuses = {
-        "paid", "completed", "awaiting_shipment", "awaiting_collection",
-        "awaiting_delivery", "in_transit", "delivered",
-    }
     now_utc = datetime.now(timezone.utc)
     start_utc = now_utc - timedelta(days=days)
     rows = session.exec(
@@ -176,7 +188,7 @@ def _build_daily_from_local_orders(session: Session, days: int) -> list[dict]:
             daily[day_key] = {"date": day_key, "gmv": 0.0, "sku_orders": 0, "customers": 0, "items_sold": 0,
                               "click_to_order_rate": "", "click_through_rate": "", "_buyers": set()}
         status = (o.financial_status or o.order_status or "").lower().strip()
-        if status not in paid_statuses:
+        if status not in TIKTOK_PAID_STATUSES:
             continue
         order_gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
         daily[day_key]["gmv"] += order_gmv
@@ -189,8 +201,12 @@ def _build_daily_from_local_orders(session: Session, days: int) -> list[dict]:
                 for it in items:
                     qty = int(it.get("quantity") or it.get("sku_quantity") or 1)
                     daily[day_key]["items_sold"] += qty
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "tiktok_analytics._build_daily_from_local_orders: skipping line_items for items_sold tally: %s",
+                e,
+                exc_info=True,
+            )
     result = []
     for d in sorted(daily.values(), key=lambda x: x["date"]):
         d["customers"] = len(d.pop("_buyers", set()))
@@ -264,7 +280,12 @@ def tiktok_analytics_daily(
                         start_date=start_str,
                         end_date=end_str,
                     )
-            except Exception:
+            except Exception as e:
+                logger.warning(
+                    "tiktok_analytics.tiktok_analytics_daily: _fetch_overview_performance_daily failed, using local fallback: %s",
+                    e,
+                    exc_info=True,
+                )
                 intervals = []
 
     if not intervals:
@@ -303,7 +324,12 @@ def tiktok_analytics_streams(
                         start_date=start_str,
                         end_date=end_str,
                     )
-            except Exception:
+            except Exception as e:
+                logger.warning(
+                    "tiktok_analytics.tiktok_analytics_streams: _fetch_live_session_list failed, continuing with empty/cache: %s",
+                    e,
+                    exc_info=True,
+                )
                 sessions = []
 
     source = "tiktok_api" if sessions else "none"

@@ -148,6 +148,7 @@ class TikTokRegressionTests(unittest.TestCase):
         )
 
     def test_tiktok_callback_missing_auth_config_redirects_and_records_session(self) -> None:
+        oauth_state = "test-oauth-state"
         request = FakeTikTokRequest(
             "/integrations/tiktok/callback",
             query_params={
@@ -155,8 +156,10 @@ class TikTokRegressionTests(unittest.TestCase):
                 "code": "TTP_7uiSewAAAADOpEzqRGelGGdjsXyE7_hWWHsDgwDodg32Dzg_s9WqptBSVEn6mA7PoOxIUKykLtFMPQ2l8O8iSeSbgE4gyciq6gAnNKBzxC-nKFQorJowSPwPMiwHCMxaA5HeesYu_rNKKTt-tQiTAuUGsgupbg8o",
                 "locale": "en",
                 "shop_region": "US",
+                "state": oauth_state,
             },
         )
+        request.session["oauth_state"] = oauth_state
 
         with patch.object(main_module.settings, "tiktok_app_key", "expected-key"), patch.object(
             main_module.settings, "tiktok_app_secret", ""
@@ -291,6 +294,7 @@ class TikTokRegressionTests(unittest.TestCase):
         self.assertEqual(body_json, '{"create_time_ge":123}')
 
     def test_tiktok_callback_success_exchanges_code_with_shop_auth_endpoint(self) -> None:
+        oauth_state = "test-oauth-state"
         request = FakeTikTokRequest(
             "/integrations/tiktok/callback",
             query_params={
@@ -298,8 +302,10 @@ class TikTokRegressionTests(unittest.TestCase):
                 "code": "auth-code",
                 "locale": "en",
                 "shop_region": "US",
+                "state": oauth_state,
             },
         )
+        request.session["oauth_state"] = oauth_state
 
         fake_token_result = SimpleNamespace(
             access_token="access-token",
@@ -349,6 +355,7 @@ class TikTokRegressionTests(unittest.TestCase):
         self.assertEqual(request.session["tiktok_callback"]["shop_id"], "shop-1")
 
     def test_tiktok_callback_success_with_pending_shop_identifier(self) -> None:
+        oauth_state = "test-oauth-state"
         request = FakeTikTokRequest(
             "/integrations/tiktok/callback",
             query_params={
@@ -356,8 +363,10 @@ class TikTokRegressionTests(unittest.TestCase):
                 "code": "auth-code",
                 "locale": "en",
                 "shop_region": "US",
+                "state": oauth_state,
             },
         )
+        request.session["oauth_state"] = oauth_state
 
         fake_token_result = SimpleNamespace(
             access_token="access-token",
@@ -407,10 +416,12 @@ class TikTokRegressionTests(unittest.TestCase):
         self.assertNotIn("shop_id", request.session["tiktok_callback"])
 
     def test_tiktok_callback_missing_code_redirects_with_error(self) -> None:
+        oauth_state = "test-oauth-state"
         request = FakeTikTokRequest(
             "/integrations/tiktok/callback",
-            query_params={"app_key": "expected-key"},
+            query_params={"app_key": "expected-key", "state": oauth_state},
         )
+        request.session["oauth_state"] = oauth_state
 
         with patch.object(main_module.settings, "tiktok_app_key", "expected-key"), patch.object(
             main_module.settings, "tiktok_app_secret", ""
@@ -425,6 +436,23 @@ class TikTokRegressionTests(unittest.TestCase):
         self.assertEqual(response.headers["location"], "/status?error=TikTok+callback+missing+authorization+code")
         update_tiktok_integration_state.assert_called_once()
         self.assertEqual(update_tiktok_integration_state.call_args.kwargs["last_error"], "Missing authorization code")
+
+    def test_tiktok_callback_invalid_oauth_state_returns_403(self) -> None:
+        request = FakeTikTokRequest(
+            "/integrations/tiktok/callback",
+            query_params={
+                "app_key": "expected-key",
+                "code": "auth-code",
+                "state": "from-callback",
+            },
+        )
+        request.session["oauth_state"] = "session-state-mismatch"
+
+        with patch.object(main_module.settings, "tiktok_app_key", "expected-key"):
+            with self.assertRaises(HTTPException) as ctx:
+                shopify_module.tiktok_oauth_callback(request)  # type: ignore[arg-type]
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.detail, "Invalid OAuth state")
 
     def test_tiktok_webhook_missing_secret_rejects_payload(self) -> None:
         body = json.dumps({"order_id": "tt-1", "status": "PAID"}).encode("utf-8")

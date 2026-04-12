@@ -47,7 +47,10 @@ $dumpFile  = Join-Path $localBackupDir "degen_live_$timestamp.dump"
 
 Write-Log "Starting pg_dump of $dbName ..."
 
-$env:PGPASSWORD = "degen42069"
+if (-not $env:PGPASSWORD) {
+    Write-Log "ERROR: PGPASSWORD not set. Export it before running this script."
+    exit 1
+}
 try {
     & $pgDump -h $dbHost -p $dbPort -U $dbUser -Fc -Z6 -f $dumpFile $dbName
     if ($LASTEXITCODE -ne 0) { throw "pg_dump exited with code $LASTEXITCODE" }

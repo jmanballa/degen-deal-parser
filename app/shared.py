@@ -1760,8 +1760,16 @@ def _persist_tiktok_state(state: dict) -> None:
             row = _tiktok_state_to_db_row(state)
             session.merge(row)
             session.commit()
-    except Exception:
-        pass  # state persistence is best-effort; don't crash the request
+    except Exception as exc:
+        print(
+            structured_log_line(
+                runtime="app",
+                action="tiktok.state.persist_failed",
+                success=False,
+                context="shared._persist_tiktok_state",
+                error=str(exc)[:400],
+            )
+        )  # best-effort; don't crash the request
 
 
 def update_tiktok_integration_state(**changes: object) -> dict[str, object]:
@@ -1791,8 +1799,16 @@ def _load_tiktok_state_from_db() -> None:
             _tiktok_state["last_pull_at"] = row.last_pull_at
             _tiktok_state["last_pull"] = _json.loads(row.last_pull_json or "{}")
             _tiktok_state["last_error"] = row.last_error
-    except Exception:
-        pass  # best-effort; proceed with empty state
+    except Exception as exc:
+        print(
+            structured_log_line(
+                runtime="app",
+                action="tiktok.state.load_failed",
+                success=False,
+                context="shared._load_tiktok_state_from_db",
+                error=str(exc)[:400],
+            )
+        )  # best-effort; proceed with empty state
 
 
 def read_background_task_state() -> dict[str, object]:
@@ -2436,6 +2452,25 @@ async def tiktok_startup_backfill(stop_event: asyncio.Event) -> None:
         )
 
 
+def _tiktok_webhook_enrich_error_is_retryable_auth(exc: BaseException) -> bool:
+    """HTTP 401 or TikTok business-layer token errors (JSON body, HTTP 200)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response is not None and exc.response.status_code == 401
+    if isinstance(exc, RuntimeError):
+        text = str(exc).lower()
+        return any(
+            phrase in text
+            for phrase in (
+                "invalid access",
+                "access token",
+                "access_token",
+                "token expired",
+                "expired token",
+            )
+        )
+    return False
+
+
 def _enrich_tiktok_order_from_api(order_id: str) -> None:
     """Fetch full order details from TikTok API and update the DB record."""
     if _fetch_tiktok_order_details is None or _order_record_from_payload is None:
@@ -2443,24 +2478,85 @@ def _enrich_tiktok_order_from_api(order_id: str) -> None:
     runtime_name = f"{settings.runtime_name}_tiktok_webhook_enrich"
     try:
         with managed_session() as session:
-            auth_row = get_latest_tiktok_auth_row(session)
-            if auth_row is None:
+            auth_row = ensure_tiktok_auth_row(session)
+            if auth_row is None and not ((settings.tiktok_shop_id or "").strip() and (settings.tiktok_access_token or "").strip()):
                 return
+
+            refresh_result = _refresh_tiktok_auth_if_needed(session, runtime_name=runtime_name)
+            if refresh_result is not None:
+                auth_row = ensure_tiktok_auth_row(session)
+
             shop_id, shop_cipher, access_token = _resolve_tiktok_pull_credentials(auth_row)
             if not access_token or (not shop_id and not shop_cipher):
                 return
 
-            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-                details = _fetch_tiktok_order_details(
-                    client,
-                    base_url=resolve_tiktok_shop_pull_base_url(),
-                    app_key=(settings.tiktok_app_key or "").strip(),
-                    app_secret=(settings.tiktok_app_secret or "").strip(),
-                    access_token=access_token,
-                    shop_id=shop_id,
-                    shop_cipher=shop_cipher,
-                    order_ids=[order_id],
+            def _fetch_details_with_token(
+                sid: str, scipher: str, current_access_token: str
+            ) -> list[Any]:
+                with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                    return _fetch_tiktok_order_details(
+                        client,
+                        base_url=resolve_tiktok_shop_pull_base_url(),
+                        app_key=(settings.tiktok_app_key or "").strip(),
+                        app_secret=(settings.tiktok_app_secret or "").strip(),
+                        access_token=current_access_token,
+                        shop_id=sid,
+                        shop_cipher=scipher,
+                        order_ids=[order_id],
+                    )
+
+            try:
+                details = _fetch_details_with_token(shop_id, shop_cipher, access_token)
+            except httpx.HTTPStatusError as exc:
+                if exc.response is None or exc.response.status_code != 401:
+                    raise
+                print(
+                    structured_log_line(
+                        runtime=runtime_name,
+                        action="tiktok.webhook.order_enrich_auth_retry",
+                        success=False,
+                        tiktok_order_id=order_id,
+                        reason="http_401_refresh_and_retry",
+                        error=str(exc),
+                    )
                 )
+                refresh_result = _refresh_tiktok_auth_if_needed(
+                    session,
+                    runtime_name=f"{runtime_name}_401_refresh",
+                    force=True,
+                )
+                if refresh_result is None:
+                    raise
+                auth_row = ensure_tiktok_auth_row(session)
+                shop_id, shop_cipher, access_token = _resolve_tiktok_pull_credentials(auth_row)
+                if not access_token or (not shop_id and not shop_cipher):
+                    raise
+                details = _fetch_details_with_token(shop_id, shop_cipher, access_token)
+            except RuntimeError as exc:
+                if not _tiktok_webhook_enrich_error_is_retryable_auth(exc):
+                    raise
+                print(
+                    structured_log_line(
+                        runtime=runtime_name,
+                        action="tiktok.webhook.order_enrich_auth_retry",
+                        success=False,
+                        tiktok_order_id=order_id,
+                        reason="tiktok_auth_error_refresh_and_retry",
+                        error=str(exc),
+                    )
+                )
+                refresh_result = _refresh_tiktok_auth_if_needed(
+                    session,
+                    runtime_name=f"{runtime_name}_401_refresh",
+                    force=True,
+                )
+                if refresh_result is None:
+                    raise
+                auth_row = ensure_tiktok_auth_row(session)
+                shop_id, shop_cipher, access_token = _resolve_tiktok_pull_credentials(auth_row)
+                if not access_token or (not shop_id and not shop_cipher):
+                    raise
+                details = _fetch_details_with_token(shop_id, shop_cipher, access_token)
 
             if not details:
                 return
@@ -4830,8 +4926,16 @@ def build_dashboard_snapshot(session: Session) -> dict:
                 shopify_today["refunds"] += float(order.total_price or 0.0)
         for key in ("gross", "tax", "net", "refunds"):
             shopify_today[key] = round(float(shopify_today[key] or 0.0), 2)
-    except OperationalError:
-        pass
+    except OperationalError as exc:
+        print(
+            structured_log_line(
+                runtime="app",
+                action="dashboard.shopify_today_query_failed",
+                success=False,
+                context="shared.build_dashboard_snapshot",
+                error=str(exc)[:400],
+            )
+        )
     shopify_today["gross_display"] = format_dashboard_money(shopify_today["gross"])
     shopify_today["tax_display"] = format_dashboard_money(shopify_today["tax"])
     shopify_today["net_display"] = format_dashboard_money(shopify_today["net"])

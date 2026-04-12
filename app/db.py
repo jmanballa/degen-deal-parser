@@ -184,6 +184,9 @@ SQLITE_ADDITIVE_MIGRATIONS = {
         "stream_account_id": "INTEGER",
         "is_overnight": "BOOLEAN DEFAULT 0",
     },
+    "user": {
+        "password_salt": "TEXT",
+    },
 }
 
 
@@ -201,6 +204,50 @@ SQLITE_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_tiktok_auth_app_key ON tiktok_auth (app_key)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_tiktok_orders_tiktok_order_id ON tiktok_orders (tiktok_order_id)",
     "CREATE INDEX IF NOT EXISTS ix_tiktok_orders_created_at ON tiktok_orders (created_at)",
+    # Indexed columns added via SQLITE_ADDITIVE_MIGRATIONS (create_all does not backfill indexes on ALTER-only DBs)
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_guild_id ON discordmessage (guild_id)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_last_seen_at ON discordmessage (last_seen_at)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_deleted_at ON discordmessage (deleted_at)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_is_deleted ON discordmessage (is_deleted)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_stitched_group_id ON discordmessage (stitched_group_id)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_stitched_primary ON discordmessage (stitched_primary)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_entry_kind ON discordmessage (entry_kind)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_expense_category ON discordmessage (expense_category)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_reviewed_by ON discordmessage (reviewed_by)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_reviewed_at ON discordmessage (reviewed_at)",
+    "CREATE INDEX IF NOT EXISTS idx_watchedchannel_created_at ON watchedchannel (created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_watchedchannel_updated_at ON watchedchannel (updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_bookkeepingentry_sheet_name ON bookkeepingentry (sheet_name)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_customer_name ON shopify_orders (customer_name)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_customer_email ON shopify_orders (customer_email)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_financial_status ON shopify_orders (financial_status)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_fulfillment_status ON shopify_orders (fulfillment_status)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_source ON shopify_orders (source)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_received_at ON shopify_orders (received_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_shop_id ON tiktok_orders (shop_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_shop_cipher ON tiktok_orders (shop_cipher)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_seller_id ON tiktok_orders (seller_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_customer_name ON tiktok_orders (customer_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_customer_email ON tiktok_orders (customer_email)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_financial_status ON tiktok_orders (financial_status)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_fulfillment_status ON tiktok_orders (fulfillment_status)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_order_status ON tiktok_orders (order_status)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_currency ON tiktok_orders (currency)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_source ON tiktok_orders (source)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_received_at ON tiktok_orders (received_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_shop_cipher ON tiktok_auth (shop_cipher)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_seller_id ON tiktok_auth (seller_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_open_id ON tiktok_auth (open_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_shop_name ON tiktok_auth (shop_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_shop_region ON tiktok_auth (shop_region)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_seller_name ON tiktok_auth (seller_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_access_token_expires_at ON tiktok_auth (access_token_expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_refresh_token_expires_at ON tiktok_auth (refresh_token_expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_source ON tiktok_auth (source)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_received_at ON tiktok_auth (received_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_created_at ON tiktok_auth (created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_updated_at ON tiktok_auth (updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
 ]
 
 
@@ -315,6 +362,9 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
         "stream_account_id": "INTEGER",
         "is_overnight": "BOOLEAN DEFAULT FALSE",
     },
+    "user": {
+        "password_salt": "TEXT",
+    },
 }
 
 
@@ -332,6 +382,50 @@ POSTGRES_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_tiktok_auth_app_key ON tiktok_auth (app_key)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_tiktok_orders_tiktok_order_id ON tiktok_orders (tiktok_order_id)",
     "CREATE INDEX IF NOT EXISTS ix_tiktok_orders_created_at ON tiktok_orders (created_at)",
+    # Indexed columns added via POSTGRES_ADDITIVE_MIGRATIONS (create_all does not backfill indexes on ALTER-only DBs)
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_guild_id ON discordmessage (guild_id)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_last_seen_at ON discordmessage (last_seen_at)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_deleted_at ON discordmessage (deleted_at)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_is_deleted ON discordmessage (is_deleted)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_stitched_group_id ON discordmessage (stitched_group_id)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_stitched_primary ON discordmessage (stitched_primary)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_entry_kind ON discordmessage (entry_kind)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_expense_category ON discordmessage (expense_category)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_reviewed_by ON discordmessage (reviewed_by)",
+    "CREATE INDEX IF NOT EXISTS idx_discordmessage_reviewed_at ON discordmessage (reviewed_at)",
+    "CREATE INDEX IF NOT EXISTS idx_watchedchannel_created_at ON watchedchannel (created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_watchedchannel_updated_at ON watchedchannel (updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_bookkeepingentry_sheet_name ON bookkeepingentry (sheet_name)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_customer_name ON shopify_orders (customer_name)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_customer_email ON shopify_orders (customer_email)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_financial_status ON shopify_orders (financial_status)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_fulfillment_status ON shopify_orders (fulfillment_status)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_source ON shopify_orders (source)",
+    "CREATE INDEX IF NOT EXISTS idx_shopify_orders_received_at ON shopify_orders (received_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_shop_id ON tiktok_orders (shop_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_shop_cipher ON tiktok_orders (shop_cipher)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_seller_id ON tiktok_orders (seller_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_customer_name ON tiktok_orders (customer_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_customer_email ON tiktok_orders (customer_email)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_financial_status ON tiktok_orders (financial_status)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_fulfillment_status ON tiktok_orders (fulfillment_status)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_order_status ON tiktok_orders (order_status)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_currency ON tiktok_orders (currency)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_source ON tiktok_orders (source)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_orders_received_at ON tiktok_orders (received_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_shop_cipher ON tiktok_auth (shop_cipher)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_seller_id ON tiktok_auth (seller_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_open_id ON tiktok_auth (open_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_shop_name ON tiktok_auth (shop_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_shop_region ON tiktok_auth (shop_region)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_seller_name ON tiktok_auth (seller_name)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_access_token_expires_at ON tiktok_auth (access_token_expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_refresh_token_expires_at ON tiktok_auth (refresh_token_expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_source ON tiktok_auth (source)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_received_at ON tiktok_auth (received_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_created_at ON tiktok_auth (created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_updated_at ON tiktok_auth (updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
 ]
 
 
@@ -555,10 +649,11 @@ def ensure_postgres_schema() -> None:
 
     with engine.begin() as connection:
         for table_name, columns in POSTGRES_ADDITIVE_MIGRATIONS.items():
+            pg_table = f'"{table_name}"' if table_name == "user" else table_name
             for column_name, column_type in columns.items():
                 connection.execute(
                     text(
-                        f"ALTER TABLE {table_name} "
+                        f"ALTER TABLE {pg_table} "
                         f"ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
                     )
                 )

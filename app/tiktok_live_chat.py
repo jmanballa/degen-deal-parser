@@ -7,6 +7,7 @@ events in an in-memory ring buffer that the streamer dashboard can poll.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from collections import deque
@@ -21,6 +22,8 @@ _status: str = "not_configured"
 _viewer_count: int = 0
 _room_id: Optional[str] = None
 _stop_requested = False
+
+logger = logging.getLogger(__name__)
 
 _viewers: dict[str, dict] = {}  # username -> {"joined_at": float, "last_active_at": float}
 _viewers_lock = threading.Lock()
@@ -200,8 +203,12 @@ async def stop_live_chat() -> None:
     if _client is not None:
         try:
             await _client.disconnect()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "tiktok_live_chat.stop_live_chat: disconnect failed (ignored): %s",
+                exc,
+                exc_info=True,
+            )
         _client = None
     _status = "stopped"
     _clear_viewers()

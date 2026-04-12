@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     public_base_url: str = Field(default="http://127.0.0.1:8000", alias="PUBLIC_BASE_URL")
     session_cookie_name: str = Field(default="degen_session", alias="SESSION_COOKIE_NAME")
     session_https_only: bool = Field(default=False, alias="SESSION_HTTPS_ONLY")
-    session_same_site: str = Field(default="lax", alias="SESSION_SAME_SITE")
+    session_same_site: str = Field(default="strict", alias="SESSION_SAME_SITE")
     session_domain: str = Field(default="", alias="SESSION_DOMAIN")
     log_to_file: bool = Field(default=True, alias="LOG_TO_FILE")
     log_dir: str = Field(default="logs", alias="LOG_DIR")
@@ -169,6 +169,9 @@ class Settings(BaseSettings):
 
     # Firecrawl (web scraping)
     firecrawl_api_key: str = Field(default="", alias="FIRECRAWL_API_KEY")
+
+    # Debug: write webhook capture files to logs/ on signature mismatch
+    debug_webhook_capture: bool = Field(default=False, alias="DEBUG_WEBHOOK_CAPTURE")
 
     @property
     def channel_ids(self) -> List[int]:

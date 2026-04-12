@@ -6,6 +6,7 @@ and the POST /webhooks/tiktok/orders webhook handler.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -232,20 +233,27 @@ async def tiktok_orders_webhook(request: Request):
             hmac.compare_digest(received_norm, digest.lower())
             for _, digest in candidates
         ) if received_norm else False
-        import pathlib as _pathlib
-        _capture_path = _pathlib.Path("logs/webhook_capture.json")
-        try:
-            _capture_path.write_text(json.dumps({
-                "raw_body": raw_body.decode("utf-8", errors="replace"),
-                "received_signature": received_norm,
-                "parsed_header_signature": parsed_h.get("signature"),
-                "parsed_header_timestamp": header_ts,
-                "request_path": str(request.url.path),
-                "payload_timestamp": payload_ts,
-                "all_headers": all_headers,
-            }, indent=2))
-        except Exception:
-            pass
+        if settings.debug_webhook_capture:
+            import pathlib as _pathlib
+            _capture_path = _pathlib.Path("logs/webhook_capture.json")
+            try:
+                _capture_path.write_text(json.dumps({
+                    "received_signature": received_norm,
+                    "parsed_header_signature": parsed_h.get("signature"),
+                    "parsed_header_timestamp": header_ts,
+                    "request_path": str(request.url.path),
+                    "payload_timestamp": payload_ts,
+                }, indent=2))
+            except Exception as exc:
+                print(
+                    structured_log_line(
+                        runtime=runtime_name,
+                        action="tiktok.webhook.capture_write_failed",
+                        success=False,
+                        context="tiktok_orders.tiktok_orders_webhook",
+                        error=str(exc)[:400],
+                    )
+                )
         print(
             structured_log_line(
                 runtime=runtime_name,
@@ -279,7 +287,7 @@ async def tiktok_orders_webhook(request: Request):
                     dry_run=False,
                 )
 
-            order_upsert_status, order_record = run_write_with_retry(persist_tiktok_order)
+            order_upsert_status, order_record = await asyncio.to_thread(run_write_with_retry, persist_tiktok_order)
         except Exception as exc:
             print(
                 structured_log_line(

@@ -5,11 +5,13 @@ Extracted from app/main.py -- Shopify webhook/orders/backfill and TikTok OAuth c
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import secrets
 import threading
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, urlunparse
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -20,6 +22,25 @@ from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
 from ..db import get_session
 
 router = APIRouter()
+
+TIKTOK_SHOP_OAUTH_AUTHORIZE_URL = "https://auth.tiktok-shops.com/oauth/authorize"
+TIKTOK_CREATOR_OAUTH_AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/"
+TIKTOK_CREATOR_OAUTH_SCOPE = "data.analytics.public.read"
+
+
+def _tiktok_creator_redirect_uri() -> str:
+    shop_uri = (settings.tiktok_redirect_uri or "").strip()
+    if shop_uri:
+        trimmed = shop_uri.rstrip("/")
+        if trimmed.endswith("/integrations/tiktok/callback"):
+            return trimmed[: -len("/integrations/tiktok/callback")] + "/integrations/tiktok/creator-callback"
+        parsed = urlparse(shop_uri)
+        if parsed.scheme and parsed.netloc:
+            return urlunparse((parsed.scheme, parsed.netloc, "/integrations/tiktok/creator-callback", "", "", ""))
+    base = (settings.public_base_url or "").strip().rstrip("/")
+    if base:
+        return f"{base}/integrations/tiktok/creator-callback"
+    return ""
 
 
 @router.post("/webhooks/shopify/orders")
@@ -60,14 +81,14 @@ async def shopify_orders_webhook(request: Request):
                 runtime_name=webhook_runtime,
             )
 
-        outcome = run_write_with_retry(write_shopify_order)
+        outcome = await asyncio.to_thread(run_write_with_retry, write_shopify_order)
         # Mark inventory items sold if any line item SKU matches a DGN-XXXXXX barcode
         try:
             def _mark_sold(session: Session) -> int:
                 return mark_inventory_sold_from_shopify_order(
                     session, payload, runtime_name=webhook_runtime
                 )
-            run_write_with_retry(_mark_sold)
+            await asyncio.to_thread(run_write_with_retry, _mark_sold)
         except Exception as _inv_exc:
             print(
                 structured_log_line(
@@ -102,9 +123,55 @@ async def shopify_orders_webhook(request: Request):
     )
     return Response(status_code=200)
 
+
+@router.get("/integrations/tiktok/oauth/start")
+def tiktok_oauth_shop_start(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    app_key = (settings.tiktok_app_key or "").strip()
+    redirect_uri = (settings.tiktok_redirect_uri or "").strip()
+    if not app_key or not redirect_uri:
+        raise HTTPException(
+            status_code=400,
+            detail="TikTok app key and TIKTOK_REDIRECT_URI must be configured to start Shop OAuth",
+        )
+    state = secrets.token_urlsafe(32)
+    request.session["oauth_state"] = state
+    auth_url = f"{TIKTOK_SHOP_OAUTH_AUTHORIZE_URL}?{urlencode({'app_key': app_key, 'redirect_uri': redirect_uri, 'state': state})}"
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
+@router.get("/integrations/tiktok/oauth/creator-start")
+def tiktok_oauth_creator_start(request: Request):
+    if denial := require_role_response(request, "admin"):
+        return denial
+    app_key = (settings.tiktok_app_key or "").strip()
+    creator_redirect = _tiktok_creator_redirect_uri()
+    if not app_key or not creator_redirect:
+        raise HTTPException(
+            status_code=400,
+            detail="TikTok app key and a creator callback URL (derive from TIKTOK_REDIRECT_URI or PUBLIC_BASE_URL) are required",
+        )
+    state = secrets.token_urlsafe(32)
+    request.session["oauth_state"] = state
+    params = {
+        "client_key": app_key,
+        "response_type": "code",
+        "scope": TIKTOK_CREATOR_OAUTH_SCOPE,
+        "redirect_uri": creator_redirect,
+        "state": state,
+    }
+    auth_url = f"{TIKTOK_CREATOR_OAUTH_AUTHORIZE_URL}?{urlencode(params)}"
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
 @router.get("/integrations/tiktok/callback")
 def tiktok_oauth_callback(request: Request):
     query_params = dict(request.query_params)
+    query_state = (query_params.get("state") or "").strip()
+    stored_state = request.session.pop("oauth_state", None)
+    if not query_state or not stored_state or query_state != stored_state:
+        raise HTTPException(status_code=403, detail="Invalid OAuth state")
     runtime_name = f"{settings.runtime_name}_tiktok"
     received_at = utcnow()
     app_key = (query_params.get("app_key") or "").strip()
@@ -283,6 +350,10 @@ def tiktok_oauth_callback(request: Request):
 def tiktok_creator_oauth_callback(request: Request):
     """Handle Creator-type OAuth callback — stores creator_access_token for live analytics."""
     query_params = dict(request.query_params)
+    query_state = (query_params.get("state") or "").strip()
+    stored_state = request.session.pop("oauth_state", None)
+    if not query_state or not stored_state or query_state != stored_state:
+        raise HTTPException(status_code=403, detail="Invalid OAuth state")
     runtime_name = f"{settings.runtime_name}_tiktok_creator"
     received_at = utcnow()
     code = (query_params.get("code") or "").strip()

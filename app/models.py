@@ -437,6 +437,7 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
     password_hash: str
+    password_salt: str = Field(default="")
     display_name: str = Field(default="")
     role: str = Field(default="viewer", index=True)
     is_active: bool = Field(default=True, index=True)
