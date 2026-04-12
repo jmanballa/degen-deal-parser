@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --bg-card: #151518;
+            --bg-card-hover: #1c1c22;
+            --border: #222228;
+            --text: #f0eeeb;
+            --text-secondary: #a09da6;
+            --text-muted: #5d5b66;
+            --accent: #fe2c55;
+            --tiktok-cyan: #25f4ee;
+            --tiktok-pink: #fe2c55;
+            --green: #3ecf8e;
+            --green-glow: rgba(62, 207, 142, .15);
+            --red: #ef4444;
+            --red-glow: rgba(239, 68, 68, .18);
+            --yellow: #f59e0b;
+            --blue: #3b82f6;
+            --card-radius: 16px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, .5);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px 16px 60px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        .page-header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+        .page-header h1 { font-size: 24px; font-weight: 800; }
+        .nav-links { margin-left: auto; display: flex; gap: 12px; font-size: 13px; }
+        .nav-links a { color: var(--text-muted); text-decoration: none; padding: 6px 12px;
+            border-radius: 8px; transition: all .15s; }
+        .nav-links a:hover { color: var(--text); background: var(--bg-card); }
+
+        .controls { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-group { display: flex; gap: 0; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; overflow: hidden; }
+        .tab-btn { padding: 8px 20px; font-size: 13px; font-weight: 700; cursor: pointer;
+            background: transparent; border: none; color: var(--text-muted); transition: all .15s; }
+        .tab-btn.active { background: var(--accent); color: #fff; }
+        .tab-btn:hover:not(.active) { color: var(--text); background: var(--bg-card-hover); }
+
+        .days-group { display: flex; gap: 0; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; overflow: hidden; }
+        .days-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+            background: transparent; border: none; color: var(--text-muted); transition: all .15s; }
+        .days-btn.active { background: var(--border); color: var(--text); }
+        .days-btn:hover:not(.active) { color: var(--text-secondary); }
+
+        .search-box { margin-left: auto; }
+        .search-box input { background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; padding: 8px 14px; color: var(--text); font-size: 13px;
+            width: 240px; outline: none; transition: border-color .15s; }
+        .search-box input:focus { border-color: var(--accent); }
+        .search-box input::placeholder { color: var(--text-muted); }
+
+        .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px; margin-bottom: 20px; }
+        .kpi-card { background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--card-radius); padding: 16px; text-align: center; }
+        .kpi-value { font-size: 20px; font-weight: 800; margin-bottom: 2px; }
+        .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+            color: var(--text-muted); font-weight: 600; }
+
+        .section { background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--card-radius); padding: 0; margin-bottom: 24px; overflow: hidden; }
+
+        .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .data-table th { text-align: left; font-size: 10px; text-transform: uppercase;
+            letter-spacing: .08em; color: var(--text-muted); padding: 12px 14px;
+            border-bottom: 1px solid var(--border); font-weight: 700; cursor: pointer;
+            user-select: none; white-space: nowrap; }
+        .data-table th:hover { color: var(--text-secondary); }
+        .data-table th .sort-arrow { font-size: 9px; margin-left: 4px; opacity: .4; }
+        .data-table th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+        .data-table td { padding: 10px 14px; border-bottom: 1px solid var(--border);
+            vertical-align: middle; }
+        .data-table tr.data-row { cursor: pointer; transition: background .15s; }
+        .data-table tr.data-row:hover { background: var(--bg-card-hover); }
+
+        .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px;
+            border-radius: 6px; letter-spacing: .02em; }
+        .badge-vip { background: rgba(245, 158, 11, .15); color: var(--yellow); }
+        .badge-regular { background: rgba(59, 130, 246, .15); color: var(--blue); }
+        .badge-casual { background: rgba(93, 91, 102, .15); color: var(--text-muted); }
+        .badge-active { background: var(--green-glow); color: var(--green); }
+        .badge-recent { background: rgba(59, 130, 246, .15); color: var(--blue); }
+        .badge-lapsed { background: rgba(245, 158, 11, .15); color: var(--yellow); }
+        .badge-dormant { background: var(--red-glow); color: var(--red); }
+
+        .trend-rising { color: var(--green); font-weight: 700; }
+        .trend-falling { color: var(--red); font-weight: 700; }
+        .trend-flat { color: var(--text-muted); }
+        .trend-new { color: var(--tiktok-cyan); font-weight: 700; }
+
+        .catalog-active { color: var(--green); }
+        .catalog-unmatched { color: var(--text-muted); font-style: italic; }
+
+        .top-prods { display: flex; gap: 6px; flex-wrap: wrap; }
+        .top-prod-tag { font-size: 10px; background: rgba(255,255,255,.06); border-radius: 6px;
+            padding: 2px 8px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .detail-row { display: none; }
+        .detail-row.open { display: table-row; }
+        .detail-cell { padding: 16px 14px; background: rgba(0,0,0,.2); }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .detail-section-title { font-size: 12px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .06em; color: var(--text-muted); margin-bottom: 10px; }
+        .detail-mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .detail-mini-table th { text-align: left; font-size: 9px; text-transform: uppercase;
+            color: var(--text-muted); padding: 4px 8px; border-bottom: 1px solid var(--border); font-weight: 700; }
+        .detail-mini-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.04); }
+
+        .loading-msg, .error-msg, .empty-msg {
+            text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px; }
+        .error-msg { color: var(--red); }
+
+        .money { font-variant-numeric: tabular-nums; }
+
+        @media (max-width: 768px) {
+            .controls { flex-direction: column; align-items: stretch; }
+            .search-box { margin-left: 0; }
+            .search-box input { width: 100%; }
+            .detail-grid { grid-template-columns: 1fr; }
+            .data-table { font-size: 11px; }
+            .data-table th, .data-table td { padding: 8px 8px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="page-header">
+        <svg width="28" height="28" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="44" height="44" rx="10" fill="#000"/>
+            <path d="M34.1 10.2A8.4 8.4 0 0 1 28.6 2h-6.3l-.01 28.7a5.1 5.1 0 0 1-5.08 4.82 5.1 5.1 0 0 1-5.1-5.1 5.1 5.1 0 0 1 5.1-5.1c.52 0 1 .08 1.47.22v-6.4a11.4 11.4 0 0 0-1.47-.1C10.2 19.1 4.6 24.7 4.6 31.6S10.2 44.1 17.18 44.1c6.97 0 12.58-5.6 12.58-12.5V17.2A14.6 14.6 0 0 0 38.5 20v-6.4a8.4 8.4 0 0 1-4.4-3.4z" fill="#25f4ee" transform="translate(-2,-2)"/>
+        </svg>
+        <h1>Client &amp; Product Intelligence</h1>
+        <div class="nav-links">
+            <a href="/tiktok/streamer">Streamer</a>
+            <a href="/tiktok/orders">Orders</a>
+            <a href="/tiktok/analytics">Analytics</a>
+            <a href="/tiktok/streamer/config">Config</a>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="tab-group">
+            <button class="tab-btn active" data-tab="buyers">Buyers</button>
+            <button class="tab-btn" data-tab="products">Products</button>
+        </div>
+        <div class="days-group" id="days-group">
+            <button class="days-btn" data-days="30">30d</button>
+            <button class="days-btn" data-days="90">90d</button>
+            <button class="days-btn active" data-days="180">180d</button>
+            <button class="days-btn" data-days="0">All</button>
+        </div>
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search buyers or products...">
+        </div>
+    </div>
+
+    <div class="kpi-row" id="kpi-row"></div>
+
+    <!-- Buyers Tab -->
+    <div class="section" id="buyers-section">
+        <div class="loading-msg" id="buyers-loading">Loading buyers...</div>
+        <div class="error-msg" id="buyers-error" style="display:none;"></div>
+        <table class="data-table" id="buyers-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th data-sort="name">Name <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="total_spent">Spent <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="order_count">Orders <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="avg_order">AOV <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="frequency_per_month">Freq/Mo <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="last_order">Last Order <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="recency_bucket">Recency <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="spend_tier">Tier <span class="sort-arrow">&#x25B2;</span></th>
+                    <th>Top Products</th>
+                </tr>
+            </thead>
+            <tbody id="buyers-body"></tbody>
+        </table>
+    </div>
+
+    <!-- Products Tab -->
+    <div class="section" id="products-section" style="display:none;">
+        <div class="loading-msg" id="products-loading">Loading products...</div>
+        <div class="error-msg" id="products-error" style="display:none;"></div>
+        <table class="data-table" id="products-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th data-sort="title">Product <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="qty">Qty Sold <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="revenue">Revenue <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="orders">Orders <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="avg_price">Avg Price <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="days_since_last_sale">Last Sale <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="avg_days_between_sales">Avg Gap <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="trend">Trend <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="unique_buyers">Buyers <span class="sort-arrow">&#x25B2;</span></th>
+                    <th data-sort="catalog_status">Catalog <span class="sort-arrow">&#x25B2;</span></th>
+                </tr>
+            </thead>
+            <tbody id="products-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+(function() {
+    var _tab = 'buyers';
+    var _days = 180;
+    var _buyersData = [];
+    var _productsData = [];
+    var _buyerSort = { key: 'total_spent', dir: 'desc' };
+    var _productSort = { key: 'revenue', dir: 'desc' };
+    var _expandedRow = null;
+    var _searchQuery = '';
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function fmt(n) { return '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function fmtDate(iso) {
+        if (!iso) return '—';
+        var d = new Date(iso);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    function fmtDays(n) { return n == null ? '—' : n + 'd'; }
+
+    function tierBadge(tier) {
+        var cls = tier === 'VIP' ? 'badge-vip' : tier === 'Regular' ? 'badge-regular' : 'badge-casual';
+        return '<span class="badge ' + cls + '">' + esc(tier) + '</span>';
+    }
+    function recencyBadge(r) {
+        var cls = r === 'Active' ? 'badge-active' : r === 'Recent' ? 'badge-recent' : r === 'Lapsed' ? 'badge-lapsed' : 'badge-dormant';
+        return '<span class="badge ' + cls + '">' + esc(r) + '</span>';
+    }
+    function trendHtml(t) {
+        if (t === 'rising') return '<span class="trend-rising">&#x25B2; Rising</span>';
+        if (t === 'falling') return '<span class="trend-falling">&#x25BC; Falling</span>';
+        if (t === 'new') return '<span class="trend-new">&#x2605; New</span>';
+        return '<span class="trend-flat">&#x2500; Flat</span>';
+    }
+    function catalogHtml(s) {
+        if (s === 'unmatched') return '<span class="catalog-unmatched">Unmatched</span>';
+        return '<span class="catalog-active">' + esc(s) + '</span>';
+    }
+
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            _tab = btn.getAttribute('data-tab');
+            _expandedRow = null;
+            document.getElementById('buyers-section').style.display = _tab === 'buyers' ? '' : 'none';
+            document.getElementById('products-section').style.display = _tab === 'products' ? '' : 'none';
+            updateKPIs();
+            if (_tab === 'buyers' && !_buyersData.length) loadBuyers();
+            if (_tab === 'products' && !_productsData.length) loadProducts();
+        });
+    });
+
+    // Days switching
+    document.querySelectorAll('.days-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.days-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            _days = parseInt(btn.getAttribute('data-days'));
+            _buyersData = [];
+            _productsData = [];
+            _expandedRow = null;
+            if (_tab === 'buyers') loadBuyers();
+            else loadProducts();
+        });
+    });
+
+    // Search
+    var searchTimer;
+    document.getElementById('search-input').addEventListener('input', function() {
+        clearTimeout(searchTimer);
+        var self = this;
+        searchTimer = setTimeout(function() {
+            _searchQuery = self.value.toLowerCase().trim();
+            if (_tab === 'buyers') renderBuyers();
+            else renderProducts();
+        }, 200);
+    });
+
+    // Sorting
+    document.querySelectorAll('#buyers-table th[data-sort]').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var key = th.getAttribute('data-sort');
+            if (_buyerSort.key === key) _buyerSort.dir = _buyerSort.dir === 'desc' ? 'asc' : 'desc';
+            else { _buyerSort.key = key; _buyerSort.dir = 'desc'; }
+            renderBuyers();
+        });
+    });
+    document.querySelectorAll('#products-table th[data-sort]').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var key = th.getAttribute('data-sort');
+            if (_productSort.key === key) _productSort.dir = _productSort.dir === 'desc' ? 'asc' : 'desc';
+            else { _productSort.key = key; _productSort.dir = 'desc'; }
+            renderProducts();
+        });
+    });
+
+    function sortData(data, sortState) {
+        var key = sortState.key;
+        var dir = sortState.dir === 'asc' ? 1 : -1;
+        return data.slice().sort(function(a, b) {
+            var va = a[key], vb = b[key];
+            if (va == null) va = '';
+            if (vb == null) vb = '';
+            if (typeof va === 'string') return va.localeCompare(vb) * dir;
+            return (va - vb) * dir;
+        });
+    }
+
+    function filterData(data, query) {
+        if (!query) return data;
+        return data.filter(function(d) {
+            var haystack = (d.name || d.title || '').toLowerCase();
+            return haystack.indexOf(query) !== -1;
+        });
+    }
+
+    function updateSortHeaders(tableId, sortState) {
+        document.querySelectorAll('#' + tableId + ' th[data-sort]').forEach(function(th) {
+            th.classList.toggle('sorted', th.getAttribute('data-sort') === sortState.key);
+            var arrow = th.querySelector('.sort-arrow');
+            if (arrow && th.getAttribute('data-sort') === sortState.key) {
+                arrow.innerHTML = sortState.dir === 'asc' ? '&#x25B2;' : '&#x25BC;';
+            }
+        });
+    }
+
+    // KPIs
+    function updateKPIs() {
+        var el = document.getElementById('kpi-row');
+        if (_tab === 'buyers') {
+            var total = _buyersData.length;
+            var repeat = _buyersData.filter(function(b) { return b.is_repeat; }).length;
+            var totalSpent = _buyersData.reduce(function(s, b) { return s + b.total_spent; }, 0);
+            var vips = _buyersData.filter(function(b) { return b.spend_tier === 'VIP'; }).length;
+            var active = _buyersData.filter(function(b) { return b.recency_bucket === 'Active'; }).length;
+            el.innerHTML = kpiCard(total, 'Total Buyers') + kpiCard(repeat, 'Repeat Buyers')
+                + kpiCard(fmt(totalSpent), 'Total GMV') + kpiCard(vips, 'VIP Buyers')
+                + kpiCard(active, 'Active (14d)');
+        } else {
+            var totalP = _productsData.length;
+            var totalRev = _productsData.reduce(function(s, p) { return s + p.revenue; }, 0);
+            var totalQty = _productsData.reduce(function(s, p) { return s + p.qty; }, 0);
+            var rising = _productsData.filter(function(p) { return p.trend === 'rising'; }).length;
+            var stale = _productsData.filter(function(p) { return p.days_since_last_sale != null && p.days_since_last_sale > 30; }).length;
+            el.innerHTML = kpiCard(totalP, 'Products Sold') + kpiCard(totalQty, 'Total Units')
+                + kpiCard(fmt(totalRev), 'Total Revenue') + kpiCard(rising, 'Trending Up')
+                + kpiCard(stale, 'Stale (30d+)');
+        }
+    }
+    function kpiCard(val, label) {
+        return '<div class="kpi-card"><div class="kpi-value">' + val + '</div><div class="kpi-label">' + label + '</div></div>';
+    }
+
+    // Load buyers
+    function loadBuyers() {
+        document.getElementById('buyers-loading').style.display = '';
+        document.getElementById('buyers-error').style.display = 'none';
+        document.getElementById('buyers-table').style.display = 'none';
+        fetch('/tiktok/clients/api/buyers?days=' + _days)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('buyers-loading').style.display = 'none';
+                if (!data.ok) {
+                    document.getElementById('buyers-error').style.display = '';
+                    document.getElementById('buyers-error').textContent = data.error || 'Failed to load';
+                    return;
+                }
+                _buyersData = data.buyers || [];
+                if (!_buyersData.length) {
+                    document.getElementById('buyers-loading').style.display = '';
+                    document.getElementById('buyers-loading').textContent = 'No buyer data found for this period.';
+                    return;
+                }
+                document.getElementById('buyers-table').style.display = '';
+                updateKPIs();
+                renderBuyers();
+            })
+            .catch(function() {
+                document.getElementById('buyers-loading').style.display = 'none';
+                document.getElementById('buyers-error').style.display = '';
+                document.getElementById('buyers-error').textContent = 'Network error loading buyers.';
+            });
+    }
+
+    function renderBuyers() {
+        var filtered = filterData(_buyersData, _searchQuery);
+        var sorted = sortData(filtered, _buyerSort);
+        updateSortHeaders('buyers-table', _buyerSort);
+        var body = document.getElementById('buyers-body');
+        var html = '';
+        sorted.forEach(function(b) {
+            var topHtml = (b.top_products || []).map(function(p) {
+                return '<span class="top-prod-tag">' + esc(p.title) + ' (' + p.qty + ')</span>';
+            }).join('');
+            html += '<tr class="data-row" data-buyer-key="' + esc(b.buyer_key) + '">'
+                + '<td><strong>' + esc(b.name) + '</strong></td>'
+                + '<td class="money">' + fmt(b.total_spent) + '</td>'
+                + '<td>' + b.order_count + '</td>'
+                + '<td class="money">' + fmt(b.avg_order) + '</td>'
+                + '<td>' + (b.frequency_per_month || '—') + '</td>'
+                + '<td>' + fmtDate(b.last_order) + '</td>'
+                + '<td>' + recencyBadge(b.recency_bucket) + '</td>'
+                + '<td>' + tierBadge(b.spend_tier) + '</td>'
+                + '<td><div class="top-prods">' + topHtml + '</div></td>'
+                + '</tr>'
+                + '<tr class="detail-row" id="detail-' + esc(b.buyer_key) + '"><td colspan="9" class="detail-cell"><div class="loading-msg">Loading details...</div></td></tr>';
+        });
+        body.innerHTML = html;
+
+        body.querySelectorAll('.data-row').forEach(function(row) {
+            row.addEventListener('click', function() {
+                var key = row.getAttribute('data-buyer-key');
+                toggleBuyerDetail(key);
+            });
+        });
+        updateKPIs();
+    }
+
+    function toggleBuyerDetail(key) {
+        var detailRow = document.getElementById('detail-' + key);
+        if (!detailRow) return;
+        if (_expandedRow === key) {
+            detailRow.classList.remove('open');
+            _expandedRow = null;
+            return;
+        }
+        if (_expandedRow) {
+            var prev = document.getElementById('detail-' + _expandedRow);
+            if (prev) prev.classList.remove('open');
+        }
+        _expandedRow = key;
+        detailRow.classList.add('open');
+        detailRow.querySelector('.detail-cell').innerHTML = '<div class="loading-msg">Loading details...</div>';
+
+        fetch('/tiktok/clients/api/buyers/' + encodeURIComponent(key))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) {
+                    detailRow.querySelector('.detail-cell').innerHTML = '<div class="error-msg">' + esc(data.error || 'Error') + '</div>';
+                    return;
+                }
+                var ordersHtml = '<table class="detail-mini-table"><thead><tr><th>Date</th><th>Order #</th><th>Total</th><th>Items</th></tr></thead><tbody>';
+                (data.orders || []).forEach(function(o) {
+                    var itemStr = (o.items || []).map(function(i) { return esc(i.title) + ' x' + i.qty; }).join(', ');
+                    ordersHtml += '<tr><td>' + fmtDate(o.created_at) + '</td><td>' + esc(o.order_number || '—') + '</td>'
+                        + '<td class="money">' + fmt(o.total) + '</td><td>' + itemStr + '</td></tr>';
+                });
+                ordersHtml += '</tbody></table>';
+
+                var prodsHtml = '<table class="detail-mini-table"><thead><tr><th>Product</th><th>Qty</th><th>Revenue</th></tr></thead><tbody>';
+                (data.top_products || []).forEach(function(p) {
+                    prodsHtml += '<tr><td>' + esc(p.title) + '</td><td>' + p.qty + '</td><td class="money">' + fmt(p.revenue) + '</td></tr>';
+                });
+                prodsHtml += '</tbody></table>';
+
+                detailRow.querySelector('.detail-cell').innerHTML = '<div class="detail-grid">'
+                    + '<div><div class="detail-section-title">Recent Orders (' + data.order_count + ' total)</div>' + ordersHtml + '</div>'
+                    + '<div><div class="detail-section-title">Top Products</div>' + prodsHtml + '</div></div>';
+            })
+            .catch(function() {
+                detailRow.querySelector('.detail-cell').innerHTML = '<div class="error-msg">Network error</div>';
+            });
+    }
+
+    // Load products
+    function loadProducts() {
+        document.getElementById('products-loading').style.display = '';
+        document.getElementById('products-error').style.display = 'none';
+        document.getElementById('products-table').style.display = 'none';
+        fetch('/tiktok/clients/api/products?days=' + _days)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('products-loading').style.display = 'none';
+                if (!data.ok) {
+                    document.getElementById('products-error').style.display = '';
+                    document.getElementById('products-error').textContent = data.error || 'Failed to load';
+                    return;
+                }
+                _productsData = data.products || [];
+                if (!_productsData.length) {
+                    document.getElementById('products-loading').style.display = '';
+                    document.getElementById('products-loading').textContent = 'No product data found for this period.';
+                    return;
+                }
+                document.getElementById('products-table').style.display = '';
+                updateKPIs();
+                renderProducts();
+            })
+            .catch(function() {
+                document.getElementById('products-loading').style.display = 'none';
+                document.getElementById('products-error').style.display = '';
+                document.getElementById('products-error').textContent = 'Network error loading products.';
+            });
+    }
+
+    function renderProducts() {
+        var filtered = filterData(_productsData, _searchQuery);
+        var sorted = sortData(filtered, _productSort);
+        updateSortHeaders('products-table', _productSort);
+        var body = document.getElementById('products-body');
+        var html = '';
+        sorted.forEach(function(p) {
+            html += '<tr class="data-row" data-product-key="' + esc(p.product_key) + '">'
+                + '<td><strong>' + esc(p.title) + '</strong></td>'
+                + '<td>' + p.qty + '</td>'
+                + '<td class="money">' + fmt(p.revenue) + '</td>'
+                + '<td>' + p.orders + '</td>'
+                + '<td class="money">' + fmt(p.avg_price) + '</td>'
+                + '<td>' + fmtDays(p.days_since_last_sale) + '</td>'
+                + '<td>' + fmtDays(p.avg_days_between_sales) + '</td>'
+                + '<td>' + trendHtml(p.trend) + '</td>'
+                + '<td>' + p.unique_buyers + '</td>'
+                + '<td>' + catalogHtml(p.catalog_status) + '</td>'
+                + '</tr>'
+                + '<tr class="detail-row" id="pdetail-' + esc(p.product_key) + '"><td colspan="10" class="detail-cell"><div class="loading-msg">Loading details...</div></td></tr>';
+        });
+        body.innerHTML = html;
+
+        body.querySelectorAll('.data-row').forEach(function(row) {
+            row.addEventListener('click', function() {
+                var key = row.getAttribute('data-product-key');
+                toggleProductDetail(key);
+            });
+        });
+        updateKPIs();
+    }
+
+    function toggleProductDetail(key) {
+        var detailRow = document.getElementById('pdetail-' + key);
+        if (!detailRow) return;
+        if (_expandedRow === 'p_' + key) {
+            detailRow.classList.remove('open');
+            _expandedRow = null;
+            return;
+        }
+        if (_expandedRow) {
+            var prevId = _expandedRow.startsWith('p_') ? 'pdetail-' + _expandedRow.slice(2) : 'detail-' + _expandedRow;
+            var prev = document.getElementById(prevId);
+            if (prev) prev.classList.remove('open');
+        }
+        _expandedRow = 'p_' + key;
+        detailRow.classList.add('open');
+        detailRow.querySelector('.detail-cell').innerHTML = '<div class="loading-msg">Loading details...</div>';
+
+        fetch('/tiktok/clients/api/products/' + encodeURIComponent(key))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) {
+                    detailRow.querySelector('.detail-cell').innerHTML = '<div class="error-msg">' + esc(data.error || 'Error') + '</div>';
+                    return;
+                }
+                var buyersHtml = '<table class="detail-mini-table"><thead><tr><th>Buyer</th><th>Qty</th><th>Revenue</th><th>Orders</th></tr></thead><tbody>';
+                (data.top_buyers || []).forEach(function(b) {
+                    buyersHtml += '<tr><td>' + esc(b.name) + '</td><td>' + b.qty + '</td>'
+                        + '<td class="money">' + fmt(b.revenue) + '</td><td>' + b.orders + '</td></tr>';
+                });
+                buyersHtml += '</tbody></table>';
+
+                var salesHtml = '<table class="detail-mini-table"><thead><tr><th>Date</th><th>Order #</th><th>Buyer</th><th>Qty</th><th>Revenue</th></tr></thead><tbody>';
+                (data.recent_sales || []).forEach(function(s) {
+                    salesHtml += '<tr><td>' + fmtDate(s.created_at) + '</td><td>' + esc(s.order_number || '—') + '</td>'
+                        + '<td>' + esc(s.buyer) + '</td><td>' + s.qty + '</td><td class="money">' + fmt(s.revenue) + '</td></tr>';
+                });
+                salesHtml += '</tbody></table>';
+
+                detailRow.querySelector('.detail-cell').innerHTML = '<div class="detail-grid">'
+                    + '<div><div class="detail-section-title">Top Buyers (' + (data.top_buyers || []).length + ')</div>' + buyersHtml + '</div>'
+                    + '<div><div class="detail-section-title">Recent Sales (' + data.total_qty + ' units, ' + fmt(data.total_revenue) + ')</div>' + salesHtml + '</div></div>';
+            })
+            .catch(function() {
+                detailRow.querySelector('.detail-cell').innerHTML = '<div class="error-msg">Network error</div>';
+            });
+    }
+
+    // Initial load
+    loadBuyers();
+})();
+</script>
+</body>
+</html>

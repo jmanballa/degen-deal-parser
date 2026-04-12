@@ -9,6 +9,8 @@ from sqlalchemy import func, or_
 from sqlmodel import Session, select
 from zoneinfo import ZoneInfo
 
+import logging
+
 from .models import (
     DiscordMessage,
     expand_parse_status_filter_values,
@@ -16,9 +18,12 @@ from .models import (
     PARSE_REVIEW_REQUIRED,
     ShopifyOrder,
     TikTokOrder,
+    TikTokProduct,
     normalize_money_value,
     signed_money_delta,
 )
+
+logger = logging.getLogger(__name__)
 
 
 REPORTING_TZ = ZoneInfo("America/Los_Angeles")
@@ -907,3 +912,350 @@ def build_tiktok_product_performance(
         })
     results.sort(key=lambda x: x["revenue"], reverse=True)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers — paid TikTok order loading, line-item normalization
+# ---------------------------------------------------------------------------
+
+def load_paid_tiktok_orders(session: Session, days: int = 90) -> list[TikTokOrder]:
+    """Load TikTok orders with paid statuses.  days=0 means all-time."""
+    q = select(TikTokOrder)
+    if days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        q = q.where(TikTokOrder.created_at >= cutoff)
+    orders = session.exec(q).all()
+    result = []
+    for o in orders:
+        status = (o.financial_status or o.order_status or "").lower().strip()
+        if status in TIKTOK_PAID_STATUSES:
+            result.append(o)
+    return result
+
+
+def parse_line_items(order: TikTokOrder) -> list[dict]:
+    """Extract normalized line items from an order, preferring summary JSON."""
+    for field in (order.line_items_summary_json, order.line_items_json):
+        if not field:
+            continue
+        try:
+            items = json.loads(field)
+            if isinstance(items, list) and items:
+                return items
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return []
+
+
+def normalize_item(item: dict) -> dict:
+    """Return a normalized dict with consistent keys from a raw line item."""
+    title = (item.get("product_name") or item.get("title") or "Unknown").strip()
+    return {
+        "title": title,
+        "title_key": title.lower(),
+        "product_id": str(item.get("product_id") or ""),
+        "sku_id": str(item.get("sku_id") or item.get("variant_id") or ""),
+        "qty": int(item.get("quantity", 1) or 1),
+        "price": float(item.get("sale_price") or item.get("price") or 0),
+        "sku_image": item.get("sku_image") or item.get("image_url") or "",
+    }
+
+
+def build_catalog_lookup(session: Session) -> dict[str, dict]:
+    """Build lookup maps for matching line items to catalog products."""
+    products = session.exec(select(TikTokProduct)).all()
+    by_id: dict[str, dict] = {}
+    by_title: dict[str, dict] = {}
+    for p in products:
+        info = {"title": p.title, "status": p.status or "unknown", "product_id": p.tiktok_product_id}
+        by_id[p.tiktok_product_id] = info
+        by_title[p.title.lower().strip()] = info
+    return {"by_id": by_id, "by_title": by_title}
+
+
+def match_catalog(item: dict, catalog: dict[str, dict]) -> dict | None:
+    """Match a normalized item to the catalog. Returns catalog info or None."""
+    if item["product_id"] and item["product_id"] in catalog["by_id"]:
+        return catalog["by_id"][item["product_id"]]
+    if item["title_key"] in catalog["by_title"]:
+        return catalog["by_title"][item["title_key"]]
+    return None
+
+
+def _buyer_key(order: TikTokOrder) -> tuple[str, str]:
+    """Return (buyer_key, display_name) from an order."""
+    name = (order.customer_name or "").strip() or "Guest"
+    return name.lower(), name
+
+
+# ---------------------------------------------------------------------------
+# TikTok Client Intelligence — Buyer Profiles
+# ---------------------------------------------------------------------------
+
+def build_buyer_profiles(
+    session: Session,
+    days: int = 180,
+    vip_threshold: float = 1000.0,
+    regular_threshold: float = 100.0,
+) -> list[dict]:
+    orders = load_paid_tiktok_orders(session, days=days)
+    now = datetime.now(timezone.utc)
+
+    agg: dict[str, dict] = {}
+    for o in orders:
+        bkey, bname = _buyer_key(o)
+        if bkey not in agg:
+            agg[bkey] = {
+                "name": bname,
+                "total_spent": 0.0,
+                "order_count": 0,
+                "first_order": o.created_at,
+                "last_order": o.created_at,
+                "order_dates": [],
+                "product_counts": defaultdict(int),
+            }
+        entry = agg[bkey]
+        gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
+        entry["total_spent"] += gmv
+        entry["order_count"] += 1
+        if o.created_at:
+            if entry["first_order"] is None or o.created_at < entry["first_order"]:
+                entry["first_order"] = o.created_at
+            if entry["last_order"] is None or o.created_at > entry["last_order"]:
+                entry["last_order"] = o.created_at
+            entry["order_dates"].append(o.created_at)
+
+        for raw in parse_line_items(o):
+            ni = normalize_item(raw)
+            entry["product_counts"][ni["title"]] += ni["qty"]
+
+    results = []
+    for bkey, entry in agg.items():
+        oc = entry["order_count"]
+        spent = entry["total_spent"]
+        last = entry["last_order"]
+
+        days_since = (now - last).days if last else 999
+        if days_since <= 14:
+            recency = "Active"
+        elif days_since <= 30:
+            recency = "Recent"
+        elif days_since <= 90:
+            recency = "Lapsed"
+        else:
+            recency = "Dormant"
+
+        if spent >= vip_threshold:
+            tier = "VIP"
+        elif spent >= regular_threshold:
+            tier = "Regular"
+        else:
+            tier = "Casual"
+
+        first = entry["first_order"]
+        span_days = (last - first).days if first and last and last > first else 0
+        freq = round(oc / max(span_days / 30.0, 1), 2) if oc > 1 else 0
+        avg_gap = round(span_days / (oc - 1), 1) if oc > 1 else None
+
+        top_prods = sorted(entry["product_counts"].items(), key=lambda x: x[1], reverse=True)[:3]
+
+        results.append({
+            "buyer_key": bkey,
+            "name": entry["name"],
+            "total_spent": round(spent, 2),
+            "order_count": oc,
+            "avg_order": round(spent / oc, 2) if oc else 0,
+            "first_order": first.isoformat() if first else None,
+            "last_order": last.isoformat() if last else None,
+            "frequency_per_month": freq,
+            "avg_days_between_orders": avg_gap,
+            "recency_bucket": recency,
+            "spend_tier": tier,
+            "top_products": [{"title": t, "qty": q} for t, q in top_prods],
+            "is_repeat": oc > 1,
+        })
+
+    results.sort(key=lambda x: x["total_spent"], reverse=True)
+    return results
+
+
+def build_buyer_detail(session: Session, buyer_key: str, days: int = 0) -> dict | None:
+    """Fetch detailed order history and product breakdown for a single buyer."""
+    orders = load_paid_tiktok_orders(session, days=days)
+    buyer_orders = []
+    product_counts: dict[str, dict] = {}
+    total_spent = 0.0
+
+    for o in orders:
+        bkey, _ = _buyer_key(o)
+        if bkey != buyer_key:
+            continue
+        gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
+        total_spent += gmv
+        items_summary = []
+        for raw in parse_line_items(o):
+            ni = normalize_item(raw)
+            items_summary.append({"title": ni["title"], "qty": ni["qty"], "price": ni["price"]})
+            key = ni["title_key"]
+            if key not in product_counts:
+                product_counts[key] = {"title": ni["title"], "qty": 0, "revenue": 0.0}
+            product_counts[key]["qty"] += ni["qty"]
+            product_counts[key]["revenue"] += ni["price"] * ni["qty"]
+
+        buyer_orders.append({
+            "order_number": o.order_number,
+            "created_at": o.created_at.isoformat() if o.created_at else None,
+            "total": gmv,
+            "items": items_summary,
+        })
+
+    if not buyer_orders:
+        return None
+
+    buyer_orders.sort(key=lambda x: x["created_at"] or "", reverse=True)
+    top_products = sorted(product_counts.values(), key=lambda x: x["revenue"], reverse=True)
+
+    return {
+        "buyer_key": buyer_key,
+        "orders": buyer_orders[:50],
+        "top_products": top_products[:10],
+        "total_spent": round(total_spent, 2),
+        "order_count": len(buyer_orders),
+    }
+
+
+# ---------------------------------------------------------------------------
+# TikTok Client Intelligence — Product Velocity
+# ---------------------------------------------------------------------------
+
+def build_product_velocity(session: Session, days: int = 90) -> list[dict]:
+    orders = load_paid_tiktok_orders(session, days=days)
+    catalog = build_catalog_lookup(session)
+    now = datetime.now(timezone.utc)
+    cutoff_30 = now - timedelta(days=30)
+    cutoff_60 = now - timedelta(days=60)
+
+    agg: dict[str, dict] = {}
+    for o in orders:
+        bkey, bname = _buyer_key(o)
+        for raw in parse_line_items(o):
+            ni = normalize_item(raw)
+            key = ni["product_id"] or ni["title_key"]
+            qty = ni["qty"]
+            revenue = ni["price"] * qty
+
+            if key not in agg:
+                cat = match_catalog(ni, catalog)
+                agg[key] = {
+                    "title": ni["title"],
+                    "product_key": key,
+                    "qty": 0, "revenue": 0.0, "orders": 0,
+                    "sale_dates": [],
+                    "buyers": set(),
+                    "qty_last_30": 0, "qty_prev_30": 0,
+                    "catalog_status": cat["status"] if cat else "unmatched",
+                }
+            entry = agg[key]
+            entry["qty"] += qty
+            entry["revenue"] += revenue
+            entry["orders"] += 1
+            entry["buyers"].add(bkey)
+            if o.created_at:
+                entry["sale_dates"].append(o.created_at)
+                if o.created_at >= cutoff_30:
+                    entry["qty_last_30"] += qty
+                elif o.created_at >= cutoff_60:
+                    entry["qty_prev_30"] += qty
+
+    results = []
+    for entry in agg.values():
+        dates = sorted(entry["sale_dates"])
+        last_sale = dates[-1] if dates else None
+        days_since = (now - last_sale).days if last_sale else None
+
+        if len(dates) >= 2:
+            span = (dates[-1] - dates[0]).days
+            avg_gap = round(span / (len(dates) - 1), 1)
+        else:
+            avg_gap = None
+
+        q_cur = entry["qty_last_30"]
+        q_prev = entry["qty_prev_30"]
+        if q_prev == 0 and q_cur > 0:
+            trend = "new"
+        elif q_prev == 0 and q_cur == 0:
+            trend = "flat"
+        elif q_cur > q_prev * 1.15:
+            trend = "rising"
+        elif q_cur < q_prev * 0.85:
+            trend = "falling"
+        else:
+            trend = "flat"
+
+        total_qty = entry["qty"] or 1
+        results.append({
+            "product_key": entry["product_key"],
+            "title": entry["title"],
+            "qty": entry["qty"],
+            "revenue": round(entry["revenue"], 2),
+            "orders": entry["orders"],
+            "avg_price": round(entry["revenue"] / total_qty, 2),
+            "last_sale_at": last_sale.isoformat() if last_sale else None,
+            "days_since_last_sale": days_since,
+            "avg_days_between_sales": avg_gap,
+            "trend": trend,
+            "unique_buyers": len(entry["buyers"]),
+            "catalog_status": entry["catalog_status"],
+        })
+
+    results.sort(key=lambda x: x["revenue"], reverse=True)
+    return results
+
+
+def build_product_detail(session: Session, product_key: str, days: int = 0) -> dict | None:
+    """Fetch detailed buyer breakdown and sales timeline for a single product."""
+    orders = load_paid_tiktok_orders(session, days=days)
+    buyer_agg: dict[str, dict] = {}
+    sales_timeline: list[dict] = []
+    total_qty = 0
+    total_revenue = 0.0
+
+    for o in orders:
+        bkey, bname = _buyer_key(o)
+        for raw in parse_line_items(o):
+            ni = normalize_item(raw)
+            key = ni["product_id"] or ni["title_key"]
+            if key != product_key:
+                continue
+            qty = ni["qty"]
+            revenue = ni["price"] * qty
+            total_qty += qty
+            total_revenue += revenue
+
+            if bkey not in buyer_agg:
+                buyer_agg[bkey] = {"name": bname, "qty": 0, "revenue": 0.0, "orders": 0}
+            buyer_agg[bkey]["qty"] += qty
+            buyer_agg[bkey]["revenue"] += revenue
+            buyer_agg[bkey]["orders"] += 1
+
+            sales_timeline.append({
+                "order_number": o.order_number,
+                "buyer": bname,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+                "qty": qty,
+                "revenue": revenue,
+            })
+
+    if not sales_timeline:
+        return None
+
+    sales_timeline.sort(key=lambda x: x["created_at"] or "", reverse=True)
+    top_buyers = sorted(buyer_agg.values(), key=lambda x: x["revenue"], reverse=True)
+
+    return {
+        "product_key": product_key,
+        "recent_sales": sales_timeline[:50],
+        "top_buyers": top_buyers[:20],
+        "total_qty": total_qty,
+        "total_revenue": round(total_revenue, 2),
+    }

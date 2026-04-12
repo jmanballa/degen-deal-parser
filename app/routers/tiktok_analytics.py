@@ -16,7 +16,16 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 
-from ..reporting import TIKTOK_PAID_STATUSES
+import time
+import threading
+
+from ..reporting import (
+    TIKTOK_PAID_STATUSES,
+    build_buyer_profiles,
+    build_buyer_detail,
+    build_product_velocity,
+    build_product_detail,
+)
 from ..shared import (
     PACIFIC_TZ,
     TikTokOrder,
@@ -511,3 +520,116 @@ def tiktok_analytics_compare(
         "b": _build_stream_data(stream_b) if stream_b else None,
         "available_streams": [{"id": s.get("id"), "title": s.get("title", ""), "start_time": s.get("start_time")} for s in streams[:20]],
     }
+
+
+# ---------------------------------------------------------------------------
+# Client & Product Intelligence
+# ---------------------------------------------------------------------------
+
+_clients_cache: dict[str, Any] = {}
+_clients_cache_lock = threading.Lock()
+_CLIENTS_CACHE_TTL = 120
+
+def _get_cached_or_compute(cache_key: str, compute_fn):
+    now = time.monotonic()
+    with _clients_cache_lock:
+        entry = _clients_cache.get(cache_key)
+        if entry and now - entry["at"] < _CLIENTS_CACHE_TTL:
+            return entry["data"]
+    data = compute_fn()
+    with _clients_cache_lock:
+        _clients_cache[cache_key] = {"data": data, "at": time.monotonic()}
+    return data
+
+
+@router.get("/tiktok/clients", response_class=HTMLResponse)
+def tiktok_clients_page(request: Request):
+    redirect = require_role_response(request, "viewer")
+    if redirect:
+        return redirect
+    return templates.TemplateResponse("tiktok_clients.html", {
+        "request": request,
+        "title": "Client & Product Intelligence",
+    })
+
+
+@router.get("/tiktok/clients/api/buyers")
+def tiktok_clients_buyers(
+    request: Request,
+    days: int = Query(default=180),
+    session: Session = Depends(get_session),
+):
+    redirect = require_role_response(request, "viewer")
+    if redirect:
+        return redirect
+    if days not in (0, 30, 90, 180):
+        days = 180
+    try:
+        data = _get_cached_or_compute(
+            f"buyers_{days}",
+            lambda: build_buyer_profiles(session, days=days),
+        )
+        return {"ok": True, "buyers": data, "count": len(data)}
+    except Exception:
+        logger.exception("tiktok_clients_buyers failed")
+        return {"ok": False, "error": "Failed to load buyer data", "buyers": []}
+
+
+@router.get("/tiktok/clients/api/products")
+def tiktok_clients_products(
+    request: Request,
+    days: int = Query(default=90),
+    session: Session = Depends(get_session),
+):
+    redirect = require_role_response(request, "viewer")
+    if redirect:
+        return redirect
+    if days not in (0, 30, 90, 180):
+        days = 90
+    try:
+        data = _get_cached_or_compute(
+            f"products_{days}",
+            lambda: build_product_velocity(session, days=days),
+        )
+        return {"ok": True, "products": data, "count": len(data)}
+    except Exception:
+        logger.exception("tiktok_clients_products failed")
+        return {"ok": False, "error": "Failed to load product data", "products": []}
+
+
+@router.get("/tiktok/clients/api/buyers/{buyer_key}")
+def tiktok_clients_buyer_detail(
+    request: Request,
+    buyer_key: str,
+    session: Session = Depends(get_session),
+):
+    redirect = require_role_response(request, "viewer")
+    if redirect:
+        return redirect
+    try:
+        data = build_buyer_detail(session, buyer_key, days=0)
+        if data is None:
+            return {"ok": False, "error": "Buyer not found"}
+        return {"ok": True, **data}
+    except Exception:
+        logger.exception("tiktok_clients_buyer_detail failed for %s", buyer_key)
+        return {"ok": False, "error": "Failed to load buyer detail"}
+
+
+@router.get("/tiktok/clients/api/products/{product_key:path}")
+def tiktok_clients_product_detail(
+    request: Request,
+    product_key: str,
+    session: Session = Depends(get_session),
+):
+    redirect = require_role_response(request, "viewer")
+    if redirect:
+        return redirect
+    try:
+        data = build_product_detail(session, product_key, days=0)
+        if data is None:
+            return {"ok": False, "error": "Product not found"}
+        return {"ok": True, **data}
+    except Exception:
+        logger.exception("tiktok_clients_product_detail failed for %s", product_key)
+        return {"ok": False, "error": "Failed to load product detail"}
