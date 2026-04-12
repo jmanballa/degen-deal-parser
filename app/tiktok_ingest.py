@@ -470,8 +470,8 @@ def normalize_tiktok_order_payload(
     total_tax = _pick_first(payload, "tax_amount", "total_tax", "vat_amount")
     total_tax_value = money_to_float(total_tax) if total_tax not in (None, "") else None
     subtotal_ex_tax = (
-        round(subtotal_price - total_tax_value, 2)
-        if total_tax_value is not None and subtotal_price
+        round(total_price - total_tax_value, 2)
+        if total_tax_value is not None and total_price
         else None
     )
     financial_status = str(

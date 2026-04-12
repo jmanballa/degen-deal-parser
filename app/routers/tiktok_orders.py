@@ -428,9 +428,9 @@ def tiktok_orders_page(
             s_ts = match.get("start_time") or 0
             e_ts = match.get("end_time") or 0
             if s_ts > 0:
-                effective_start = datetime.fromtimestamp(s_ts, tz=PACIFIC_TZ).strftime("%Y-%m-%d")
+                effective_start = datetime.fromtimestamp(s_ts, tz=PACIFIC_TZ).isoformat()
             if e_ts > 0:
-                effective_end = datetime.fromtimestamp(e_ts, tz=PACIFIC_TZ).strftime("%Y-%m-%d")
+                effective_end = datetime.fromtimestamp(e_ts, tz=PACIFIC_TZ).isoformat()
 
     page_data = _collect_tiktok_orders_page_data(
         session,

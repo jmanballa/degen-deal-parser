@@ -43,11 +43,10 @@ def parse_report_datetime(value: Optional[str], *, end_of_day: bool = False) -> 
         return None
     if len(value) == 10:
         if end_of_day:
-            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=REPORTING_TZ)
         else:
-            dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    if dt.tzinfo is None:
+            dt = dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=REPORTING_TZ)
+    elif dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
 
