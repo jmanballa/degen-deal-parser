@@ -963,7 +963,7 @@ def normalize_item(item: dict) -> dict:
         "product_id": str(item.get("product_id") or ""),
         "sku_id": str(item.get("sku_id") or item.get("variant_id") or ""),
         "qty": int(item.get("quantity", 1) or 1),
-        "price": float(item.get("sale_price") or item.get("price") or 0),
+        "price": float(item.get("sale_price") or item.get("unit_price") or item.get("price") or 0),
         "sku_image": item.get("sku_image") or item.get("image_url") or "",
     }
 
