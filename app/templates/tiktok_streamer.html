@@ -1757,36 +1757,14 @@
             </div>
 
             <div class="hit-form-grid" id="hit-form-grid">
-                <label class="hit-label">Streamer *
-                    <select class="hit-select" id="hf-streamer">
-                        <option value="">— select —</option>
-                        {% for s in streamers %}<option value="{{ s }}" {% if current_streamer == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-                    </select>
+                <label class="hit-label hit-form-full">What was the hit? *
+                    <textarea class="hit-textarea" id="hf-note" placeholder="e.g. Charizard VMAX Alt Art Secret Rare" rows="2"></textarea>
                 </label>
-                <label class="hit-label">Platform
-                    <select class="hit-select" id="hf-platform">
-                        <option value="">— optional —</option>
-                        {% for p in platforms %}<option value="{{ p }}" {% if p == "TikTok" %}selected{% endif %}>{{ p }}</option>{% endfor %}
-                    </select>
-                </label>
-                <label class="hit-label hit-form-full">Hit Note *
-                    <textarea class="hit-textarea" id="hf-note" placeholder="e.g. Charizard VMAX Alt Art Secret Rare" rows="3"></textarea>
-                </label>
-                <label class="hit-label">Customer Name
-                    <input class="hit-input" type="text" id="hf-customer" placeholder="e.g. John Smith">
-                </label>
-                <label class="hit-label">Order Number
-                    <input class="hit-input" type="text" id="hf-order" placeholder="e.g. 1234">
-                </label>
-                <label class="hit-label">Order Value ($)
-                    <input class="hit-input" type="number" step="0.01" id="hf-order-value" placeholder="auto from order" readonly style="opacity:.6;">
-                </label>
-                <label class="hit-label">Hit Value ($)
-                    <input class="hit-input" type="number" step="0.01" id="hf-value" placeholder="e.g. 500.00">
-                </label>
-                <label class="hit-label">Stream Label
-                    <input class="hit-input" type="text" id="hf-label" placeholder="e.g. Thursday Break">
-                </label>
+                <input type="hidden" id="hf-streamer" value="{{ current_streamer or '' }}">
+                <input type="hidden" id="hf-platform" value="TikTok">
+                <input type="hidden" id="hf-customer" value="">
+                <input type="hidden" id="hf-order" value="">
+                <input type="hidden" id="hf-order-value" value="">
             </div>
 
             <div class="order-picker-title">
@@ -3229,33 +3207,25 @@
             document.getElementById('hf-customer').value = '';
             document.getElementById('hf-order').value = '';
             document.getElementById('hf-order-value').value = '';
-            document.getElementById('hf-value').value = '';
-            document.getElementById('hf-label').value = '';
             _selectedOrderId = null;
             renderOrderPicker(orderSearch ? orderSearch.value : '');
         }
 
         saveBtn && saveBtn.addEventListener('click', function() {
-            var streamer = (document.getElementById('hf-streamer').value || '').trim();
             var note = (document.getElementById('hf-note').value || '').trim();
-            if (!streamer || !note) {
-                showToast('Streamer and Hit Note are required.', 'error');
+            if (!note) {
+                showToast('Please describe the hit.', 'error');
                 return;
             }
 
+            var streamer = (document.getElementById('hf-streamer').value || '').trim();
             var body = {
-                streamer_name: streamer,
+                streamer_name: streamer || 'Unknown',
                 hit_note: note,
                 customer_name: (document.getElementById('hf-customer').value || '').trim() || null,
                 order_number: (document.getElementById('hf-order').value || '').trim() || null,
                 platform: (document.getElementById('hf-platform').value || '').trim() || null,
-                stream_label: (document.getElementById('hf-label').value || '').trim() || null,
             };
-            var rawVal = (document.getElementById('hf-value').value || '').trim();
-            if (rawVal) {
-                var parsed = parseFloat(rawVal);
-                if (!isNaN(parsed)) body.estimated_value = parsed;
-            }
             var rawOV = (document.getElementById('hf-order-value').value || '').trim();
             if (rawOV) {
                 var parsedOV = parseFloat(rawOV);
