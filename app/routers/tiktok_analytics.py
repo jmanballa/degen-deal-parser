@@ -547,8 +547,7 @@ def tiktok_clients_page(request: Request):
     redirect = require_role_response(request, "viewer")
     if redirect:
         return redirect
-    return templates.TemplateResponse("tiktok_clients.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "tiktok_clients.html", {
         "title": "Client & Product Intelligence",
     })
 
