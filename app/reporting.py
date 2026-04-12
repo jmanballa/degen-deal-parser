@@ -1100,21 +1100,24 @@ def build_buyer_detail(session: Session, buyer_key: str, days: int = 0) -> dict 
             continue
         gmv = float(o.subtotal_price if o.subtotal_price is not None else (o.total_price or 0))
         total_spent += gmv
-        items_summary = []
+        items_merged: dict[str, dict] = {}
         for raw in parse_line_items(o):
             ni = normalize_item(raw)
-            items_summary.append({"title": ni["title"], "qty": ni["qty"], "price": ni["price"]})
-            key = ni["title_key"]
-            if key not in product_counts:
-                product_counts[key] = {"title": ni["title"], "qty": 0, "revenue": 0.0}
-            product_counts[key]["qty"] += ni["qty"]
-            product_counts[key]["revenue"] += ni["price"] * ni["qty"]
+            tkey = ni["title_key"]
+            if tkey not in items_merged:
+                items_merged[tkey] = {"title": ni["title"], "qty": 0, "price": ni["price"]}
+            items_merged[tkey]["qty"] += ni["qty"]
+
+            if tkey not in product_counts:
+                product_counts[tkey] = {"title": ni["title"], "qty": 0, "revenue": 0.0}
+            product_counts[tkey]["qty"] += ni["qty"]
+            product_counts[tkey]["revenue"] += ni["price"] * ni["qty"]
 
         buyer_orders.append({
             "order_number": o.order_number,
             "created_at": o.created_at.isoformat() if o.created_at else None,
             "total": gmv,
-            "items": items_summary,
+            "items": list(items_merged.values()),
         })
 
     if not buyer_orders:
