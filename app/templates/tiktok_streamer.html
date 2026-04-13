@@ -569,6 +569,30 @@
         .tb-spent {
             font-size: 13px; font-weight: 800; color: var(--green);
         }
+        .ts-card, .tb-card { cursor: pointer; }
+        .ts-card.active, .tb-card.active { border-color: var(--accent); }
+
+        .lb-detail-panel {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 14px; margin-top: 10px;
+            font-size: 12px; animation: lbSlideDown .15s ease-out;
+        }
+        @keyframes lbSlideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+        .lb-detail-panel table { width: 100%; border-collapse: collapse; }
+        .lb-detail-panel th {
+            text-align: left; font-size: 9px; text-transform: uppercase;
+            letter-spacing: .06em; color: var(--text-muted);
+            padding: 4px 8px; border-bottom: 1px solid var(--border); font-weight: 700;
+        }
+        .lb-detail-panel td {
+            padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.04);
+            color: var(--text-secondary); font-size: 11px;
+        }
+        .lb-detail-panel td.money { color: var(--green); font-weight: 700; }
+        .lb-detail-panel .items-col {
+            max-width: 250px; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis;
+        }
 
         /* ---- Orders list ---- */
         .orders-list {
@@ -1636,11 +1660,13 @@
                         <div class="top-sellers-strip" id="top-sellers-strip"></div>
                         <button class="ts-arrow ts-arrow-right" id="ts-arrow-right" aria-label="Scroll right">&#x276F;</button>
                     </div>
+                    <div id="ts-detail-panel"></div>
                 </div>
 
                 <div class="top-buyers" id="top-buyers" style="display:none;">
                     <div class="top-buyers-label">Top Buyers</div>
                     <div class="top-buyers-strip" id="top-buyers-strip"></div>
+                    <div id="tb-detail-panel"></div>
                 </div>
 
                 <!-- Giveaway Panel (collapsible) -->
@@ -1927,18 +1953,35 @@
             topSellersStrip.scrollBy({ left: 260, behavior: 'smooth' });
         });
 
+        var _activeSellers = [];
+        var _activeBuyers = [];
+        var _openSellerIdx = -1;
+        var _openBuyerIdx = -1;
+        var tsDetailPanel = document.getElementById('ts-detail-panel');
+        var tbDetailPanel = document.getElementById('tb-detail-panel');
+
+        function fmtDetailDate(iso) {
+            if (!iso) return '—';
+            var d = new Date(iso);
+            return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
         function renderTopSellers(sellers) {
+            _activeSellers = sellers || [];
+            _openSellerIdx = -1;
+            tsDetailPanel.innerHTML = '';
             if (!sellers || !sellers.length) {
                 topSellersWrap.style.display = 'none';
                 return;
             }
             topSellersWrap.style.display = '';
             var html = '';
-            sellers.forEach(function(p) {
+            sellers.forEach(function(p, i) {
                 var imgHTML = p.sku_image
                     ? '<img class="ts-img" src="' + escAttr(p.sku_image) + '" alt="" loading="lazy">'
                     : '<div class="ts-placeholder-img">&#x1F4E6;</div>';
-                html += '<div class="ts-card">'
+                html += '<div class="ts-card" data-idx="' + i + '">'
                     + imgHTML
                     + '<div class="ts-title">' + esc(p.title) + '</div>'
                     + (p.variant ? '<div class="ts-variant">' + esc(p.variant) + '</div>' : '')
@@ -1947,10 +1990,44 @@
                     + '</div>';
             });
             topSellersStrip.innerHTML = html;
+            topSellersStrip.querySelectorAll('.ts-card').forEach(function(card) {
+                card.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    toggleSellerDetail(parseInt(card.getAttribute('data-idx')));
+                });
+            });
             requestAnimationFrame(updateTsArrows);
         }
+
+        function toggleSellerDetail(idx) {
+            topSellersStrip.querySelectorAll('.ts-card').forEach(function(c) { c.classList.remove('active'); });
+            if (_openSellerIdx === idx) {
+                _openSellerIdx = -1;
+                tsDetailPanel.innerHTML = '';
+                return;
+            }
+            _openSellerIdx = idx;
+            topSellersStrip.querySelector('.ts-card[data-idx="' + idx + '"]').classList.add('active');
+            var p = _activeSellers[idx];
+            var buyers = p.buyers || [];
+            if (!buyers.length) {
+                tsDetailPanel.innerHTML = '<div class="lb-detail-panel" style="color:var(--text-muted);text-align:center;padding:12px;">No buyer data</div>';
+                return;
+            }
+            var html = '<div class="lb-detail-panel"><table><thead><tr>'
+                + '<th>Buyer</th><th>Qty</th></tr></thead><tbody>';
+            buyers.forEach(function(b) {
+                html += '<tr><td>' + esc(b.name) + '</td><td>' + b.qty + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+            tsDetailPanel.innerHTML = html;
+        }
+
         /* ---- Top Buyers render ---- */
         function renderTopBuyers(buyers) {
+            _activeBuyers = buyers || [];
+            _openBuyerIdx = -1;
+            tbDetailPanel.innerHTML = '';
             if (!buyers || !buyers.length) {
                 topBuyersWrap.style.display = 'none';
                 return;
@@ -1958,7 +2035,7 @@
             topBuyersWrap.style.display = '';
             var html = '';
             buyers.forEach(function(b, i) {
-                html += '<div class="tb-card">'
+                html += '<div class="tb-card" data-idx="' + i + '">'
                     + '<div class="tb-rank">#' + (i + 1) + '</div>'
                     + '<div class="tb-name">' + esc(b.name) + '</div>'
                     + '<div class="tb-orders">' + b.orders + ' order' + (b.orders !== 1 ? 's' : '') + '</div>'
@@ -1966,6 +2043,41 @@
                     + '</div>';
             });
             topBuyersStrip.innerHTML = html;
+            topBuyersStrip.querySelectorAll('.tb-card').forEach(function(card) {
+                card.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    toggleBuyerDetail(parseInt(card.getAttribute('data-idx')));
+                });
+            });
+        }
+
+        function toggleBuyerDetail(idx) {
+            topBuyersStrip.querySelectorAll('.tb-card').forEach(function(c) { c.classList.remove('active'); });
+            if (_openBuyerIdx === idx) {
+                _openBuyerIdx = -1;
+                tbDetailPanel.innerHTML = '';
+                return;
+            }
+            _openBuyerIdx = idx;
+            topBuyersStrip.querySelector('.tb-card[data-idx="' + idx + '"]').classList.add('active');
+            var b = _activeBuyers[idx];
+            var orders = b.order_list || [];
+            if (!orders.length) {
+                tbDetailPanel.innerHTML = '<div class="lb-detail-panel" style="color:var(--text-muted);text-align:center;padding:12px;">No orders</div>';
+                return;
+            }
+            var html = '<div class="lb-detail-panel"><table><thead><tr>'
+                + '<th>Time</th><th>Order #</th><th>Items</th><th>Total</th></tr></thead><tbody>';
+            orders.forEach(function(o) {
+                html += '<tr>'
+                    + '<td>' + fmtDetailDate(o.created_at) + '</td>'
+                    + '<td>' + esc(o.order_number || '—') + '</td>'
+                    + '<td class="items-col" title="' + escAttr(o.items) + '">' + esc(o.items) + '</td>'
+                    + '<td class="money">$' + (o.total || 0).toFixed(2) + '</td>'
+                    + '</tr>';
+            });
+            html += '</tbody></table></div>';
+            tbDetailPanel.innerHTML = html;
         }
 
         /* ---- Leaderboard toggle ---- */

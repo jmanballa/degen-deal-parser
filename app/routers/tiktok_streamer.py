@@ -229,7 +229,7 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
             customer_agg[buyer_key]["spent"] += order_gmv
             customer_agg[buyer_key]["orders"] += 1
         else:
-            customer_agg[buyer_key] = {"name": buyer_name, "spent": order_gmv, "orders": 1}
+            customer_agg[buyer_key] = {"name": buyer_name, "spent": order_gmv, "orders": 1, "order_list": []}
 
         raw_items: list[dict] = []
         try:
@@ -239,6 +239,7 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
         if not isinstance(raw_items, list):
             raw_items = [raw_items] if isinstance(raw_items, dict) else []
 
+        order_items_parts: list[str] = []
         for raw in raw_items:
             if not isinstance(raw, dict):
                 continue
@@ -272,6 +273,8 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
                 raw.get("sku_image") or raw.get("product_image") or raw.get("image_url") or ""
             ).strip() or None
 
+            order_items_parts.append(f"{title} x{qty}")
+
             if key in product_agg:
                 product_agg[key]["qty"] += qty
                 product_agg[key]["revenue"] += round(qty * unit_price, 2)
@@ -284,11 +287,28 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
                     "sku_image": sku_image,
                     "qty": qty,
                     "revenue": round(qty * unit_price, 2),
+                    "buyers": {},
                 }
+            if buyer_name not in product_agg[key].get("buyers", {}):
+                product_agg[key].setdefault("buyers", {})[buyer_name] = 0
+            product_agg[key]["buyers"][buyer_name] += qty
+
+        if len(customer_agg[buyer_key]["order_list"]) < 20:
+            customer_agg[buyer_key]["order_list"].append({
+                "order_number": o.order_number,
+                "total": round(order_gmv, 2),
+                "items": ", ".join(order_items_parts) if order_items_parts else "—",
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+            })
 
     top_sellers = sorted(product_agg.values(), key=lambda p: p["revenue"], reverse=True)[:8]
     for ts in top_sellers:
         ts["revenue"] = round(ts["revenue"], 2)
+        bd = ts.pop("buyers", {})
+        ts["buyers"] = sorted(
+            [{"name": n, "qty": q} for n, q in bd.items()],
+            key=lambda x: x["qty"], reverse=True,
+        )
 
     top_buyers = sorted(customer_agg.values(), key=lambda b: b["spent"], reverse=True)[:10]
     for tb in top_buyers:
@@ -328,7 +348,7 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
                 stream_customer_agg[buyer_key]["spent"] += o_gmv
                 stream_customer_agg[buyer_key]["orders"] += 1
             else:
-                stream_customer_agg[buyer_key] = {"name": buyer_name, "spent": o_gmv, "orders": 1}
+                stream_customer_agg[buyer_key] = {"name": buyer_name, "spent": o_gmv, "orders": 1, "order_list": []}
 
             try:
                 s_items = json.loads(o.line_items_json) if o.line_items_json else []
@@ -336,6 +356,7 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
                 s_items = []
             if not isinstance(s_items, list):
                 s_items = [s_items] if isinstance(s_items, dict) else []
+            s_order_parts: list[str] = []
             for it in s_items:
                 if not isinstance(it, dict):
                     continue
@@ -360,6 +381,7 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
                             continue
                         break
                 s_img = str(it.get("sku_image") or it.get("product_image") or it.get("image_url") or "").strip() or None
+                s_order_parts.append(f"{s_title} x{s_qty}")
                 if s_key in stream_product_agg:
                     stream_product_agg[s_key]["qty"] += s_qty
                     stream_product_agg[s_key]["revenue"] += round(s_qty * s_unit, 2)
@@ -369,11 +391,28 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
                     stream_product_agg[s_key] = {
                         "title": s_title, "variant": s_variant, "sku_image": s_img,
                         "qty": s_qty, "revenue": round(s_qty * s_unit, 2),
+                        "buyers": {},
                     }
+                if buyer_name not in stream_product_agg[s_key].get("buyers", {}):
+                    stream_product_agg[s_key].setdefault("buyers", {})[buyer_name] = 0
+                stream_product_agg[s_key]["buyers"][buyer_name] += s_qty
+
+            if len(stream_customer_agg[buyer_key]["order_list"]) < 20:
+                stream_customer_agg[buyer_key]["order_list"].append({
+                    "order_number": o.order_number,
+                    "total": round(o_gmv, 2),
+                    "items": ", ".join(s_order_parts) if s_order_parts else "—",
+                    "created_at": o.created_at.isoformat() if o.created_at else None,
+                })
 
         stream_top_sellers = sorted(stream_product_agg.values(), key=lambda p: p["revenue"], reverse=True)[:8]
         for sts in stream_top_sellers:
             sts["revenue"] = round(sts["revenue"], 2)
+            sbd = sts.pop("buyers", {})
+            sts["buyers"] = sorted(
+                [{"name": n, "qty": q} for n, q in sbd.items()],
+                key=lambda x: x["qty"], reverse=True,
+            )
         stream_top_buyers = sorted(stream_customer_agg.values(), key=lambda b: b["spent"], reverse=True)[:10]
         for stb in stream_top_buyers:
             stb["spent"] = round(stb["spent"], 2)
