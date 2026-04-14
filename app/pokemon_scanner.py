@@ -121,8 +121,8 @@ _tcgdex_sets_cache: list[dict] | None = None
 
 def preprocess_image(raw_bytes: bytes) -> bytes:
     """
-    Preprocess a raw card photo for OCR.
-    Auto-orient, resize to 1200px longest side, sharpen, boost contrast, grayscale.
+    Light preprocessing for OCR: auto-orient, resize to 1500px, mild sharpen.
+    Keeps color — grayscale destroys too much info on Pokemon cards.
     """
     try:
         from PIL import Image, ImageEnhance, ImageFilter, ImageOps
@@ -135,18 +135,17 @@ def preprocess_image(raw_bytes: bytes) -> bytes:
         img = ImageOps.exif_transpose(img) or img
 
         max_dim = max(img.width, img.height)
-        if max_dim > 1200:
-            scale = 1200 / max_dim
+        if max_dim > 1500:
+            scale = 1500 / max_dim
             new_w = int(img.width * scale)
             new_h = int(img.height * scale)
             img = img.resize((new_w, new_h), Image.LANCZOS)
 
-        img = img.filter(ImageFilter.UnsharpMask(radius=1.0, percent=100, threshold=3))
-        img = ImageEnhance.Contrast(img).enhance(1.15)
-        img_gray = img.convert("L")
+        img = img.filter(ImageFilter.UnsharpMask(radius=0.8, percent=80, threshold=3))
+        img = ImageEnhance.Contrast(img).enhance(1.08)
 
         buf = io.BytesIO()
-        img_gray.save(buf, format="JPEG", quality=92)
+        img.save(buf, format="JPEG", quality=92)
         return buf.getvalue()
     except Exception as exc:
         logger.warning("[pokemon_scanner] Preprocessing failed, using raw image: %s", exc)
@@ -221,10 +220,10 @@ def _normalize_ocr_number(text: str) -> str:
 
 def _extract_fields_from_text(raw_text: str, fields: ExtractedFields) -> None:
     """Parse OCR raw text into structured ExtractedFields."""
-    lines = raw_text.strip().split("\n")
+    lines = [ln.strip() for ln in raw_text.strip().split("\n") if ln.strip()]
     text_upper = raw_text.upper()
 
-    # --- Collector number ---
+    # --- Collector number (most reliable identifier) ---
     for pattern in COLLECTOR_NUM_PATTERNS:
         match = pattern.search(raw_text)
         if match:
@@ -232,28 +231,53 @@ def _extract_fields_from_text(raw_text: str, fields: ExtractedFields) -> None:
             fields.collector_number = _normalize_ocr_number(fields.collector_number_raw)
             break
 
-    # --- Card name: usually the largest text near the top ---
-    if lines:
-        candidate_name = lines[0].strip()
-        candidate_name = re.sub(r"[^\w\s\-\'é.]", "", candidate_name).strip()
-        if len(candidate_name) >= 2:
-            fields.card_name = candidate_name
-
-    # --- HP value ---
+    # --- HP value (extract early — helps identify the name line) ---
     hp_match = re.search(r"(\d{2,3})\s*HP", raw_text, re.I)
     if hp_match:
         fields.hp_value = hp_match.group(1)
 
-    # --- Set name: small text near bottom ---
+    # --- Card name: find the best candidate from top lines ---
+    # Pokemon card names are near top, usually the longest meaningful text
+    # that isn't HP, a number, or game mechanic text
+    _SKIP_WORDS = {"BASIC", "STAGE", "WEAKNESS", "RESISTANCE", "RETREAT", "TRAINER",
+                   "SUPPORTER", "ITEM", "TOOL", "STADIUM", "ENERGY", "POKEMON",
+                   "POKÉMON", "ILLUSTRATOR", "REGULATION"}
+    for line in lines[:8]:
+        cleaned = re.sub(r"[^\w\s\-\'é.':]", "", line).strip()
+        cleaned = re.sub(r"\b\d{2,3}\s*HP\b", "", cleaned, flags=re.I).strip()
+        if len(cleaned) < 2:
+            continue
+        upper_words = set(cleaned.upper().split())
+        if upper_words & _SKIP_WORDS:
+            continue
+        # Skip lines that are just numbers
+        if re.match(r"^[\d\s/\-]+$", cleaned):
+            continue
+        # Skip very short single-char lines
+        if len(cleaned) <= 2 and not cleaned[0].isalpha():
+            continue
+        fields.card_name = cleaned
+        break
+
+    # --- Set name: look for known patterns near bottom of card ---
+    # Pokemon sets often appear on bottom lines, sometimes with copyright
     for line in reversed(lines):
         line_clean = line.strip()
-        if len(line_clean) > 3 and not re.match(r"^\d", line_clean):
-            if not any(kw in line_clean.upper() for kw in ["WEAKNESS", "RESISTANCE", "RETREAT", "HP"]):
-                if fields.collector_number_raw and fields.collector_number_raw in line_clean:
-                    continue
-                if len(line_clean) < 60:
-                    fields.set_name = line_clean
-                    break
+        # Skip short, number-only, or game-mechanic lines
+        if len(line_clean) < 3:
+            continue
+        line_upper = line_clean.upper()
+        if any(kw in line_upper for kw in ["WEAKNESS", "RESISTANCE", "RETREAT", "HP",
+                                            "DAMAGE", "ATTACK", "ILLUSTRATOR", "©",
+                                            "NINTENDO", "CREATURES", "GAME FREAK"]):
+            continue
+        if fields.collector_number_raw and fields.collector_number_raw in line_clean:
+            continue
+        # Skip lines that are just numbers or very long (probably ability text)
+        if re.match(r"^[\d\s/\-]+$", line_clean) or len(line_clean) > 50:
+            continue
+        fields.set_name = line_clean
+        break
 
     # --- Variant hints ---
     for keyword in VARIANT_KEYWORDS:
@@ -262,6 +286,12 @@ def _extract_fields_from_text(raw_text: str, fields: ExtractedFields) -> None:
 
     # --- Language (default English) ---
     fields.language = "English"
+
+    logger.info(
+        "[pokemon_scanner] Extracted: name=%s, number=%s, set=%s, hp=%s, variants=%s",
+        fields.card_name, fields.collector_number, fields.set_name,
+        fields.hp_value, fields.variant_hints,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -756,21 +786,31 @@ async def run_pipeline(image_b64: str) -> dict[str, Any]:
 
     processed_bytes = preprocess_image(raw_bytes)
     debug_info["preprocessing_applied"] = [
-        "exif_transpose", "resize_1200px", "sharpen", "contrast_1.15", "grayscale"
+        "exif_transpose", "resize_1500px", "mild_sharpen", "contrast_1.08", "color"
     ]
     debug_info["stage_times_ms"]["preprocess"] = _elapsed(t_stage)
 
-    # --- Stage C: OCR ---
+    # --- Stage C: OCR (try preprocessed first, fallback to raw) ---
     t_stage = time.monotonic()
     fields = await run_ocr(processed_bytes, settings.google_vision_api_key)
     debug_info["ocr_raw_text"] = fields.ocr_raw_text
     debug_info["ocr_confidence"] = fields.ocr_confidence
     debug_info["stage_times_ms"]["ocr"] = _elapsed(t_stage)
 
+    # Fallback: if preprocessed image yielded nothing, try the raw image
+    if not fields.collector_number and not fields.card_name:
+        logger.info("[pokemon_scanner] Preprocessed OCR empty, retrying with raw image")
+        t_stage = time.monotonic()
+        fields = await run_ocr(raw_bytes, settings.google_vision_api_key)
+        debug_info["ocr_raw_text"] = fields.ocr_raw_text
+        debug_info["ocr_confidence"] = fields.ocr_confidence
+        debug_info["ocr_fallback"] = "raw_image"
+        debug_info["stage_times_ms"]["ocr_fallback"] = _elapsed(t_stage)
+
     if not fields.collector_number and not fields.card_name:
         return asdict(ScanResult(
             status="NO_MATCH",
-            error="Could not extract card name or collector number from image",
+            error="Could not extract card name or collector number from image. Try holding the card closer or improving lighting.",
             extracted_fields=asdict(fields),
             processing_time_ms=_elapsed(t_start),
             debug=debug_info,
