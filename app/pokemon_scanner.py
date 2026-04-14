@@ -285,47 +285,90 @@ def _extract_fields_from_text(raw_text: str, fields: ExtractedFields) -> None:
         fields.hp_value = hp_match.group(1)
 
     # --- Card name: find the best candidate from top lines ---
-    # Pokemon card names are near top, usually the longest meaningful text
-    # that isn't HP, a number, or game mechanic text
-    _SKIP_WORDS = {"BASIC", "STAGE", "WEAKNESS", "RESISTANCE", "RETREAT", "TRAINER",
+    _SKIP_WORDS = {"WEAKNESS", "RESISTANCE", "RETREAT", "TRAINER",
                    "SUPPORTER", "ITEM", "TOOL", "STADIUM", "ENERGY", "POKEMON",
-                   "POKÉMON", "ILLUSTRATOR", "REGULATION"}
-    for line in lines[:8]:
+                   "POKÉMON", "ILLUSTRATOR", "REGULATION", "ABILITY"}
+    _STAGE_WORDS = {"BASIC", "STAGE"}
+    _POKEMON_FRAGMENTS = {"poke", "mon", "pokémon", "pokemon", "poké"}
+    for line in lines[:10]:
         cleaned = re.sub(r"[^\w\s\-\'é.':]", "", line).strip()
         cleaned = re.sub(r"\b\d{2,3}\s*HP\b", "", cleaned, flags=re.I).strip()
-        if len(cleaned) < 2:
+        if len(cleaned) < 3:
             continue
         upper_words = set(cleaned.upper().split())
+
+        # Lines with game-mechanic words are never card names
         if upper_words & _SKIP_WORDS:
             continue
-        # Skip lines that are just numbers
+
+        # Lines with BASIC/STAGE may contain the name — try to extract it
+        if upper_words & _STAGE_WORDS:
+            name_part = re.sub(r"\bSTAGE\s*[\d\*]*", "", cleaned, flags=re.I)
+            name_part = re.sub(r"\bBASIC\b", "", name_part, flags=re.I)
+            name_part = re.sub(r"\bEvolves?\s+from\s+\S+", "", name_part, flags=re.I)
+            name_part = re.sub(r"\bSHOP\b", "", name_part, flags=re.I)
+            name_part = re.sub(r"\b\d+\b", "", name_part)
+            name_part = name_part.strip(" *-.:").strip()
+            if len(name_part) >= 3:
+                fields.card_name = name_part
+                break
+            continue
+
         if re.match(r"^[\d\s/\-]+$", cleaned):
             continue
-        # Skip very short single-char lines
-        if len(cleaned) <= 2 and not cleaned[0].isalpha():
+        if cleaned.lower().strip() in _POKEMON_FRAGMENTS:
+            continue
+        # Skip single short words (< 5 chars) that aren't real names
+        words = cleaned.split()
+        if len(words) == 1 and len(words[0]) < 5 and "'" not in words[0]:
             continue
         fields.card_name = cleaned
         break
 
-    # --- Set name: look for known patterns near bottom of card ---
-    # Pokemon sets often appear on bottom lines, sometimes with copyright
-    for line in reversed(lines):
-        line_clean = line.strip()
-        # Skip short, number-only, or game-mechanic lines
-        if len(line_clean) < 3:
-            continue
-        line_upper = line_clean.upper()
-        if any(kw in line_upper for kw in ["WEAKNESS", "RESISTANCE", "RETREAT", "HP",
-                                            "DAMAGE", "ATTACK", "ILLUSTRATOR", "©",
-                                            "NINTENDO", "CREATURES", "GAME FREAK"]):
-            continue
-        if fields.collector_number_raw and fields.collector_number_raw in line_clean:
-            continue
-        # Skip lines that are just numbers or very long (probably ability text)
-        if re.match(r"^[\d\s/\-]+$", line_clean) or len(line_clean) > 50:
-            continue
-        fields.set_name = line_clean
-        break
+    # --- Set name: extract from the line containing the collector number ---
+    # On Pokemon cards, the set abbreviation (e.g. "ASCEN", "SVI", "PAL")
+    # appears on the same line as the collector number.
+    _set_extracted = False
+    if fields.collector_number_raw:
+        for line in lines:
+            if fields.collector_number_raw in line or (
+                fields.collector_number and fields.collector_number.split("/")[0] in line
+            ):
+                # Strip the collector number and surrounding punctuation/digits
+                remainder = line
+                if fields.collector_number_raw:
+                    remainder = remainder.replace(fields.collector_number_raw, "")
+                remainder = re.sub(r"\d{1,4}\s*/\s*\d{1,4}", "", remainder)
+                # Remove regulation marks (single uppercase letters like "J", "H")
+                remainder = re.sub(r"\b[A-Z]\b", "", remainder).strip()
+                # Remove common stray characters
+                remainder = re.sub(r"[^\w\s]", "", remainder).strip()
+                if remainder and len(remainder) >= 2:
+                    fields.set_name = remainder
+                    _set_extracted = True
+                break
+
+    # Fallback: scan bottom lines for short set-name-like text
+    if not _set_extracted:
+        _SET_SKIP_KW = {"WEAKNESS", "RESISTANCE", "RETREAT", "HP", "DAMAGE",
+                        "ATTACK", "ILLUSTRATOR", "NINTENDO", "CREATURES",
+                        "GAME FREAK", "ABILITY", "FLIP", "COIN", "SEARCH",
+                        "YOUR", "THIS", "HIDDEN", "ONCE", "DURING"}
+        for line in reversed(lines):
+            line_clean = line.strip()
+            if len(line_clean) < 3 or len(line_clean) > 30:
+                continue
+            line_upper = line_clean.upper()
+            if any(kw in line_upper for kw in _SET_SKIP_KW):
+                continue
+            if "©" in line_clean or "0202" in line_clean:
+                continue
+            if fields.collector_number_raw and fields.collector_number_raw in line_clean:
+                continue
+            if re.match(r"^[\d\s/\-]+$", line_clean):
+                continue
+            fields.set_name = line_clean
+            break
 
     # --- Variant hints ---
     for keyword in VARIANT_KEYWORDS:
