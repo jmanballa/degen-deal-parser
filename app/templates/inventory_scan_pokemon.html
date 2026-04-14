@@ -476,6 +476,21 @@ var PKScanner = (function() {
             html += '<div class="result-set">' + escHtml(m.set_name) + '</div>';
             html += '<div class="result-number">#' + escHtml(m.number) + (m.rarity ? ' &middot; ' + escHtml(m.rarity) : '') + '</div>';
             html += '<div class="result-price">' + priceStr + '</div>';
+            html += '<div style="margin-top:8px;">';
+            html += '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant / Finish:</label>';
+            html += '<select id="variant-select" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+            html += '<option value="">Regular</option>';
+            html += '<option value="Holo">Holo</option>';
+            html += '<option value="Reverse Holo">Reverse Holo</option>';
+            html += '<option value="Cosmos Holo">Cosmos Holo</option>';
+            html += '<option value="Full Art">Full Art</option>';
+            html += '<option value="Alt Art">Alt Art</option>';
+            html += '<option value="Illustration Rare">Illustration Rare</option>';
+            html += '<option value="Special Art Rare">Special Art Rare</option>';
+            html += '<option value="Secret Rare">Secret Rare</option>';
+            html += '<option value="Gold">Gold</option>';
+            html += '</select>';
+            html += '</div>';
             html += '<div class="result-actions">';
             html += '<button class="btn-primary" onclick="PKScanner.addBestMatch()">Add to Batch</button>';
             html += '<button class="btn-outline" onclick="PKScanner.retake()">Retake</button>';
@@ -485,18 +500,19 @@ var PKScanner = (function() {
             html += '<div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:4px;">' + escHtml(m.match_reason) + '</div>';
         }
 
-        // Candidates (for AMBIGUOUS or as alternatives)
+        // Candidates — always show when there are alternatives
         var candidates = data.candidates || [];
         if (candidates.length > 1 || data.status === 'AMBIGUOUS') {
-            html += '<div style="margin-top:16px;">';
+            html += '<div style="margin-top:16px;background:var(--yellow-bg);border-radius:12px;padding:14px;">';
             html += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">';
-            html += data.status === 'AMBIGUOUS' ? 'Pick the correct card:' : 'Other candidates:';
+            html += data.status === 'AMBIGUOUS' ? '&#9888; Pick the correct card:' : '&#128260; Wrong match? Pick the correct version:';
             html += '</div>';
             html += '<div class="candidates-grid">';
             for (var i = 0; i < Math.min(candidates.length, 8); i++) {
                 var c = candidates[i];
                 var ci = c.image_url_small || c.image_url || '';
-                html += '<div class="candidate-card" data-idx="' + i + '" onclick="PKScanner.pickCandidate(' + i + ')">';
+                var isBest = data.best_match && c.name === data.best_match.name && c.number === data.best_match.number && c.set_name === data.best_match.set_name;
+                html += '<div class="candidate-card' + (isBest ? ' selected' : '') + '" data-idx="' + i + '" onclick="PKScanner.pickCandidate(' + i + ')">';
                 if (ci) html += '<img src="' + escHtml(ci) + '" alt="" onerror="this.style.display=\'none\'">';
                 html += '<div class="c-name">' + escHtml(c.name) + '</div>';
                 html += '<div class="c-set">' + escHtml(c.set_name) + ' #' + escHtml(c.number) + '</div>';
@@ -570,7 +586,17 @@ var PKScanner = (function() {
     // ------------------------------------------------------------------
     // Batch management
     // ------------------------------------------------------------------
+    function _getVariant() {
+        var sel = document.getElementById('variant-select');
+        return sel ? sel.value : '';
+    }
+
     function addToBatch(card) {
+        var variant = _getVariant();
+        var isFoil = variant && variant.toLowerCase().indexOf('holo') >= 0;
+        var notes = card.rarity ? ('Rarity: ' + card.rarity) : '';
+        if (variant) notes = (notes ? notes + ' | ' : '') + 'Variant: ' + variant;
+
         batch.push({
             card_name: card.name || card.card_name || '',
             game: 'Pokemon',
@@ -579,8 +605,9 @@ var PKScanner = (function() {
             card_number: card.number || card.card_number || '',
             image_url: card.image_url || '',
             auto_price: card.market_price || null,
-            is_foil: false,
-            notes: card.rarity ? ('Rarity: ' + card.rarity) : '',
+            is_foil: isFoil,
+            variant: variant,
+            notes: notes,
         });
         saveBatch();
         renderBatch();
