@@ -339,7 +339,7 @@ def _extract_fields_from_text(raw_text: str, fields: ExtractedFields) -> None:
                 if fields.collector_number_raw:
                     remainder = remainder.replace(fields.collector_number_raw, "")
                 remainder = re.sub(r"\d{1,4}\s*/\s*\d{1,4}", "", remainder)
-                # Remove regulation marks (single uppercase letters like "J", "H")
+                # Remove standalone single uppercase letters (regulation marks)
                 remainder = re.sub(r"\b[A-Z]\b", "", remainder).strip()
                 # Remove common stray characters
                 remainder = re.sub(r"[^\w\s]", "", remainder).strip()
@@ -407,16 +407,29 @@ async def _fetch_tcgdex_sets() -> list[dict]:
 
 
 def _infer_set_id(set_name: Optional[str], sets: list[dict]) -> Optional[str]:
-    """Try to match extracted set name to a TCGdex set ID."""
+    """Try to match extracted set name to a TCGdex set ID.
+
+    Also tries stripping a leading character in case OCR concatenated the
+    regulation mark with the set abbreviation (e.g. "JASC" -> try "ASC" too).
+    """
     if not set_name:
         return None
-    name_lower = set_name.lower().strip()
-    for s in sets:
-        if s.get("name", "").lower() == name_lower:
-            return s.get("id")
-    for s in sets:
-        if name_lower in s.get("name", "").lower():
-            return s.get("id")
+
+    candidates_to_try = [set_name.lower().strip()]
+    # If set name is all-caps and >= 3 chars, the first letter may be a
+    # regulation mark (D-J) that OCR glued onto the abbreviation.
+    stripped = set_name.strip()
+    if stripped.isupper() and len(stripped) >= 3:
+        candidates_to_try.append(stripped[1:].lower())
+
+    for name_lower in candidates_to_try:
+        for s in sets:
+            if s.get("name", "").lower() == name_lower:
+                return s.get("id")
+        for s in sets:
+            if name_lower in s.get("name", "").lower():
+                return s.get("id")
+
     return None
 
 
@@ -613,6 +626,22 @@ async def lookup_candidates(fields: ExtractedFields, api_key: str = "") -> list[
             for tc in tcgdex_by_name:
                 candidates.append(_tcgdex_to_candidate(tc))
 
+        # Tier 1.6: TCGdex word-by-word fallback — OCR may mangle part of the
+        # name (e.g. "dive Tangela" instead of "Erika's Tangela").  Try each
+        # word individually, longest first, to find the Pokemon name.
+        if not candidates and fields.card_name:
+            name_words = [w for w in fields.card_name.split() if len(w) >= 4]
+            name_words.sort(key=len, reverse=True)
+            for word in name_words[:3]:
+                tcgdex_by_word = await _tcgdex_search_by_name(
+                    client, word, limit=10,
+                    prefer_number=fields.collector_number,
+                )
+                if tcgdex_by_word:
+                    for tc in tcgdex_by_word:
+                        candidates.append(_tcgdex_to_candidate(tc))
+                    break
+
         # Tier 2: PokemonTCG by name + number (most precise external search)
         if not candidates and fields.card_name and fields.collector_number:
             tier_reached = 3
@@ -629,6 +658,17 @@ async def lookup_candidates(fields: ExtractedFields, api_key: str = "") -> list[
             candidates = await _pokemontcg_search(
                 client, name=fields.card_name, api_key=ptcg_key, limit=10,
             )
+
+        # Tier 3.5: PokemonTCG word-by-word fallback
+        if not candidates and fields.card_name:
+            name_words = [w for w in fields.card_name.split() if len(w) >= 4]
+            name_words.sort(key=len, reverse=True)
+            for word in name_words[:3]:
+                candidates = await _pokemontcg_search(
+                    client, name=word, api_key=ptcg_key, limit=10,
+                )
+                if candidates:
+                    break
 
         # Tier 4: PokemonTCG by number only (broad, may return wrong cards)
         if not candidates and fields.collector_number:
@@ -683,7 +723,7 @@ def score_candidates(
         breakdown: dict[str, float] = {}
         total = 0.0
 
-        # Exact full number match (e.g. "123/197" == "123/197")
+        # Collector number matching (exact, prefix, or proximity)
         if fields.collector_number and c.number:
             extracted_num = fields.collector_number.strip()
             candidate_num = c.number.strip()
@@ -691,12 +731,35 @@ def score_candidates(
                 breakdown["exact_full_number"] = SCORING_WEIGHTS["exact_full_number"]
             elif extracted_num.split("/")[0] == candidate_num.split("/")[0]:
                 breakdown["exact_collector_number"] = SCORING_WEIGHTS["exact_collector_number"]
+            else:
+                # Proximity bonus: OCR often misreads a few digits (213 vs 218)
+                try:
+                    ext_n = int(extracted_num.split("/")[0])
+                    cand_n = int(candidate_num.split("/")[0])
+                    diff = abs(ext_n - cand_n)
+                    if diff <= 10:
+                        proximity = 1.0 - (diff / 10.0)
+                        breakdown["number_proximity"] = round(
+                            proximity * SCORING_WEIGHTS["exact_collector_number"] * 0.6, 1
+                        )
+                except (ValueError, IndexError):
+                    pass
 
         # Fuzzy name similarity (Levenshtein normalized to 0-25)
         if fields.card_name and c.name:
-            dist = _levenshtein(fields.card_name.lower(), c.name.lower())
-            max_len = max(len(fields.card_name), len(c.name), 1)
+            ext_lower = fields.card_name.lower()
+            cand_lower = c.name.lower()
+            dist = _levenshtein(ext_lower, cand_lower)
+            max_len = max(len(ext_lower), len(cand_lower), 1)
             similarity = 1.0 - (dist / max_len)
+
+            # Bonus: if any significant word from the extracted name appears
+            # in the candidate name (handles OCR mangling half the name)
+            ext_words = [w for w in ext_lower.split() if len(w) >= 4]
+            word_match = any(w in cand_lower for w in ext_words)
+            if word_match:
+                similarity = max(similarity, 0.7)
+
             name_score = similarity * SCORING_WEIGHTS["fuzzy_name_similarity"]
             breakdown["fuzzy_name_similarity"] = round(name_score, 1)
 
