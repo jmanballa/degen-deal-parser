@@ -59,17 +59,24 @@ logger = logging.getLogger(__name__)
 PAGE_SIZE = 50
 
 
-def _check_role(request: Request, min_role: str) -> Optional[Response]:
-    """
-    Return a redirect/403 if the current user doesn't have min_role; None if ok.
 
-    The attach_current_user middleware (defined in main.py) always runs before
-    route handlers and populates request.state.current_user, so we can rely on it
-    here without importing from main.py (which would be circular).
+def _get_user(request: Request):
+    """Look up the current user directly from the session.
+
+    Starlette 1.0's BaseHTTPMiddleware doesn't reliably share
+    request.state between middleware and route handlers, so we
+    read the session ourselves instead of relying on the
+    attach_current_user middleware.
     """
-    user = getattr(request.state, "current_user", None)
+    from .shared import get_request_user
+    return get_request_user(request)
+
+
+def _check_role(request: Request, min_role: str) -> Optional[Response]:
+    """Return a redirect/403 if the current user doesn't have min_role; None if ok."""
+    user = _get_user(request)
     if not user:
-        next_path = str(request.url)
+        next_path = request.url.path
         return RedirectResponse(url=f"/login?next={next_path}", status_code=303)
     if not has_role(user, min_role):
         return HTMLResponse("You do not have permission to view this page.", status_code=403)
@@ -85,7 +92,7 @@ def _require_reviewer(request: Request) -> Optional[Response]:
 
 
 def _current_user(request: Request):
-    return getattr(request.state, "current_user", None)
+    return _get_user(request)
 
 
 # ---------------------------------------------------------------------------
