@@ -98,13 +98,17 @@ TCGDEX_BASE = "https://api.tcgdex.net/v2/en"
 POKEMONTCG_BASE = "https://api.pokemontcg.io/v2"
 
 COLLECTOR_NUM_PATTERNS = [
-    re.compile(r"(\d{1,4})\s*/\s*(\d{1,4})"),          # 123/197
     re.compile(r"(TG\d{1,3})\s*/\s*(TG\d{1,3})", re.I), # TG12/TG30
-    re.compile(r"(SVP\s*\d{2,3})", re.I),                # SVP001
     re.compile(r"(GG\d{1,3})\s*/?\s*(GG\d{1,3})?", re.I),# GG21/GG70
+    re.compile(r"(SVP\s*\d{2,3})", re.I),                # SVP001
     re.compile(r"(SWSH\d{2,3})", re.I),                  # SWSH promo
     re.compile(r"(SV\d{2,3})", re.I),                    # SV promo
+    re.compile(r"(\d{1,4})\s*/\s*(\d{1,4})"),            # 123/197 (last — most generic)
 ]
+
+# Broader pattern to grab a collector-number-like region even with OCR noise
+# e.g. "228/2ND" -> grab "228" and try to reconstruct total from surrounding chars
+_BROAD_NUMBER_RE = re.compile(r"(\d{1,4})\s*/\s*(\S{1,5})")
 
 VARIANT_KEYWORDS = [
     "VMAX", "VSTAR", "V", "EX", "GX", "ex", "FULL ART", "TRAINER GALLERY",
@@ -211,11 +215,38 @@ async def run_ocr(image_bytes: bytes, api_key: str) -> ExtractedFields:
 
 def _normalize_ocr_number(text: str) -> str:
     """Fix common OCR misreads in number strings."""
-    text = text.replace("O", "0").replace("o", "0")
-    text = text.replace("l", "1").replace("I", "1")
-    text = text.replace("\\", "/").replace("|", "/")
-    text = text.replace(" ", "")
-    return text
+    text = text.replace("\\", "/").replace("|", "/").replace(" ", "")
+
+    if "/" in text:
+        parts = text.split("/", 1)
+        parts = [_fix_digit_string(p) for p in parts]
+        return "/".join(parts)
+
+    return _fix_digit_string(text)
+
+
+def _fix_digit_string(s: str) -> str:
+    """Convert a string that should be all digits, fixing OCR misreads."""
+    result = []
+    for ch in s:
+        if ch.isdigit():
+            result.append(ch)
+        elif ch in ("O", "o", "D", "Q"):
+            result.append("0")
+        elif ch in ("l", "I", "i", "|", "!"):
+            result.append("1")
+        elif ch in ("S", "s", "$"):
+            result.append("5")
+        elif ch in ("B",):
+            result.append("8")
+        elif ch in ("Z", "z"):
+            result.append("2")
+        elif ch in ("G",):
+            result.append("6")
+        elif ch in ("T", "t"):
+            result.append("7")
+        # Skip letters that are clearly not digit misreads (N, A, E, etc.)
+    return "".join(result) if result else s
 
 
 def _extract_fields_from_text(raw_text: str, fields: ExtractedFields) -> None:
@@ -230,6 +261,19 @@ def _extract_fields_from_text(raw_text: str, fields: ExtractedFields) -> None:
             fields.collector_number_raw = match.group(0).strip()
             fields.collector_number = _normalize_ocr_number(fields.collector_number_raw)
             break
+
+    # Fallback: broad pattern for OCR-mangled numbers like "228/2ND" -> "228/217"
+    if not fields.collector_number:
+        broad = _BROAD_NUMBER_RE.search(raw_text)
+        if broad:
+            fields.collector_number_raw = broad.group(0).strip()
+            first = broad.group(1)
+            second_raw = broad.group(2)
+            second = _fix_digit_string(second_raw)
+            if second and second.isdigit():
+                fields.collector_number = f"{first}/{second}"
+            else:
+                fields.collector_number = first
 
     # --- HP value (extract early — helps identify the name line) ---
     hp_match = re.search(r"(\d{2,3})\s*HP", raw_text, re.I)
@@ -341,15 +385,46 @@ async def _tcgdex_lookup_by_set_and_number(
 
 
 async def _tcgdex_search_by_name(
-    client: httpx.AsyncClient, name: str, limit: int = 10
+    client: httpx.AsyncClient, name: str, limit: int = 10,
+    prefer_number: Optional[str] = None,
 ) -> list[dict]:
-    """Search TCGdex by card name."""
+    """
+    Search TCGdex by card name, fetching full details for top results.
+    If prefer_number is given, prioritize results whose localId matches.
+    """
     resp = await client.get(f"{TCGDEX_BASE}/cards", params={"name": name})
-    if resp.status_code == 200:
-        results = resp.json()
-        if isinstance(results, list):
-            return results[:limit]
-    return []
+    if resp.status_code != 200:
+        return []
+
+    results = resp.json()
+    if not isinstance(results, list):
+        return []
+
+    # If we have a collector number, prioritize matching results
+    if prefer_number:
+        num_prefix = prefer_number.split("/")[0].lstrip("0") if "/" in prefer_number else prefer_number.lstrip("0")
+        # Sort: exact number matches first, then the rest
+        def sort_key(card: dict) -> int:
+            lid = (card.get("localId") or "").lstrip("0")
+            if lid == num_prefix:
+                return 0
+            return 1
+        results.sort(key=sort_key)
+
+    # Fetch full card details for up to `limit` results
+    detailed: list[dict] = []
+    for slim in results[:limit]:
+        card_id = slim.get("id", "")
+        if not card_id:
+            continue
+        detail_resp = await client.get(f"{TCGDEX_BASE}/cards/{card_id}")
+        if detail_resp.status_code == 200:
+            detailed.append(detail_resp.json())
+        else:
+            slim["_slim"] = True
+            detailed.append(slim)
+
+    return detailed
 
 
 def _tcgdex_to_candidate(card: dict, source: str = "tcgdex") -> CandidateCard:
@@ -359,13 +434,30 @@ def _tcgdex_to_candidate(card: dict, source: str = "tcgdex") -> CandidateCard:
     image_url_small = f"{image}/low.webp" if image else ""
 
     set_info = card.get("set") or {}
+    local_id = card.get("localId", "") or card.get("number", "")
+
+    # For full card objects, set_info is a dict; for slim results it may be missing
+    if isinstance(set_info, dict):
+        set_id = set_info.get("id", "")
+        set_name = set_info.get("name", "")
+        # Build a full number like "228/217" from localId + set card count
+        card_count = set_info.get("cardCount", {})
+        official_count = card_count.get("official") if isinstance(card_count, dict) else None
+        if official_count and local_id and "/" not in local_id:
+            full_number = f"{local_id}/{official_count}"
+        else:
+            full_number = local_id
+    else:
+        set_id = str(set_info) if set_info else ""
+        set_name = ""
+        full_number = local_id
 
     return CandidateCard(
         id=card.get("id", ""),
         name=card.get("name", ""),
-        number=card.get("localId", "") or card.get("number", ""),
-        set_id=set_info.get("id", "") if isinstance(set_info, dict) else str(set_info),
-        set_name=set_info.get("name", "") if isinstance(set_info, dict) else "",
+        number=full_number,
+        set_id=set_id,
+        set_name=set_name,
         image_url=image_url,
         image_url_small=image_url_small,
         rarity=card.get("rarity"),
@@ -464,14 +556,17 @@ async def lookup_candidates(fields: ExtractedFields, api_key: str = "") -> list[
                 if card:
                     candidates.append(_tcgdex_to_candidate(card))
 
-        # Tier 2: PokemonTCG by number (across all sets)
-        if not candidates and fields.collector_number:
+        # Tier 1.5: TCGdex name search (has newer sets like Pocket/Ascended Heroes)
+        if not candidates and fields.card_name:
             tier_reached = 2
-            candidates = await _pokemontcg_search(
-                client, number=fields.collector_number, api_key=ptcg_key,
+            tcgdex_by_name = await _tcgdex_search_by_name(
+                client, fields.card_name, limit=10,
+                prefer_number=fields.collector_number,
             )
+            for tc in tcgdex_by_name:
+                candidates.append(_tcgdex_to_candidate(tc))
 
-        # Tier 3: Name + number
+        # Tier 2: PokemonTCG by name + number (most precise external search)
         if not candidates and fields.card_name and fields.collector_number:
             tier_reached = 3
             candidates = await _pokemontcg_search(
@@ -481,16 +576,23 @@ async def lookup_candidates(fields: ExtractedFields, api_key: str = "") -> list[
                 api_key=ptcg_key,
             )
 
-        # Tier 4: Name only
+        # Tier 3: PokemonTCG by name only
         if not candidates and fields.card_name:
             tier_reached = 4
             candidates = await _pokemontcg_search(
                 client, name=fields.card_name, api_key=ptcg_key, limit=10,
             )
 
+        # Tier 4: PokemonTCG by number only (broad, may return wrong cards)
+        if not candidates and fields.collector_number:
+            tier_reached = 5
+            candidates = await _pokemontcg_search(
+                client, number=fields.collector_number, api_key=ptcg_key,
+            )
+
         # Tier 5: No results
         if not candidates:
-            tier_reached = 5
+            tier_reached = 6
 
     logger.info(
         "[pokemon_scanner] Lookup tier=%d, candidates=%d, number=%s, name=%s",
