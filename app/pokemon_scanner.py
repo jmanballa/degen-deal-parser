@@ -60,6 +60,7 @@ class CandidateCard:
     source: str = ""  # "tcgdex" | "pokemontcg"
     market_price: Optional[float] = None
     tcgplayer_url: Optional[str] = None
+    available_variants: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -587,35 +588,54 @@ def _tcgdex_to_candidate(card: dict, source: str = "tcgdex") -> CandidateCard:
         set_name = ""
         full_number = local_id
 
-    # Extract pricing from TCGdex's built-in market data
+    # Extract pricing + available variants from TCGdex's built-in market data
     market_price = None
     tcgplayer_url = None
+    available_variants: list[dict] = []
     pricing = card.get("pricing") or {}
 
-    # Prefer TCGPlayer USD pricing
+    _TCGDEX_VARIANT_LABELS = {
+        "normal": "Normal",
+        "holo": "Holo",
+        "reverse": "Reverse Holo",
+    }
+
+    # TCGPlayer USD pricing — extract per-variant prices
     tcgp = pricing.get("tcgplayer")
     if isinstance(tcgp, dict):
-        for variant_key in ("normal", "holo", "reverse"):
+        for variant_key, label in _TCGDEX_VARIANT_LABELS.items():
             vdata = tcgp.get(variant_key)
             if isinstance(vdata, dict):
                 mp = vdata.get("marketPrice")
                 if mp is not None:
                     try:
-                        market_price = round(float(mp), 2)
+                        price = round(float(mp), 2)
+                        if price > 0:
+                            available_variants.append({"name": label, "price": price})
+                            if market_price is None:
+                                market_price = price
                     except (ValueError, TypeError):
                         pass
-                    if market_price:
-                        break
 
-    # Fallback to Cardmarket EUR pricing (convert to approximate USD)
-    if not market_price:
-        cm = pricing.get("cardmarket")
-        if isinstance(cm, dict):
-            trend = cm.get("trend") or cm.get("avg")
-            if trend is not None:
+    # Cardmarket EUR pricing — extract per-variant prices
+    cm = pricing.get("cardmarket")
+    if isinstance(cm, dict):
+        _CM_VARIANT_MAP = [
+            ("trend", "avg", "Normal"),
+            ("trend-holo", "avg-holo", "Holo"),
+        ]
+        for trend_key, avg_key, label in _CM_VARIANT_MAP:
+            raw = cm.get(trend_key) or cm.get(avg_key)
+            if raw is not None:
                 try:
-                    eur_price = float(trend)
-                    market_price = round(eur_price * 1.10, 2)  # rough EUR->USD
+                    eur_price = float(raw)
+                    if eur_price > 0:
+                        usd_price = round(eur_price * 1.10, 2)
+                        # Only add if not already covered by TCGPlayer
+                        if not any(v["name"] == label for v in available_variants):
+                            available_variants.append({"name": label, "price": usd_price})
+                        if market_price is None:
+                            market_price = usd_price
                 except (ValueError, TypeError):
                     pass
 
@@ -632,6 +652,7 @@ def _tcgdex_to_candidate(card: dict, source: str = "tcgdex") -> CandidateCard:
         source=source,
         market_price=market_price,
         tcgplayer_url=tcgplayer_url,
+        available_variants=available_variants,
     )
 
 
@@ -672,16 +693,27 @@ async def _pokemontcg_search(
 
         prices_wrap = card.get("tcgplayer", {}).get("prices", {})
         market_price = None
-        for price_type in ("normal", "holofoil", "reverseHolofoil", "1stEditionHolofoil"):
+        ptcg_variants: list[dict] = []
+
+        _PTCG_VARIANT_LABELS = {
+            "normal": "Normal",
+            "holofoil": "Holo",
+            "reverseHolofoil": "Reverse Holo",
+            "1stEditionHolofoil": "1st Edition Holo",
+            "1stEditionNormal": "1st Edition",
+        }
+        for price_type, label in _PTCG_VARIANT_LABELS.items():
             if price_type in prices_wrap:
                 mp = prices_wrap[price_type].get("market")
                 if mp is not None:
                     try:
-                        market_price = round(float(mp), 2)
+                        price = round(float(mp), 2)
+                        if price > 0:
+                            ptcg_variants.append({"name": label, "price": price})
+                            if market_price is None:
+                                market_price = price
                     except (ValueError, TypeError):
                         pass
-                    if market_price:
-                        break
 
         results.append(CandidateCard(
             id=card.get("id", ""),
@@ -695,6 +727,7 @@ async def _pokemontcg_search(
             source="pokemontcg",
             market_price=market_price,
             tcgplayer_url=card.get("tcgplayer", {}).get("url"),
+            available_variants=ptcg_variants,
         ))
 
     return results

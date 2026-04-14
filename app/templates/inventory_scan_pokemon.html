@@ -485,21 +485,19 @@ var PKScanner = (function() {
                 html += '<a href="' + escHtml(tcgpUrl) + '" target="_blank" rel="noopener" style="color:var(--blue);font-weight:700;font-size:12px;">Check TCGPlayer &rarr;</a>';
                 html += '</div>';
             }
-            html += '<div style="margin-top:8px;">';
-            html += '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant / Finish:</label>';
-            html += '<select id="variant-select" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
-            html += '<option value="">Regular</option>';
-            html += '<option value="Holo">Holo</option>';
-            html += '<option value="Reverse Holo">Reverse Holo</option>';
-            html += '<option value="Cosmos Holo">Cosmos Holo</option>';
-            html += '<option value="Full Art">Full Art</option>';
-            html += '<option value="Alt Art">Alt Art</option>';
-            html += '<option value="Illustration Rare">Illustration Rare</option>';
-            html += '<option value="Special Art Rare">Special Art Rare</option>';
-            html += '<option value="Secret Rare">Secret Rare</option>';
-            html += '<option value="Gold">Gold</option>';
-            html += '</select>';
-            html += '</div>';
+            var variants = m.available_variants || [];
+            if (variants.length > 1) {
+                html += '<div style="margin-top:8px;">';
+                html += '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant / Finish:</label>';
+                html += '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                for (var vi = 0; vi < variants.length; vi++) {
+                    var v = variants[vi];
+                    var vPrice = v.price ? ' — $' + Number(v.price).toFixed(2) : '';
+                    html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price || '') + '">' + escHtml(v.name) + vPrice + '</option>';
+                }
+                html += '</select>';
+                html += '</div>';
+            }
             html += '<div class="result-actions">';
             html += '<button class="btn-primary" onclick="PKScanner.addBestMatch()">Add to Batch</button>';
             html += '<button class="btn-outline" onclick="PKScanner.retake()">Retake</button>';
@@ -608,8 +606,25 @@ var PKScanner = (function() {
         return sel ? sel.value : '';
     }
 
+    function _getVariantPrice() {
+        var sel = document.getElementById('variant-select');
+        if (!sel) return null;
+        var opt = sel.options[sel.selectedIndex];
+        var p = opt ? opt.getAttribute('data-price') : null;
+        return p ? parseFloat(p) : null;
+    }
+
+    function onVariantChange() {
+        var price = _getVariantPrice();
+        var priceEl = document.querySelector('.result-price');
+        if (priceEl && price) {
+            priceEl.textContent = '$' + price.toFixed(2);
+        }
+    }
+
     function addToBatch(card) {
         var variant = _getVariant();
+        var variantPrice = _getVariantPrice();
         var isFoil = variant && variant.toLowerCase().indexOf('holo') >= 0;
         var notes = card.rarity ? ('Rarity: ' + card.rarity) : '';
         if (variant) notes = (notes ? notes + ' | ' : '') + 'Variant: ' + variant;
@@ -621,7 +636,7 @@ var PKScanner = (function() {
             set_name: card.set_name || '',
             card_number: card.number || card.card_number || '',
             image_url: card.image_url || '',
-            auto_price: card.market_price || null,
+            auto_price: variantPrice || card.market_price || null,
             is_foil: isFoil,
             variant: variant,
             notes: notes,
@@ -743,6 +758,7 @@ var PKScanner = (function() {
         flipCamera: flipCamera,
         addBestMatch: addBestMatch,
         pickCandidate: pickCandidate,
+        onVariantChange: onVariantChange,
         retake: retake,
         clearBatch: clearBatch,
         goReview: goReview,
