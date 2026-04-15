@@ -1594,18 +1594,27 @@ def _merge_results(
     merged["debug"]["legacy_processing_time_ms"] = legacy.get("processing_time_ms")
 
     # Compare best matches by name + collector number
-    x_name = (xbest.get("name") or "").lower()
-    l_name = (lbest.get("name") or "").lower()
+    # Normalize names: strip hyphens, spaces, periods, and case for fuzzy comparison
+    def _norm_name(n):
+        return re.sub(r"[\s\-\.'\u2019]+", "", (n or "")).lower()
+
+    x_name = _norm_name(xbest.get("name"))
+    l_name = _norm_name(lbest.get("name"))
     x_num = (xbest.get("number") or "").split("/")[0].lstrip("0")
     l_num = (lbest.get("number") or "").split("/")[0].lstrip("0")
 
-    same_card = x_name == l_name and x_num and l_num and x_num == l_num
+    same_name = x_name == l_name
+    same_number = x_num and l_num and x_num == l_num
+    same_card = same_name and same_number
+
+    x_score = xbest.get("score", 0)
+    x_conf = xbest.get("confidence", "LOW")
+    l_score = lbest.get("score", 0)
 
     if same_card:
         logger.info(
             "[pokemon_scanner] Dual-engine AGREE: %s #%s (ximilar=%.0f, legacy=%.0f)",
-            xbest.get("name"), xbest.get("number"),
-            xbest.get("score", 0), lbest.get("score", 0),
+            xbest.get("name"), xbest.get("number"), x_score, l_score,
         )
         merged["best_match"]["score"] = merged["best_match"].get("score", 0) + 15
         merged["best_match"]["confidence"] = "HIGH"
@@ -1615,19 +1624,30 @@ def _merge_results(
         if merged.get("status") == "AMBIGUOUS":
             merged["status"] = "MATCHED"
         merged["disambiguation_method"] = "dual_engine_agree"
+    elif same_name and not same_number:
+        # Same card name but different set/number — likely a reprint.
+        # Trust Ximilar (visual match) over OCR number extraction.
+        logger.info(
+            "[pokemon_scanner] Dual-engine PARTIAL: same name '%s', different number (x=#%s, l=#%s)",
+            xbest.get("name"), xbest.get("number"), lbest.get("number"),
+        )
+        merged["disambiguation_method"] = "dual_engine_partial"
+        merged["debug"]["dual_engine_note"] = f"Same card name, different printings — trusting Ximilar visual match"
+        if merged.get("status") == "AMBIGUOUS" and x_score >= 50:
+            merged["status"] = "MATCHED"
     else:
         logger.info(
-            "[pokemon_scanner] Dual-engine DISAGREE: ximilar=%s #%s vs legacy=%s #%s",
-            xbest.get("name"), xbest.get("number"),
-            lbest.get("name"), lbest.get("number"),
+            "[pokemon_scanner] Dual-engine DISAGREE: ximilar=%s #%s (%.0f) vs legacy=%s #%s (%.0f)",
+            xbest.get("name"), xbest.get("number"), x_score,
+            lbest.get("name"), lbest.get("number"), l_score,
         )
         merged["disambiguation_method"] = "dual_engine_disagree"
 
-        # If Ximilar is HIGH and legacy is LOW/MEDIUM with a weak score, trust Ximilar
-        x_conf = xbest.get("confidence", "LOW")
-        l_score = lbest.get("score", 0)
-        if x_conf == "HIGH" and l_score < 60:
+        # Trust Ximilar when it's reasonably confident and legacy is weak
+        if x_conf == "HIGH" and l_score < 70:
             merged["debug"]["dual_engine_note"] = "Ximilar HIGH, legacy weak — trusting Ximilar"
+        elif x_score >= 50 and l_score < 50:
+            merged["debug"]["dual_engine_note"] = "Ximilar decent, legacy unreliable — trusting Ximilar"
         else:
             merged["status"] = "AMBIGUOUS"
 
