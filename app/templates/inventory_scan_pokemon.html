@@ -101,7 +101,7 @@
             position:fixed; bottom:0; left:0; right:0; height:85vh; z-index:50;
             background:rgba(18,14,10,.97); border-radius:20px 20px 0 0;
             backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
-            display:flex; flex-direction:column; will-change:transform;
+            display:flex; flex-direction:column; will-change:transform; overflow:hidden;
         }
         .drawer-handle { padding:10px 0 2px; text-align:center; cursor:grab; flex-shrink:0; -webkit-tap-highlight-color:transparent; }
         .handle-bar { width:36px; height:4px; border-radius:2px; background:rgba(255,255,255,.2); margin:0 auto; }
@@ -111,7 +111,7 @@
         .drawer-total { font-size:14px; font-weight:800; color:#4ade80; }
         .rapid-label { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:rgba(255,255,255,.5); cursor:pointer; user-select:none; }
         .rapid-label input { accent-color:var(--accent); }
-        .drawer-body { flex:1; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+        .drawer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
         .drawer-footer { flex-shrink:0; padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px)); border-top:1px solid rgba(255,255,255,.08); display:flex; gap:10px; }
 
         /* Batch list (dark theme on mobile) */
