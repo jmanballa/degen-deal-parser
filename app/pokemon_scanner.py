@@ -1066,7 +1066,7 @@ async def _enrich_price(candidate: ScoredCandidate, ptcg_key: str = "") -> None:
 
 
 TCGTRACKING_BASE = "https://tcgtracking.com/tcgapi/v1"
-TCGTRACKING_POKEMON_CAT = "3"
+TCGTRACKING_POKEMON_CATS = ["3", "85"]  # 3 = Pokemon, 85 = Pokemon Japan
 
 # Cache: set_name (lowercase) -> {set_id, products, pricing}
 _tcgtracking_cache: dict[str, dict] = {}
@@ -1090,29 +1090,32 @@ async def _enrich_price_fast(candidate: ScoredCandidate, ptcg_key: str = "") -> 
             cached = _tcgtracking_cache.get(set_key)
 
             if not cached:
-                # Search for the set
-                search_resp = await client.get(
-                    f"{TCGTRACKING_BASE}/{TCGTRACKING_POKEMON_CAT}/search",
-                    params={"q": candidate.set_name},
-                )
-                if search_resp.status_code == 200:
+                import asyncio
+                for cat_id in TCGTRACKING_POKEMON_CATS:
+                    search_resp = await client.get(
+                        f"{TCGTRACKING_BASE}/{cat_id}/search",
+                        params={"q": candidate.set_name},
+                    )
+                    if search_resp.status_code != 200:
+                        continue
                     sets = search_resp.json().get("sets") or []
-                    if sets:
-                        set_info = sets[0]
-                        set_id = set_info["id"]
+                    if not sets:
+                        continue
 
-                        # Fetch products + pricing in parallel
-                        import asyncio
-                        prod_resp, price_resp = await asyncio.gather(
-                            client.get(f"{TCGTRACKING_BASE}/{TCGTRACKING_POKEMON_CAT}/sets/{set_id}"),
-                            client.get(f"{TCGTRACKING_BASE}/{TCGTRACKING_POKEMON_CAT}/sets/{set_id}/pricing"),
-                        )
+                    set_info = sets[0]
+                    set_id = set_info["id"]
 
-                        products = prod_resp.json().get("products", []) if prod_resp.status_code == 200 else []
-                        pricing = price_resp.json().get("prices", {}) if price_resp.status_code == 200 else {}
+                    prod_resp, price_resp = await asyncio.gather(
+                        client.get(f"{TCGTRACKING_BASE}/{cat_id}/sets/{set_id}"),
+                        client.get(f"{TCGTRACKING_BASE}/{cat_id}/sets/{set_id}/pricing"),
+                    )
 
-                        cached = {"set_id": set_id, "products": products, "pricing": pricing}
-                        _tcgtracking_cache[set_key] = cached
+                    products = prod_resp.json().get("products", []) if prod_resp.status_code == 200 else []
+                    pricing = price_resp.json().get("prices", {}) if price_resp.status_code == 200 else {}
+
+                    cached = {"set_id": set_id, "cat_id": cat_id, "products": products, "pricing": pricing}
+                    _tcgtracking_cache[set_key] = cached
+                    break
 
             if cached and cached["products"]:
                 cand_num = candidate.number.split("/")[0].lstrip("0") if candidate.number else ""
