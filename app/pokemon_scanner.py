@@ -1065,6 +1065,80 @@ async def _enrich_price(candidate: ScoredCandidate, ptcg_key: str = "") -> None:
             # No price from this query — try next
 
 
+async def _enrich_price_fast(candidate: ScoredCandidate, ptcg_key: str = "") -> None:
+    """Fast price lookup for Ximilar results -- single query, short timeout.
+
+    Ximilar gives us exact name + set + number, so one precise query suffices.
+    """
+    if candidate.market_price is not None:
+        return
+    if not candidate.name:
+        return
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        headers = {"X-Api-Key": ptcg_key} if ptcg_key else {}
+
+        # Single precise query: name + set name + number
+        parts = [f'name:"{candidate.name}"']
+        if candidate.set_name:
+            parts.append(f'set.name:"{candidate.set_name}"')
+        if candidate.number:
+            clean_num = candidate.number.split("/")[0]
+            parts.append(f'number:"{clean_num}"')
+        query = " ".join(parts)
+
+        resp = await client.get(
+            f"{POKEMONTCG_BASE}/cards",
+            params={"q": query, "pageSize": "3", "orderBy": "-set.releaseDate"},
+            headers=headers,
+        )
+        if resp.status_code != 200:
+            return
+
+        cards = resp.json().get("data") or []
+        if not cards:
+            # Fallback: name only (handles new sets not yet in PokemonTCG)
+            resp2 = await client.get(
+                f"{POKEMONTCG_BASE}/cards",
+                params={"q": f'name:"{candidate.name}"', "pageSize": "3", "orderBy": "-set.releaseDate"},
+                headers=headers,
+            )
+            if resp2.status_code == 200:
+                cards = resp2.json().get("data") or []
+
+        if not cards:
+            return
+
+        best_card = cards[0]
+        if candidate.number:
+            clean_num = candidate.number.split("/")[0].lstrip("0")
+            for card in cards:
+                if card.get("number", "").lstrip("0") == clean_num:
+                    best_card = card
+                    break
+
+        prices_wrap = best_card.get("tcgplayer", {}).get("prices", {})
+        for price_type in ("normal", "holofoil", "reverseHolofoil", "1stEditionHolofoil"):
+            if price_type in prices_wrap:
+                mp = prices_wrap[price_type].get("market")
+                if mp is not None:
+                    try:
+                        candidate.market_price = round(float(mp), 2)
+                    except (ValueError, TypeError):
+                        pass
+                    if candidate.market_price:
+                        break
+
+        tcgp_url = best_card.get("tcgplayer", {}).get("url")
+        if tcgp_url and not candidate.tcgplayer_url:
+            candidate.tcgplayer_url = tcgp_url
+
+        if not candidate.image_url:
+            images = best_card.get("images") or {}
+            candidate.image_url = images.get("large", "")
+            candidate.image_url_small = images.get("small", "")
+
+
 # ---------------------------------------------------------------------------
 # Stage F: Visual Disambiguation (OpenAI Vision)
 # ---------------------------------------------------------------------------
@@ -1192,6 +1266,7 @@ async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any
     t_start = time.monotonic()
     debug_info: dict[str, Any] = {
         "engine": "ximilar",
+        "extraction_method": "ximilar",
         "stage_times_ms": {},
     }
 
@@ -1326,14 +1401,13 @@ async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any
         alt_distance = distances[i + 1] if (i + 1) < len(distances) else 0.6
         scored_list.append(_ximilar_to_scored(alt_data, alt_distance))
 
-    # Quick price + image enrichment for top candidates
+    # Quick price + image enrichment for the best match only (keep it fast)
     t_stage = time.monotonic()
     settings = get_settings()
-    for sc in scored_list[:3]:
-        try:
-            await _enrich_price(sc, settings.pokemon_tcg_api_key)
-        except Exception as exc:
-            logger.debug("[pokemon_scanner] Ximilar price enrichment failed for %s: %s", sc.name, exc)
+    try:
+        await _enrich_price_fast(best, settings.pokemon_tcg_api_key)
+    except Exception as exc:
+        logger.debug("[pokemon_scanner] Ximilar price enrichment failed for %s: %s", best.name, exc)
     debug_info["stage_times_ms"]["price_enrich"] = _elapsed(t_stage)
 
     # Determine status
