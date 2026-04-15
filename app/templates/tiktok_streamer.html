@@ -1270,6 +1270,37 @@
             box-shadow: 0 0 0 2px rgba(62,207,142,.2);
         }
         .hit-textarea { resize: vertical; min-height: 76px; }
+        .hit-photo-row {
+            display: flex; gap: 8px; margin-top: 2px;
+        }
+        .hit-photo-btn {
+            appearance: none; border: 1px solid var(--border);
+            border-radius: 10px; padding: 8px 14px;
+            background: rgba(255,255,255,.07); color: var(--text);
+            font: inherit; font-size: 12px; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center; gap: 6px;
+            transition: background .15s, border-color .15s;
+        }
+        .hit-photo-btn:hover { background: rgba(255,255,255,.12); border-color: var(--green); }
+        .hit-photo-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .hit-photo-preview {
+            display: none; margin-top: 8px; position: relative;
+            border-radius: 10px; overflow: hidden;
+            border: 1px solid var(--border); max-width: 200px;
+        }
+        .hit-photo-preview.has-image { display: block; }
+        .hit-photo-preview img {
+            display: block; width: 100%; max-height: 180px;
+            object-fit: cover; border-radius: 10px;
+        }
+        .hit-photo-remove {
+            position: absolute; top: 4px; right: 4px;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: rgba(0,0,0,.7); border: none; color: #fff;
+            font-size: 14px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .hit-photo-remove:hover { background: var(--red); }
         .hit-select option { background: #1c1c22; }
         .hit-submit-row {
             display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px;
@@ -1811,6 +1842,23 @@
                 <label class="hit-label hit-form-full">What was the hit? *
                     <textarea class="hit-textarea" id="hf-note" placeholder="e.g. Charizard VMAX Alt Art Secret Rare" rows="2"></textarea>
                 </label>
+                <div class="hit-form-full">
+                    <div class="hit-photo-row">
+                        <button type="button" class="hit-photo-btn" id="hit-take-photo" title="Take a photo">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                            Take Photo
+                        </button>
+                        <button type="button" class="hit-photo-btn" id="hit-upload-photo" title="Upload from gallery">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            Upload Photo
+                        </button>
+                        <input type="file" id="hit-photo-input" accept="image/*" style="display:none">
+                    </div>
+                    <div class="hit-photo-preview" id="hit-photo-preview">
+                        <img id="hit-photo-preview-img" src="" alt="Hit photo preview">
+                        <button type="button" class="hit-photo-remove" id="hit-photo-remove" title="Remove photo">&#x2715;</button>
+                    </div>
+                </div>
                 <input type="hidden" id="hf-streamer" value="{{ current_streamer or '' }}">
                 <input type="hidden" id="hf-platform" value="TikTok">
                 <input type="hidden" id="hf-customer" value="">
@@ -1841,6 +1889,7 @@
                         <th>Streamer</th>
                         <th>Note</th>
                         <th>Value</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody id="hit-recent-body">
@@ -3261,6 +3310,8 @@
     /* ---- Log Hit Modal ---- */
     (function () {
         var BIG_HIT_THRESHOLD = 50;
+        var MAX_IMAGE_DIM = 1920;
+        var MAX_IMAGE_BYTES = 2 * 1024 * 1024;
         var backdrop = document.getElementById('hit-modal-backdrop');
         var logHitBtn = document.getElementById('log-hit-btn');
         var closeBtn = document.getElementById('hit-modal-close');
@@ -3271,6 +3322,16 @@
         var orderPicker = document.getElementById('order-picker');
         var orderSearch = document.getElementById('order-picker-search');
         var _selectedOrderId = null;
+
+        /* ---- Photo state ---- */
+        var _photoFile = null;
+        var _photoPreviewUrl = null;
+        var photoInput = document.getElementById('hit-photo-input');
+        var takePhotoBtn = document.getElementById('hit-take-photo');
+        var uploadPhotoBtn = document.getElementById('hit-upload-photo');
+        var previewWrap = document.getElementById('hit-photo-preview');
+        var previewImg = document.getElementById('hit-photo-preview-img');
+        var removePhotoBtn = document.getElementById('hit-photo-remove');
 
         /* ---- Access orders from parent IIFE via window ---- */
         function getOrders() {
@@ -3378,6 +3439,75 @@
             renderOrderPicker(this.value);
         });
 
+        /* ---- Photo capture ---- */
+        function clearPhoto() {
+            _photoFile = null;
+            if (_photoPreviewUrl) { URL.revokeObjectURL(_photoPreviewUrl); _photoPreviewUrl = null; }
+            if (previewWrap) previewWrap.classList.remove('has-image');
+            if (previewImg) previewImg.src = '';
+            if (photoInput) photoInput.value = '';
+        }
+
+        function compressImage(file, cb) {
+            if (file.size <= MAX_IMAGE_BYTES) { cb(file); return; }
+            var img = new Image();
+            var url = URL.createObjectURL(file);
+            img.onload = function() {
+                URL.revokeObjectURL(url);
+                var w = img.width, h = img.height;
+                if (w > MAX_IMAGE_DIM || h > MAX_IMAGE_DIM) {
+                    var ratio = Math.min(MAX_IMAGE_DIM / w, MAX_IMAGE_DIM / h);
+                    w = Math.round(w * ratio);
+                    h = Math.round(h * ratio);
+                }
+                var canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                canvas.toBlob(function(blob) {
+                    cb(blob ? new File([blob], file.name, { type: 'image/jpeg' }) : file);
+                }, 'image/jpeg', 0.85);
+            };
+            img.onerror = function() { URL.revokeObjectURL(url); cb(file); };
+            img.src = url;
+        }
+
+        function onPhotoSelected() {
+            if (!photoInput || !photoInput.files || !photoInput.files[0]) return;
+            compressImage(photoInput.files[0], function(compressed) {
+                _photoFile = compressed;
+                _photoPreviewUrl = URL.createObjectURL(compressed);
+                if (previewImg) previewImg.src = _photoPreviewUrl;
+                if (previewWrap) previewWrap.classList.add('has-image');
+            });
+        }
+
+        if (takePhotoBtn) takePhotoBtn.addEventListener('click', function() {
+            if (!photoInput) return;
+            photoInput.setAttribute('capture', 'environment');
+            photoInput.click();
+        });
+        if (uploadPhotoBtn) uploadPhotoBtn.addEventListener('click', function() {
+            if (!photoInput) return;
+            photoInput.removeAttribute('capture');
+            photoInput.click();
+        });
+        if (photoInput) photoInput.addEventListener('change', onPhotoSelected);
+        if (removePhotoBtn) removePhotoBtn.addEventListener('click', clearPhoto);
+
+        function uploadImage(file) {
+            return new Promise(function(resolve, reject) {
+                var fd = new FormData();
+                fd.append('file', file);
+                fetch('/api/hits/upload-image', { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.ok) resolve(data.filename);
+                        else reject(data.error || 'Upload failed');
+                    })
+                    .catch(function(err) { reject(err); });
+            });
+        }
+
         /* ---- Toast ---- */
         function showToast(msg, type) {
             toast.textContent = msg;
@@ -3392,6 +3522,7 @@
             document.getElementById('hf-order').value = '';
             document.getElementById('hf-order-value').value = '';
             _selectedOrderId = null;
+            clearPhoto();
             renderOrderPicker(orderSearch ? orderSearch.value : '');
         }
 
@@ -3417,12 +3548,20 @@
             }
 
             saveBtn.disabled = true;
-            saveBtn.textContent = 'Saving…';
+            saveBtn.textContent = _photoFile ? 'Uploading photo…' : 'Saving…';
 
-            fetch('/api/hits', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+            var imagePromise = _photoFile
+                ? uploadImage(_photoFile)
+                : Promise.resolve(null);
+
+            imagePromise.then(function(filename) {
+                if (filename) body.image_filename = filename;
+                saveBtn.textContent = 'Saving…';
+                return fetch('/api/hits', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
             })
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -3436,10 +3575,10 @@
                     showToast(data.error || 'Failed to save.', 'error');
                 }
             })
-            .catch(function() {
+            .catch(function(err) {
                 saveBtn.disabled = false;
                 saveBtn.textContent = 'Save Hit';
-                showToast('Network error — could not save hit.', 'error');
+                showToast('Error — ' + (err || 'could not save hit.'), 'error');
             });
         });
 
@@ -3450,7 +3589,7 @@
                 .then(function(data) {
                     var hits = data.hits || [];
                     if (hits.length === 0) {
-                        recentBody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:12px;">No hits yet.</td></tr>';
+                        recentBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:12px;">No hits yet.</td></tr>';
                         return;
                     }
                     recentBody.innerHTML = hits.map(function(h) {
@@ -3459,11 +3598,15 @@
                         var valStr = h.estimated_value != null ? ('$' + h.estimated_value.toFixed(2)) : '—';
                         var bigBadge = (h.estimated_value != null && h.estimated_value >= BIG_HIT_THRESHOLD)
                             ? '<span class="hit-big-badge">Big</span>' : '';
+                        var photoCell = h.image_url
+                            ? '<a href="' + escHtml(h.image_url) + '" target="_blank" title="View photo"><img src="' + escHtml(h.image_url) + '" style="width:28px;height:28px;object-fit:cover;border-radius:4px;vertical-align:middle;" loading="lazy"></a>'
+                            : '';
                         return '<tr>'
                             + '<td style="white-space:nowrap;color:var(--text-muted)">' + tStr + '</td>'
                             + '<td>' + escHtml(h.streamer_name) + '</td>'
                             + '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(h.hit_note) + '</td>'
                             + '<td style="white-space:nowrap;">' + valStr + bigBadge + '</td>'
+                            + '<td style="width:36px;text-align:center;">' + photoCell + '</td>'
                             + '</tr>';
                     }).join('');
                 })

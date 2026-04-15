@@ -171,6 +171,7 @@
                         <th>Order $</th>
                         <th>Hit Value</th>
                         <th>Platform</th>
+                        <th>Photo</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -202,6 +203,13 @@
                             {% else %}—{% endif %}
                         </td>
                         <td>{{ hit.platform or "—" }}</td>
+                        <td style="text-align:center;">
+                            {% if hit.image_filename %}
+                            <a href="/hit-images/{{ hit.image_filename }}" target="_blank" title="View photo">
+                                <img src="/hit-images/{{ hit.image_filename }}" alt="Hit photo" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--line);" loading="lazy">
+                            </a>
+                            {% else %}—{% endif %}
+                        </td>
                         <td>
                             <div class="action-cell">
                                 <a class="btn-sm" href="/hits/{{ hit.id }}/edit">Edit</a>
@@ -213,7 +221,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" style="text-align:center;color:#a7b0ba;padding:32px;">No hits match the current filters. <a href="/hits/new" style="color:var(--accent);font-weight:700;">Log the first one →</a></td>
+                        <td colspan="10" style="text-align:center;color:#a7b0ba;padding:32px;">No hits match the current filters. <a href="/hits/new" style="color:var(--accent);font-weight:700;">Log the first one →</a></td>
                     </tr>
                     {% endfor %}
                 </tbody>

@@ -179,6 +179,7 @@ SQLITE_ADDITIVE_MIGRATIONS = {
     },
     "live_hits": {
         "order_value": "REAL",
+        "image_filename": "TEXT",
     },
     "stream_schedules": {
         "stream_account_id": "INTEGER",
@@ -357,6 +358,7 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
     },
     "live_hits": {
         "order_value": "DOUBLE PRECISION",
+        "image_filename": "TEXT",
     },
     "stream_schedules": {
         "stream_account_id": "INTEGER",

@@ -5,18 +5,25 @@ Extracted from app/main.py -- all routes under /hits/ and /api/hits/.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, Query, Request, UploadFile, File
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
+from ..config import BASE_DIR
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
 from ..db import get_session
 
 router = APIRouter()
+
+HIT_IMAGES_DIR = BASE_DIR / "data" / "hit_images"
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +94,8 @@ def _hit_to_dict(h: LiveHit) -> dict:
         "created_by": h.created_by or "",
         "created_at": h.created_at.isoformat() if h.created_at else None,
         "is_big_hit": (h.estimated_value or 0) >= BIG_HIT_THRESHOLD,
+        "image_filename": h.image_filename or None,
+        "image_url": f"/hit-images/{h.image_filename}" if h.image_filename else None,
     }
 
 
@@ -213,10 +222,15 @@ def hits_new_submit(
     notes: Optional[str] = Form(default=None),
     hit_at_raw: Optional[str] = Form(default=None),
     add_another: Optional[str] = Form(default=None),
+    image_filename: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
 ):
     if denial := require_role_response(request, "viewer"):
         return denial
+
+    img_fn = (image_filename or "").strip() or None
+    if img_fn and (".." in img_fn or "/" in img_fn or "\\" in img_fn):
+        img_fn = None
 
     hit = LiveHit(
         streamer_name=streamer_name.strip(),
@@ -230,6 +244,7 @@ def hits_new_submit(
         notes=(notes or "").strip() or None,
         hit_at=_parse_hit_at(hit_at_raw),
         created_by=current_user_label(request),
+        image_filename=img_fn,
     )
     session.add(hit)
     session.commit()
@@ -278,6 +293,7 @@ def hits_edit_submit(
     stream_label: Optional[str] = Form(default=None),
     notes: Optional[str] = Form(default=None),
     hit_at_raw: Optional[str] = Form(default=None),
+    image_filename: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
 ):
     if denial := require_role_response(request, "viewer"):
@@ -297,6 +313,13 @@ def hits_edit_submit(
     hit.stream_label = (stream_label or "").strip() or None
     hit.notes = (notes or "").strip() or None
     hit.hit_at = _parse_hit_at(hit_at_raw)
+
+    img_val = (image_filename or "").strip()
+    if img_val == "__remove__":
+        hit.image_filename = None
+    elif img_val and ".." not in img_val and "/" not in img_val and "\\" not in img_val:
+        hit.image_filename = img_val
+
     hit.updated_at = utcnow()
     session.add(hit)
     session.commit()
@@ -433,6 +456,10 @@ async def hits_api_create(
     if not streamer_name or not hit_note:
         return JSONResponse({"ok": False, "error": "streamer_name and hit_note are required"}, status_code=422)
 
+    img_fn = (body.get("image_filename") or "").strip() or None
+    if img_fn and (".." in img_fn or "/" in img_fn or "\\" in img_fn):
+        img_fn = None
+
     hit = LiveHit(
         streamer_name=streamer_name,
         hit_note=hit_note,
@@ -445,6 +472,7 @@ async def hits_api_create(
         notes=(body.get("notes") or "").strip() or None,
         hit_at=_parse_hit_at(body.get("hit_at")),
         created_by=current_user_label(request),
+        image_filename=img_fn,
     )
     session.add(hit)
     session.commit()
@@ -470,3 +498,57 @@ def hits_api_recent(
     ).all()
 
     return {"hits": [_hit_to_dict(h) for h in hits]}
+
+
+# ---------------------------------------------------------------------------
+# Hit image upload & serving
+# ---------------------------------------------------------------------------
+
+@router.post("/api/hits/upload-image")
+async def hits_upload_image(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    if denial := require_role_response(request, "viewer"):
+        return denial
+
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        return JSONResponse(
+            {"ok": False, "error": f"File type '{content_type}' not allowed. Use JPEG, PNG, or WebP."},
+            status_code=400,
+        )
+
+    data = await file.read()
+    if len(data) > MAX_IMAGE_SIZE:
+        return JSONResponse(
+            {"ok": False, "error": "Image too large (max 10 MB)"},
+            status_code=400,
+        )
+
+    ext_map = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/heic": ".heic",
+        "image/heif": ".heif",
+    }
+    ext = ext_map.get(content_type, ".jpg")
+    filename = f"{uuid.uuid4().hex}{ext}"
+
+    HIT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    (HIT_IMAGES_DIR / filename).write_bytes(data)
+
+    return JSONResponse({"ok": True, "filename": filename})
+
+
+@router.get("/hit-images/{filename}")
+def serve_hit_image(filename: str):
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return JSONResponse({"error": "Invalid filename"}, status_code=400)
+
+    path = HIT_IMAGES_DIR / filename
+    if not path.is_file():
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    return FileResponse(path)

@@ -125,10 +125,41 @@
                     <label class="form-full">Notes (internal)
                         <textarea name="notes" rows="2">{{ hit.notes or '' }}</textarea>
                     </label>
+
+                    <div class="form-full" style="margin-top:4px;">
+                        <label style="margin-bottom:8px;">Hit Photo</label>
+                        {% if hit.image_filename %}
+                        <div id="edit-existing-photo" style="margin-bottom:10px;">
+                            <a href="/hit-images/{{ hit.image_filename }}" target="_blank">
+                                <img src="/hit-images/{{ hit.image_filename }}" alt="Hit photo" style="max-width:220px;max-height:180px;border-radius:10px;border:1px solid var(--line);display:block;" loading="lazy">
+                            </a>
+                            <div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+                                <span style="font-size:12px;color:#a7b0ba;">Current photo attached</span>
+                                <button type="button" id="edit-remove-photo-btn" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1px solid #efb8b4;background:#fff0ef;color:#9d2f2b;cursor:pointer;font-weight:700;">Remove</button>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div style="display:flex;gap:8px;">
+                            <button type="button" id="edit-take-photo" style="appearance:none;border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:#fff;color:var(--text);font:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                {{ 'Replace Photo' if hit.image_filename else 'Take Photo' }}
+                            </button>
+                            <button type="button" id="edit-upload-photo" style="appearance:none;border:1px solid var(--line);border-radius:10px;padding:8px 14px;background:#fff;color:var(--text);font:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                Upload Photo
+                            </button>
+                        </div>
+                        <input type="file" id="edit-photo-input" accept="image/*" style="display:none">
+                        <input type="hidden" name="image_filename" id="edit-image-filename" value="{{ hit.image_filename or '' }}">
+                        <div id="edit-photo-preview" style="display:none;margin-top:8px;position:relative;max-width:220px;border-radius:10px;overflow:hidden;border:1px solid var(--line);">
+                            <img id="edit-photo-preview-img" src="" alt="Preview" style="display:block;width:100%;max-height:180px;object-fit:cover;">
+                            <button type="button" id="edit-photo-preview-remove" style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.7);border:none;color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#x2715;</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="submit-row">
-                    <button type="submit" class="primary-button">Save Changes</button>
+                    <button type="submit" class="primary-button" id="edit-save-btn">Save Changes</button>
                     <a class="button secondary-button" href="/hits">Cancel</a>
                 </div>
             </form>
@@ -143,17 +174,106 @@
     </div>
 
     <script>
-        // Pre-fill the hit_at datetime-local field from server value
         (function () {
             var field = document.getElementById('hit-at-field');
             if (field) {
-                // hit.hit_at is an ISO datetime string from the server
                 var raw = "{{ hit.hit_at.isoformat() if hit.hit_at else '' }}";
                 if (raw) {
-                    // Strip timezone suffix for datetime-local
                     field.value = raw.replace(/\+.*$/, '').replace('Z', '').slice(0, 16);
                 }
             }
+
+            var MAX_DIM = 1920, MAX_BYTES = 2 * 1024 * 1024;
+            var photoInput = document.getElementById('edit-photo-input');
+            var filenameField = document.getElementById('edit-image-filename');
+            var takeBtn = document.getElementById('edit-take-photo');
+            var uploadBtn = document.getElementById('edit-upload-photo');
+            var preview = document.getElementById('edit-photo-preview');
+            var previewImg = document.getElementById('edit-photo-preview-img');
+            var previewRemove = document.getElementById('edit-photo-preview-remove');
+            var existingBlock = document.getElementById('edit-existing-photo');
+            var removeExistingBtn = document.getElementById('edit-remove-photo-btn');
+            var form = document.querySelector('form[action*="/edit"]');
+            var saveBtn = document.getElementById('edit-save-btn');
+            var _pendingFile = null;
+
+            if (takeBtn) takeBtn.addEventListener('click', function() {
+                photoInput.setAttribute('capture', 'environment');
+                photoInput.click();
+            });
+            if (uploadBtn) uploadBtn.addEventListener('click', function() {
+                photoInput.removeAttribute('capture');
+                photoInput.click();
+            });
+            if (removeExistingBtn) removeExistingBtn.addEventListener('click', function() {
+                if (existingBlock) existingBlock.style.display = 'none';
+                filenameField.value = '__remove__';
+            });
+
+            function compress(file, cb) {
+                if (file.size <= MAX_BYTES) { cb(file); return; }
+                var img = new Image(), url = URL.createObjectURL(file);
+                img.onload = function() {
+                    URL.revokeObjectURL(url);
+                    var w = img.width, h = img.height;
+                    if (w > MAX_DIM || h > MAX_DIM) {
+                        var r = Math.min(MAX_DIM / w, MAX_DIM / h);
+                        w = Math.round(w * r); h = Math.round(h * r);
+                    }
+                    var c = document.createElement('canvas');
+                    c.width = w; c.height = h;
+                    c.getContext('2d').drawImage(img, 0, 0, w, h);
+                    c.toBlob(function(b) { cb(b ? new File([b], file.name, {type:'image/jpeg'}) : file); }, 'image/jpeg', 0.85);
+                };
+                img.onerror = function() { URL.revokeObjectURL(url); cb(file); };
+                img.src = url;
+            }
+
+            photoInput && photoInput.addEventListener('change', function() {
+                if (!photoInput.files || !photoInput.files[0]) return;
+                compress(photoInput.files[0], function(f) {
+                    _pendingFile = f;
+                    previewImg.src = URL.createObjectURL(f);
+                    preview.style.display = 'block';
+                    if (existingBlock) existingBlock.style.display = 'none';
+                });
+            });
+
+            if (previewRemove) previewRemove.addEventListener('click', function() {
+                _pendingFile = null;
+                preview.style.display = 'none';
+                previewImg.src = '';
+                photoInput.value = '';
+                filenameField.value = '{{ hit.image_filename or "" }}';
+                if (existingBlock && '{{ hit.image_filename or "" }}') existingBlock.style.display = '';
+            });
+
+            if (form) form.addEventListener('submit', function(e) {
+                if (!_pendingFile) return;
+                e.preventDefault();
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Uploading photo…';
+                var fd = new FormData();
+                fd.append('file', _pendingFile);
+                fetch('/api/hits/upload-image', { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.ok) {
+                            filenameField.value = data.filename;
+                            _pendingFile = null;
+                            form.submit();
+                        } else {
+                            saveBtn.disabled = false;
+                            saveBtn.textContent = 'Save Changes';
+                            alert('Photo upload failed: ' + (data.error || 'unknown error'));
+                        }
+                    })
+                    .catch(function() {
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Save Changes';
+                        alert('Network error uploading photo.');
+                    });
+            });
         })();
     </script>
 </body>

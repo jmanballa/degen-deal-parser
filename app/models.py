@@ -565,6 +565,7 @@ class LiveHit(SQLModel, table=True):
     stream_label: Optional[str] = Field(default=None)
     notes: Optional[str] = Field(default=None)
     created_by: Optional[str] = Field(default=None)
+    image_filename: Optional[str] = Field(default=None)
 
 
 class TikTokSyncState(SQLModel, table=True):
