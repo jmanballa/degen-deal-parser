@@ -9,16 +9,16 @@ collector number, which uniquely identifies a card within a set.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import collections
 import io
+import json
 import logging
 import re
 import time
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
-
-import json
 
 import httpx
 from openai import OpenAI
@@ -1090,7 +1090,6 @@ async def _enrich_price_fast(candidate: ScoredCandidate, ptcg_key: str = "") -> 
             cached = _tcgtracking_cache.get(set_key)
 
             if not cached:
-                import asyncio
                 for cat_id in TCGTRACKING_POKEMON_CATS:
                     search_resp = await client.get(
                         f"{TCGTRACKING_BASE}/{cat_id}/search",
@@ -1478,13 +1477,18 @@ async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any
         alt_distance = distances[i + 1] if (i + 1) < len(distances) else 0.6
         scored_list.append(_ximilar_to_scored(alt_data, alt_distance))
 
-    # Quick price + image enrichment for the best match only (keep it fast)
+    # Price + image enrichment for all candidates
     t_stage = time.monotonic()
     settings = get_settings()
     try:
         await _enrich_price_fast(best, settings.pokemon_tcg_api_key)
     except Exception as exc:
         logger.debug("[pokemon_scanner] Ximilar price enrichment failed for %s: %s", best.name, exc)
+    for alt in scored_list[1:]:
+        try:
+            await _enrich_price_fast(alt, settings.pokemon_tcg_api_key)
+        except Exception:
+            pass
     debug_info["stage_times_ms"]["price_enrich"] = _elapsed(t_stage)
 
     # Determine status
@@ -1520,14 +1524,162 @@ async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any
 # Stage G: Orchestrator (dispatches to Ximilar or legacy OCR pipeline)
 # ---------------------------------------------------------------------------
 
+async def _safe_run(coro_func, *args) -> dict[str, Any] | None:
+    """Run a pipeline function, returning None on any failure."""
+    try:
+        return await coro_func(*args)
+    except Exception as exc:
+        logger.error("[pokemon_scanner] Pipeline %s failed: %s", coro_func.__name__, exc)
+        return None
+
+
+def _candidate_key(c: dict) -> tuple:
+    return (
+        (c.get("name") or "").lower(),
+        (c.get("number") or "").split("/")[0].lstrip("0"),
+        (c.get("set_name") or "").lower(),
+    )
+
+
+def _merge_results(
+    ximilar: dict[str, Any] | None,
+    legacy: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Merge results from parallel Ximilar + legacy OCR pipelines.
+
+    Strategy:
+    - Both succeed, same best match  -> boost confidence to HIGH
+    - Both succeed, different matches -> merge candidates, mark AMBIGUOUS
+    - One fails                       -> return the other
+    """
+    if ximilar is None and legacy is None:
+        return asdict(ScanResult(
+            status="ERROR",
+            error="Both scanning pipelines failed.",
+            processing_time_ms=0,
+        ))
+
+    if ximilar is None:
+        if legacy:
+            legacy.setdefault("debug", {})["engines_used"] = ["legacy_ocr"]
+        return legacy
+    if legacy is None:
+        ximilar.setdefault("debug", {})["engines_used"] = ["ximilar"]
+        return ximilar
+
+    # Both succeeded — compare best matches
+    xbest = ximilar.get("best_match") or {}
+    lbest = legacy.get("best_match") or {}
+
+    # Handle cases where one pipeline returned NO_MATCH / ERROR
+    if ximilar.get("status") in ("ERROR", "NO_MATCH") and legacy.get("status") not in ("ERROR", "NO_MATCH"):
+        legacy.setdefault("debug", {})["engines_used"] = ["legacy_ocr"]
+        legacy["debug"]["ximilar_status"] = ximilar.get("status")
+        return legacy
+    if legacy.get("status") in ("ERROR", "NO_MATCH") and ximilar.get("status") not in ("ERROR", "NO_MATCH"):
+        ximilar.setdefault("debug", {})["engines_used"] = ["ximilar"]
+        ximilar["debug"]["legacy_status"] = legacy.get("status")
+        return ximilar
+
+    import copy
+    merged = copy.deepcopy(ximilar)
+    merged.setdefault("debug", {})["engines_used"] = ["ximilar", "legacy_ocr"]
+    merged["debug"]["legacy_best_match"] = {
+        "name": lbest.get("name"),
+        "number": lbest.get("number"),
+        "set_name": lbest.get("set_name"),
+        "score": lbest.get("score"),
+        "confidence": lbest.get("confidence"),
+    }
+    merged["debug"]["legacy_processing_time_ms"] = legacy.get("processing_time_ms")
+
+    # Compare best matches by name + collector number
+    x_name = (xbest.get("name") or "").lower()
+    l_name = (lbest.get("name") or "").lower()
+    x_num = (xbest.get("number") or "").split("/")[0].lstrip("0")
+    l_num = (lbest.get("number") or "").split("/")[0].lstrip("0")
+
+    same_card = x_name == l_name and x_num and l_num and x_num == l_num
+
+    if same_card:
+        logger.info(
+            "[pokemon_scanner] Dual-engine AGREE: %s #%s (ximilar=%.0f, legacy=%.0f)",
+            xbest.get("name"), xbest.get("number"),
+            xbest.get("score", 0), lbest.get("score", 0),
+        )
+        merged["best_match"]["score"] = merged["best_match"].get("score", 0) + 15
+        merged["best_match"]["confidence"] = "HIGH"
+        merged["best_match"]["match_reason"] = (
+            merged["best_match"].get("match_reason", "") + " (confirmed by OCR pipeline)"
+        )
+        if merged.get("status") == "AMBIGUOUS":
+            merged["status"] = "MATCHED"
+        merged["disambiguation_method"] = "dual_engine_agree"
+    else:
+        logger.info(
+            "[pokemon_scanner] Dual-engine DISAGREE: ximilar=%s #%s vs legacy=%s #%s",
+            xbest.get("name"), xbest.get("number"),
+            lbest.get("name"), lbest.get("number"),
+        )
+        merged["disambiguation_method"] = "dual_engine_disagree"
+
+        # If Ximilar is HIGH and legacy is LOW/MEDIUM with a weak score, trust Ximilar
+        x_conf = xbest.get("confidence", "LOW")
+        l_score = lbest.get("score", 0)
+        if x_conf == "HIGH" and l_score < 60:
+            merged["debug"]["dual_engine_note"] = "Ximilar HIGH, legacy weak — trusting Ximilar"
+        else:
+            merged["status"] = "AMBIGUOUS"
+
+    # Merge candidate lists (dedup by name+number+set)
+    existing_keys = set()
+    merged_candidates = []
+    for c in (merged.get("candidates") or []):
+        key = _candidate_key(c)
+        if key not in existing_keys:
+            existing_keys.add(key)
+            merged_candidates.append(c)
+
+    for c in (legacy.get("candidates") or []):
+        key = _candidate_key(c)
+        if key not in existing_keys:
+            existing_keys.add(key)
+            c_copy = dict(c)
+            c_copy["source"] = c_copy.get("source", "legacy_ocr")
+            merged_candidates.append(c_copy)
+
+    merged_candidates.sort(key=lambda c: -(c.get("score") or 0))
+    merged["candidates"] = merged_candidates[:12]
+
+    # Use the slower pipeline's total time as the overall time
+    merged["processing_time_ms"] = max(
+        ximilar.get("processing_time_ms", 0),
+        legacy.get("processing_time_ms", 0),
+    )
+
+    _save_to_history(merged)
+    return merged
+
+
 async def run_pipeline(image_b64: str) -> dict[str, Any]:
     """
-    Run card scanning pipeline. Uses Ximilar visual recognition when
-    configured, falls back to legacy OCR pipeline otherwise.
+    Run card scanning pipeline. When both Ximilar and Google Vision API keys
+    are configured, runs both pipelines in parallel and merges results.
+    Falls back to whichever single pipeline is available.
     """
     settings = get_settings()
+    has_ximilar = bool(settings.ximilar_api_token)
+    has_ocr = bool(settings.google_vision_api_key)
 
-    if settings.ximilar_api_token:
+    if has_ximilar and has_ocr:
+        logger.info("[pokemon_scanner] Running dual-engine pipeline (Ximilar + legacy OCR)")
+        ximilar_result, legacy_result = await asyncio.gather(
+            _safe_run(_run_ximilar_pipeline, image_b64, settings.ximilar_api_token),
+            _safe_run(_run_legacy_pipeline, image_b64),
+        )
+        return _merge_results(ximilar_result, legacy_result)
+
+    if has_ximilar:
         try:
             return await _run_ximilar_pipeline(image_b64, settings.ximilar_api_token)
         except Exception as exc:

@@ -178,14 +178,18 @@
         .badge-low { background:var(--red-bg); color:#9d2f2b; border:1px solid #efb8b4; }
 
         /* Candidates */
-        .candidates-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; margin-top:12px; }
+        .candidates-section { margin-top:16px; border-top:1px solid var(--line); padding-top:14px; }
+        .candidates-header { font-size:13px; font-weight:700; color:var(--muted); margin-bottom:10px; }
+        .candidates-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; }
         .candidate-card { cursor:pointer; padding:10px; border-radius:14px; text-align:center; background:#fff; border:2px solid var(--line); transition:all .15s; }
-        .candidate-card:hover { border-color:var(--accent); transform:translateY(-2px); }
-        .candidate-card.selected { border-color:var(--accent); background:var(--red-bg); }
+        .candidate-card:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.08); }
+        .candidate-card.selected { border-color:var(--accent); background:linear-gradient(180deg,#fff5f2,#ffebe6); }
         .candidate-card img { width:100%; aspect-ratio:5/7; object-fit:cover; border-radius:8px; background:#f0e8dc; margin-bottom:6px; }
+        .candidate-placeholder { width:100%; aspect-ratio:5/7; border-radius:8px; background:#f0e8dc; margin-bottom:6px; display:flex; align-items:center; justify-content:center; font-size:28px; color:var(--muted); }
         .candidate-card .c-name { font-size:11px; font-weight:700; line-height:1.3; color:var(--text); }
-        .candidate-card .c-set { font-size:10px; color:var(--muted); }
-        .candidate-card .c-score { font-size:10px; font-weight:700; color:var(--accent); margin-top:3px; }
+        .candidate-card .c-set { font-size:10px; color:var(--muted); line-height:1.4; }
+        .candidate-card .c-price { font-size:11px; font-weight:700; color:var(--green); margin-top:3px; }
+        .candidate-card .c-price-none { color:var(--muted); font-weight:500; font-style:italic; }
 
         /* Debug */
         .debug-toggle { font-size:12px; color:var(--muted); font-weight:600; cursor:pointer; padding:8px 0; border:none; background:none; display:flex; align-items:center; gap:4px; }
@@ -255,7 +259,7 @@
             .result-sheet-inner { transform:none; transition:none; max-height:none; border-radius:24px; border:1px solid var(--line); box-shadow:var(--shadow); overflow:visible; background:linear-gradient(180deg,var(--card-strong),var(--card)); }
             .result-handle { display:none; }
             .result-panel { padding:16px 22px 22px; }
-            .candidates-grid { grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); }
+            .candidates-grid { grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); }
 
             /* Drawer — static sidebar */
             .drawer {
@@ -392,6 +396,8 @@ var PKScanner = (function() {
     var nextScanId = 0;
     var activeRequests = 0;
     var MAX_CONCURRENT = 2;
+    var reviewingScanId = null;
+    var selectedCandidateIdx = null;
 
     function escHtml(str) {
         return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -489,6 +495,8 @@ var PKScanner = (function() {
     async function captureSequential() {
         if (sequentialLock) return;
         sequentialLock = true;
+        reviewingScanId = null;
+        selectedCandidateIdx = null;
         var btn = document.getElementById('capture-btn');
         btn.disabled = true;
 
@@ -566,7 +574,7 @@ var PKScanner = (function() {
 
             if (data.status === 'MATCHED' && data.best_match) {
                 entry.status = 'matched';
-                addToBatchFromCard(data.best_match);
+                addToBatchFromCard(data.best_match, entry.id);
                 var m = data.best_match;
                 var tp = m.market_price ? (' \u2014 $' + Number(m.market_price).toFixed(2)) : '';
                 showToast('\u2713 ' + m.name + tp);
@@ -610,7 +618,7 @@ var PKScanner = (function() {
                 '<div class="batch-name">Identifying card #' + (entry.id + 1) + '...</div>' +
                 '<div class="batch-meta"><span class="queue-badge queue-badge-queued">Queued</span></div>' +
             '</div>';
-        list.insertBefore(el, list.firstChild);
+        list.appendChild(el);
         updateBatchCounts();
     }
 
@@ -631,17 +639,32 @@ var PKScanner = (function() {
             var price = m.market_price ? ('$' + Number(m.market_price).toFixed(2)) : '';
             var imgSrc = m.image_url_small || m.image_url || '';
             el.className = 'batch-item';
-            el.removeAttribute('data-scan-id');
+            var batchIdx = _findBatchIdx(entry.id);
             var thumb = imgSrc
                 ? '<img class="batch-thumb" src="' + escHtml(imgSrc) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
                 : '<div class="batch-thumb-placeholder">&#127183;</div>';
+            var condOptions = CONDITIONS.map(function(c) {
+                var sel = c === 'NM' ? ' selected' : '';
+                return '<option value="' + c + '"' + sel + '>' + c + '</option>';
+            }).join('');
             el.innerHTML =
                 thumb +
                 '<div class="batch-info">' +
                     '<div class="batch-name">' + escHtml(m.name) + '</div>' +
                     '<div class="batch-meta">' + escHtml(m.set_name || '') + (m.number ? ' #' + escHtml(m.number) : '') + (price ? ' &middot; ' + price : '') + '</div>' +
                 '</div>' +
-                '<span class="badge badge-high" style="flex-shrink:0;">&#10003;</span>';
+                '<select class="batch-cond" data-batch-idx="' + batchIdx + '">' + condOptions + '</select>' +
+                '<button class="batch-del" data-batch-idx="' + batchIdx + '" title="Remove">&#x2715;</button>';
+            var condSel = el.querySelector('.batch-cond');
+            var delBtn = el.querySelector('.batch-del');
+            if (condSel) condSel.addEventListener('change', function(e) {
+                setBatchCond(parseInt(e.target.dataset.batchIdx), e.target.value);
+            });
+            if (delBtn) delBtn.addEventListener('click', function(e) {
+                var idx = parseInt(e.target.dataset.batchIdx);
+                removeBatchItem(idx);
+                el.remove();
+            });
         } else if (entry.status === 'review') {
             var m = entry.result.best_match;
             var sid = entry.id;
@@ -698,6 +721,8 @@ var PKScanner = (function() {
             if (scanQueue[i].id === scanId) { entry = scanQueue[i]; break; }
         }
         if (!entry || !entry.result) return;
+        reviewingScanId = scanId;
+        selectedCandidateIdx = null;
         lastResult = entry.result;
         showResult(entry.result);
     }
@@ -706,6 +731,10 @@ var PKScanner = (function() {
         var el = document.querySelector('[data-scan-id="' + scanId + '"]');
         if (el) el.remove();
         scanQueue = scanQueue.filter(function(e) { return e.id !== scanId; });
+        // Also remove from batch if this queue item was already added
+        batch = batch.filter(function(b) { return b._fromScanId !== scanId; });
+        saveBatch();
+        updateBatchCounts();
         updateQueueStatus();
     }
 
@@ -765,23 +794,27 @@ var PKScanner = (function() {
 
         var candidates = data.candidates || [];
         if (candidates.length > 1 || data.status === 'AMBIGUOUS') {
-            html += '<div style="margin-top:16px;background:var(--yellow-bg);border-radius:12px;padding:14px;">';
-            html += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">';
-            html += data.status === 'AMBIGUOUS' ? '&#9888; Pick the correct card:' : '&#128260; Wrong match? Pick the correct version:';
+            html += '<div class="candidates-section">';
+            html += '<div class="candidates-header">';
+            html += data.status === 'AMBIGUOUS' ? '&#9888; Pick the correct card:' : 'Other versions:';
             html += '</div><div class="candidates-grid">';
             for (var i = 0; i < Math.min(candidates.length, 8); i++) {
                 var c = candidates[i];
                 var ci = c.image_url_small || c.image_url || '';
                 var isBest = data.best_match && c.name === data.best_match.name && c.number === data.best_match.number && c.set_name === data.best_match.set_name;
                 html += '<div class="candidate-card' + (isBest ? ' selected' : '') + '" data-idx="' + i + '" onclick="PKScanner.pickCandidate(' + i + ')">';
-                if (ci) html += '<img src="' + escHtml(ci) + '" alt="" onerror="this.style.display=\'none\'">';
-                html += '<div class="c-name">' + escHtml(c.name) + '</div>';
-                html += '<div class="c-set">' + escHtml(c.set_name) + ' #' + escHtml(c.number) + '</div>';
-                html += '<div class="c-score">Score: ' + c.score + '</div>';
-                if (c.market_price) {
-                    html += '<div class="c-set" style="color:var(--green);font-weight:700;">$' + Number(c.market_price).toFixed(2) + '</div>';
+                if (ci) {
+                    html += '<img src="' + escHtml(ci) + '" alt="" onerror="this.style.display=\'none\'">';
                 } else {
-                    html += '<div class="c-set" style="color:var(--muted);font-style:italic;">No price</div>';
+                    html += '<div class="candidate-placeholder">&#127183;</div>';
+                }
+                html += '<div class="c-name">' + escHtml(c.name) + '</div>';
+                html += '<div class="c-set">' + escHtml(c.set_name) + '</div>';
+                html += '<div class="c-set">#' + escHtml(c.number) + '</div>';
+                if (c.market_price) {
+                    html += '<div class="c-price">$' + Number(c.market_price).toFixed(2) + '</div>';
+                } else {
+                    html += '<div class="c-price c-price-none">No price</div>';
                 }
                 html += '</div>';
             }
@@ -801,8 +834,21 @@ var PKScanner = (function() {
         var debugEl = document.getElementById('debug-content');
         var dbg = data.debug || {};
         var ef = data.extracted_fields || {};
-        var isXimilar = dbg.engine === 'ximilar';
-        var debugHtml = '<strong>Engine:</strong> ' + escHtml(dbg.engine || 'legacy_ocr') + '<br>';
+        var engines = dbg.engines_used || [dbg.engine || 'legacy_ocr'];
+        var isDual = engines.length > 1;
+        var isXimilar = dbg.engine === 'ximilar' || engines.indexOf('ximilar') >= 0;
+        var debugHtml = '<strong>Engine' + (isDual ? 's' : '') + ':</strong> ' + escHtml(engines.join(' + ')) + '<br>';
+
+        if (isDual && data.disambiguation_method) {
+            var verdict = data.disambiguation_method === 'dual_engine_agree' ? '\u2705 Both engines agree' : '\u26A0 Engines disagree';
+            debugHtml += '<strong>Verdict:</strong> ' + verdict + '<br>';
+            var lb = dbg.legacy_best_match;
+            if (lb) {
+                debugHtml += '<strong>Legacy best:</strong> ' + escHtml(lb.name || '') + ' #' + escHtml(lb.number || '') + ' ' + escHtml(lb.set_name || '') + ' (score=' + (lb.score || 0) + ')<br>';
+            }
+            if (dbg.dual_engine_note) debugHtml += '<strong>Note:</strong> ' + escHtml(dbg.dual_engine_note) + '<br>';
+            if (dbg.legacy_processing_time_ms) debugHtml += '<strong>Legacy time:</strong> ' + dbg.legacy_processing_time_ms.toFixed(0) + 'ms<br>';
+        }
 
         if (isXimilar) {
             debugHtml += '<strong>Identified:</strong> name=' + escHtml(ef.card_name) + ', number=' + escHtml(ef.collector_number) + ', set=' + escHtml(ef.set_name) + '<br>';
@@ -814,19 +860,26 @@ var PKScanner = (function() {
                 debugHtml += '<strong>All distances:</strong> ' + dbg.ximilar_distances.map(function(d){return d.toFixed(4);}).join(', ') + '<br>';
             }
             debugHtml += '<strong>Full name:</strong> ' + escHtml(dbg.ximilar_full_name || '') + '<br>';
-        } else {
-            debugHtml += '<strong>OCR Text:</strong><br><pre style="white-space:pre-wrap;margin:4px 0 10px;">' + escHtml(dbg.ocr_raw_text || '(none)') + '</pre>';
-            debugHtml += '<strong>Extracted:</strong> name=' + escHtml(ef.card_name) + ', number=' + escHtml(ef.collector_number) + ', set=' + escHtml(ef.set_name) + '<br>';
-            debugHtml += '<strong>Variants:</strong> ' + escHtml((ef.variant_hints || []).join(', ') || '(none)') + '<br>';
-            debugHtml += '<strong>OCR Confidence:</strong> ' + ((ef.ocr_confidence || 0) * 100).toFixed(0) + '%<br>';
-            debugHtml += '<strong>Candidates before scoring:</strong> ' + (dbg.candidates_before_scoring || 0) + '<br>';
+        }
+        if (!isXimilar || isDual) {
+            if (dbg.ocr_raw_text) {
+                debugHtml += '<strong>OCR Text:</strong><br><pre style="white-space:pre-wrap;margin:4px 0 10px;">' + escHtml(dbg.ocr_raw_text) + '</pre>';
+            }
+            if (!isXimilar) {
+                debugHtml += '<strong>Extracted:</strong> name=' + escHtml(ef.card_name) + ', number=' + escHtml(ef.collector_number) + ', set=' + escHtml(ef.set_name) + '<br>';
+                debugHtml += '<strong>Variants:</strong> ' + escHtml((ef.variant_hints || []).join(', ') || '(none)') + '<br>';
+                debugHtml += '<strong>OCR Confidence:</strong> ' + ((ef.ocr_confidence || 0) * 100).toFixed(0) + '%<br>';
+                debugHtml += '<strong>Candidates before scoring:</strong> ' + (dbg.candidates_before_scoring || 0) + '<br>';
+            }
         }
 
         debugHtml += '<strong>Processing time:</strong> ' + (data.processing_time_ms || 0).toFixed(0) + 'ms<br>';
         var stages = dbg.stage_times_ms || {};
-        debugHtml += '<strong>Stage times:</strong> ';
-        for (var k in stages) debugHtml += k + '=' + stages[k].toFixed(0) + 'ms ';
-        debugHtml += '<br>';
+        if (Object.keys(stages).length) {
+            debugHtml += '<strong>Stage times:</strong> ';
+            for (var k in stages) debugHtml += k + '=' + stages[k].toFixed(0) + 'ms ';
+            debugHtml += '<br>';
+        }
 
         if (data.best_match && data.best_match.score_breakdown) {
             debugHtml += '<strong>Score breakdown:</strong> ';
@@ -844,21 +897,71 @@ var PKScanner = (function() {
 
     function pickCandidate(idx) {
         if (!lastResult || !lastResult.candidates || !lastResult.candidates[idx]) return;
+        selectedCandidateIdx = idx;
         var picked = lastResult.candidates[idx];
-        addToBatchFromCard(picked);
-        showStatus('Added: ' + picked.name, 'ok');
-        renderBatch();
 
         document.querySelectorAll('.candidate-card').forEach(function(el) { el.classList.remove('selected'); });
         var card = document.querySelector('.candidate-card[data-idx="' + idx + '"]');
         if (card) card.classList.add('selected');
+
+        _updateResultDisplay(picked);
+    }
+
+    function _updateResultDisplay(card) {
+        var nameEl = document.querySelector('.result-name');
+        var setEl = document.querySelector('.result-set');
+        var numEl = document.querySelector('.result-number');
+        var priceEl = document.querySelector('.result-price');
+        var imgEl = document.querySelector('.result-img');
+        if (nameEl) nameEl.textContent = card.name || '';
+        if (setEl) setEl.textContent = card.set_name || '';
+        if (numEl) numEl.textContent = '#' + (card.number || '') + (card.rarity ? ' \u00b7 ' + card.rarity : '');
+        if (priceEl) {
+            if (card.market_price) {
+                priceEl.textContent = '$' + Number(card.market_price).toFixed(2);
+                priceEl.style.cssText = '';
+            } else {
+                priceEl.innerHTML = '<span style="color:var(--muted);">No price data</span>';
+            }
+        }
+        if (imgEl && card.image_url) { imgEl.src = card.image_url; imgEl.style.display = ''; }
     }
 
     function addBestMatch() {
-        if (!lastResult || !lastResult.best_match) return;
-        addToBatchFromCard(lastResult.best_match);
-        showStatus('Added: ' + lastResult.best_match.name, 'ok');
+        var card = null;
+        if (selectedCandidateIdx !== null && lastResult && lastResult.candidates && lastResult.candidates[selectedCandidateIdx]) {
+            card = lastResult.candidates[selectedCandidateIdx];
+        } else if (lastResult && lastResult.best_match) {
+            card = lastResult.best_match;
+        }
+        if (!card) return;
+
+        if (reviewingScanId !== null) {
+            addToBatchFromCard(card, reviewingScanId);
+            _resolveQueueItem(reviewingScanId, card);
+            reviewingScanId = null;
+        } else {
+            addToBatchFromCard(card);
+        }
+        showToast('\u2713 Added: ' + card.name, 2000);
         renderBatch();
+        selectedCandidateIdx = null;
+        retake();
+    }
+
+    function _resolveQueueItem(scanId, pickedCard) {
+        var entry = null;
+        for (var i = 0; i < scanQueue.length; i++) {
+            if (scanQueue[i].id === scanId) { entry = scanQueue[i]; break; }
+        }
+        if (!entry) return;
+        if (pickedCard) {
+            entry.result = entry.result || {};
+            entry.result.best_match = pickedCard;
+        }
+        entry.status = 'matched';
+        updateQueueItemEl(entry);
+        updateQueueStatus();
     }
 
     function retake() {
@@ -866,6 +969,9 @@ var PKScanner = (function() {
         document.getElementById('debug-content').classList.remove('open');
         document.getElementById('debug-arrow').innerHTML = '&#9654;';
         lastResult = null;
+        selectedCandidateIdx = null;
+        reviewingScanId = null;
+        _restartCameraIfNeeded();
     }
 
     // ------------------------------------------------------------------
@@ -892,14 +998,14 @@ var PKScanner = (function() {
         }
     }
 
-    function addToBatchFromCard(card) {
+    function addToBatchFromCard(card, scanId) {
         var variant = _getVariant();
         var variantPrice = _getVariantPrice();
         var isFoil = variant && variant.toLowerCase().indexOf('holo') >= 0;
         var notes = card.rarity ? ('Rarity: ' + card.rarity) : '';
         if (variant) notes = (notes ? notes + ' | ' : '') + 'Variant: ' + variant;
 
-        batch.push({
+        var item = {
             card_name: card.name || card.card_name || '',
             game: 'Pokemon',
             condition: 'NM',
@@ -910,12 +1016,25 @@ var PKScanner = (function() {
             is_foil: isFoil,
             variant: variant,
             notes: notes,
-        });
+        };
+        if (scanId !== undefined) item._fromScanId = scanId;
+        batch.push(item);
         saveBatch();
     }
 
+    function _findBatchIdx(scanId) {
+        for (var i = 0; i < batch.length; i++) {
+            if (batch[i]._fromScanId === scanId) return i;
+        }
+        return -1;
+    }
+
     function removeBatchItem(idx) {
-        batch.splice(idx, 1);
+        var removed = batch.splice(idx, 1)[0];
+        if (removed && removed._fromScanId !== undefined) {
+            var el = document.querySelector('[data-scan-id="' + removed._fromScanId + '"]');
+            if (el) el.remove();
+        }
         saveBatch();
         renderBatch();
     }
@@ -935,6 +1054,13 @@ var PKScanner = (function() {
         renderQueueFromScratch();
         updateQueueStatus();
         showStatus('', '');
+        _restartCameraIfNeeded();
+    }
+
+    function _restartCameraIfNeeded() {
+        if (!stream) return;
+        var alive = stream.getTracks().some(function(t) { return t.readyState === 'live'; });
+        if (!alive) { stream = null; startCamera(); }
     }
 
     function saveBatch() {
@@ -974,10 +1100,14 @@ var PKScanner = (function() {
 
     function renderBatch() {
         var list = document.getElementById('batch-list');
+        // Remove only non-queue batch items (queue items stay in their DOM position)
         var existingBatchEls = list.querySelectorAll('.batch-item:not([data-scan-id])');
         existingBatchEls.forEach(function(el) { el.remove(); });
 
         for (var i = 0; i < batch.length; i++) {
+            // Skip items that originated from the queue — they're already rendered in-place
+            if (batch[i]._fromScanId !== undefined) continue;
+
             (function(idx, item) {
                 var el = document.createElement('div');
                 el.className = 'batch-item';
