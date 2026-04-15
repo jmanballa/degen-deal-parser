@@ -791,19 +791,11 @@ var PKScanner = (function() {
                 ? '<img class="batch-thumb" src="' + escHtml(imgSrc) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
                 : '<div class="batch-thumb-placeholder">&#127183;</div>';
             var condOptions = CONDITIONS.map(function(c) {
-                var sel = c === 'NM' ? ' selected' : '';
+                var sel = (batch[batchIdx] && batch[batchIdx].condition === c) ? ' selected' : (c === 'NM' ? ' selected' : '');
                 return '<option value="' + c + '"' + sel + '>' + c + '</option>';
             }).join('');
-            var variantHtml = '';
-            if (variants.length >= 1) {
-                variantHtml = '<select class="batch-variant" data-batch-idx="' + batchIdx + '" style="font-size:10px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;max-width:110px;background:#fff;">';
-                for (var vk = 0; vk < variants.length; vk++) {
-                    var vItem = variants[vk];
-                    var vSel = detectedV && vItem.name === detectedV ? ' selected' : '';
-                    variantHtml += '<option value="' + escHtml(vItem.name) + '" data-price="' + (vItem.price != null ? vItem.price : '') + '" data-low="' + (vItem.low_price != null ? vItem.low_price : '') + '"' + vSel + '>' + escHtml(vItem.name) + '</option>';
-                }
-                variantHtml += '</select>';
-            }
+            var selectedV = (batch[batchIdx] && batch[batchIdx].variant) || detectedV;
+            var variantHtml = _buildBatchVariantHtml(variants, selectedV, batchIdx);
             el.innerHTML =
                 thumb +
                 '<div class="batch-info">' +
@@ -815,7 +807,6 @@ var PKScanner = (function() {
                 '<button class="batch-del" data-batch-idx="' + batchIdx + '" title="Remove">&#x2715;</button>';
             var condSel = el.querySelector('.batch-cond');
             var delBtn = el.querySelector('.batch-del');
-            var varSel = el.querySelector('.batch-variant');
             if (condSel) condSel.addEventListener('change', function(e) {
                 setBatchCond(parseInt(e.target.dataset.batchIdx), e.target.value);
             });
@@ -824,33 +815,7 @@ var PKScanner = (function() {
                 removeBatchItem(idx);
                 el.remove();
             });
-            if (varSel) varSel.addEventListener('change', function(e) {
-                var bi = parseInt(e.target.dataset.batchIdx);
-                var opt = e.target.options[e.target.selectedIndex];
-                var mp = opt.getAttribute('data-price');
-                var lp = opt.getAttribute('data-low');
-                var newPrice = null;
-                var isLow = false;
-                if (mp !== '' && mp !== null) { newPrice = parseFloat(mp); }
-                else if (lp !== '' && lp !== null) { newPrice = parseFloat(lp); isLow = true; }
-                if (batch[bi]) {
-                    batch[bi].auto_price = newPrice;
-                    batch[bi].variant = opt.value;
-                    var isFoil = opt.value.toLowerCase().indexOf('holo') >= 0;
-                    batch[bi].is_foil = isFoil;
-                    var notes = batch[bi].notes || '';
-                    notes = notes.replace(/ \| Price: TCG Low/g, '').replace(/ \| Variant: [^|]*/g, '');
-                    notes = (notes ? notes + ' | ' : '') + 'Variant: ' + opt.value;
-                    if (isLow) notes += ' | Price: TCG Low';
-                    batch[bi].notes = notes;
-                    saveBatch();
-                    updateBatchCounts();
-                }
-                var priceLabel = el.querySelector('.batch-price-label');
-                if (priceLabel) {
-                    priceLabel.textContent = newPrice ? ('$' + newPrice.toFixed(2) + (isLow ? ' (L)' : '')) : '';
-                }
-            });
+            _attachBatchVariantHandler(el, batchIdx);
         } else if (entry.status === 'review') {
             var m = entry.result.best_match;
             var sid = entry.id;
@@ -1269,6 +1234,7 @@ var PKScanner = (function() {
             is_foil: isFoil,
             variant: variant,
             notes: notes,
+            _available_variants: card.available_variants || [],
         };
         if (scanId !== undefined) item._fromScanId = scanId;
         batch.push(item);
@@ -1354,14 +1320,55 @@ var PKScanner = (function() {
         totalEl.textContent = batch.length ? ('$' + totalPrice.toFixed(2)) : '';
     }
 
+    function _buildBatchVariantHtml(variants, selectedVariant, batchIdx) {
+        if (!variants || !variants.length) return '';
+        var html = '<select class="batch-variant" data-batch-idx="' + batchIdx + '" style="font-size:10px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;max-width:110px;background:#fff;">';
+        for (var vk = 0; vk < variants.length; vk++) {
+            var v = variants[vk];
+            var sel = selectedVariant && v.name === selectedVariant ? ' selected' : '';
+            html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '"' + sel + '>' + escHtml(v.name) + '</option>';
+        }
+        html += '</select>';
+        return html;
+    }
+
+    function _attachBatchVariantHandler(el, batchIdx) {
+        var varSel = el.querySelector('.batch-variant');
+        if (!varSel) return;
+        varSel.addEventListener('change', function(e) {
+            var bi = parseInt(e.target.dataset.batchIdx);
+            var opt = e.target.options[e.target.selectedIndex];
+            var mp = opt.getAttribute('data-price');
+            var lp = opt.getAttribute('data-low');
+            var newPrice = null;
+            var isLow = false;
+            if (mp !== '' && mp !== null) { newPrice = parseFloat(mp); }
+            else if (lp !== '' && lp !== null) { newPrice = parseFloat(lp); isLow = true; }
+            if (batch[bi]) {
+                batch[bi].auto_price = newPrice;
+                batch[bi].variant = opt.value;
+                batch[bi].is_foil = opt.value.toLowerCase().indexOf('holo') >= 0;
+                var notes = batch[bi].notes || '';
+                notes = notes.replace(/ \| Price: TCG Low/g, '').replace(/ \| Variant: [^|]*/g, '');
+                notes = (notes ? notes + ' | ' : '') + 'Variant: ' + opt.value;
+                if (isLow) notes += ' | Price: TCG Low';
+                batch[bi].notes = notes;
+                saveBatch();
+                updateBatchCounts();
+            }
+            var priceLabel = el.querySelector('.batch-price-label');
+            if (priceLabel) {
+                priceLabel.textContent = newPrice ? ('$' + newPrice.toFixed(2) + (isLow ? ' (L)' : '')) : '';
+            }
+        });
+    }
+
     function renderBatch() {
         var list = document.getElementById('batch-list');
-        // Remove only non-queue batch items (queue items stay in their DOM position)
         var existingBatchEls = list.querySelectorAll('.batch-item:not([data-scan-id])');
         existingBatchEls.forEach(function(el) { el.remove(); });
 
         for (var i = 0; i < batch.length; i++) {
-            // Skip items whose queue DOM element still exists
             if (batch[i]._fromScanId !== undefined && document.querySelector('[data-scan-id="' + batch[i]._fromScanId + '"]')) continue;
 
             (function(idx, item) {
@@ -1379,23 +1386,28 @@ var PKScanner = (function() {
                     return '<option value="' + c + '"' + (item.condition === c ? ' selected' : '') + '>' + c + '</option>';
                 }).join('');
 
-                var price = item.auto_price ? ('$' + Number(item.auto_price).toFixed(2)) : '';
+                var isLowPrice = (item.notes || '').indexOf('Price: TCG Low') >= 0;
+                var price = item.auto_price ? ('$' + Number(item.auto_price).toFixed(2) + (isLowPrice ? ' (L)' : '')) : '';
+                var variants = item._available_variants || [];
+                var variantHtml = _buildBatchVariantHtml(variants, item.variant, idx);
 
                 el.innerHTML =
                     thumb +
                     '<div class="batch-info">' +
                         '<div class="batch-name">' + escHtml(item.card_name) + '</div>' +
-                        '<div class="batch-meta">' + escHtml(item.set_name || '') + (item.card_number ? ' #' + escHtml(item.card_number) : '') + (price ? ' &middot; ' + price : '') + '</div>' +
+                        '<div class="batch-meta">' + escHtml(item.set_name || '') + (item.card_number ? ' #' + escHtml(item.card_number) : '') + ' &middot; <span class="batch-price-label">' + price + '</span></div>' +
+                        (variantHtml ? '<div style="margin-top:2px;">' + variantHtml + '</div>' : '') +
                     '</div>' +
                     '<select class="batch-cond" data-idx="' + idx + '">' + condOptions + '</select>' +
                     '<button class="batch-del" data-idx="' + idx + '" title="Remove">&#x2715;</button>';
 
-                el.querySelector('select').addEventListener('change', function(e) {
+                el.querySelector('.batch-cond').addEventListener('change', function(e) {
                     setBatchCond(parseInt(e.target.dataset.idx), e.target.value);
                 });
                 el.querySelector('.batch-del').addEventListener('click', function(e) {
                     removeBatchItem(parseInt(e.target.dataset.idx));
                 });
+                _attachBatchVariantHandler(el, idx);
 
                 list.appendChild(el);
             })(i, batch[i]);
