@@ -971,7 +971,6 @@ var PKScanner = (function() {
         lastResult = null;
         selectedCandidateIdx = null;
         reviewingScanId = null;
-        _restartCameraIfNeeded();
     }
 
     // ------------------------------------------------------------------
@@ -1046,7 +1045,11 @@ var PKScanner = (function() {
     function clearBatch() {
         var total = batch.length + scanQueue.length;
         if (!total) return;
-        if (!confirm('Clear all ' + total + ' items?')) return;
+        var cameraWasActive = !!stream;
+        if (!confirm('Clear all ' + total + ' items?')) {
+            if (cameraWasActive) _forceRestartCamera();
+            return;
+        }
         batch = [];
         scanQueue = [];
         saveBatch();
@@ -1054,13 +1057,12 @@ var PKScanner = (function() {
         renderQueueFromScratch();
         updateQueueStatus();
         showStatus('', '');
-        _restartCameraIfNeeded();
+        if (cameraWasActive) _forceRestartCamera();
     }
 
-    function _restartCameraIfNeeded() {
-        if (!stream) return;
-        var alive = stream.getTracks().some(function(t) { return t.readyState === 'live'; });
-        if (!alive) { stream = null; startCamera(); }
+    function _forceRestartCamera() {
+        if (stream) { stream.getTracks().forEach(function(t) { t.stop(); }); stream = null; }
+        startCamera();
     }
 
     function saveBatch() {
