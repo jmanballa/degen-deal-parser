@@ -1209,7 +1209,25 @@ async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any
             processing_time_ms=_elapsed(t_start),
         ))
 
-    # Ximilar accepts raw base64 directly (no data URI prefix)
+    # Resize for Ximilar: 640px max dimension is plenty for visual recognition
+    # and dramatically reduces upload time from phone -> server -> Ximilar.
+    t_stage = time.monotonic()
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(raw_bytes))
+        max_dim = max(img.size)
+        if max_dim > 640:
+            scale = 640 / max_dim
+            new_size = (int(img.size[0] * scale), int(img.size[1] * scale))
+            img = img.resize(new_size, Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=80)
+        send_b64 = base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        send_b64 = image_b64
+    debug_info["stage_times_ms"]["resize"] = _elapsed(t_stage)
+    debug_info["image_size_kb"] = round(len(send_b64) * 3 / 4 / 1024, 1)
+
     t_stage = time.monotonic()
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
@@ -1218,7 +1236,7 @@ async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any
                 "Content-Type": "application/json",
                 "Authorization": f"Token {api_token}",
             },
-            json={"records": [{"_base64": image_b64}]},
+            json={"records": [{"_base64": send_b64}]},
         )
     debug_info["stage_times_ms"]["ximilar_api"] = _elapsed(t_stage)
     debug_info["ximilar_http_status"] = resp.status_code

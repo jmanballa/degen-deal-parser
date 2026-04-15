@@ -420,7 +420,7 @@ var PKScanner = (function() {
             canvas.width = Math.round(guideW);
             canvas.height = Math.round(guideH);
             canvas.getContext('2d').drawImage(video, sx, sy, guideW, guideH, 0, 0, canvas.width, canvas.height);
-            var b64 = canvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+            var b64 = canvas.toDataURL('image/jpeg', 0.75).split(',')[1];
 
             var resp = await fetch('/inventory/scan/pokemon/identify', {
                 method: 'POST',
@@ -567,6 +567,7 @@ var PKScanner = (function() {
         if (isXimilar) {
             debugHtml += '<strong>Identified:</strong> name=' + escHtml(ef.card_name) + ', number=' + escHtml(ef.collector_number) + ', set=' + escHtml(ef.set_name) + '<br>';
             debugHtml += '<strong>Tags:</strong> ' + escHtml((dbg.ximilar_tags || []).join(', ') || '(none)') + '<br>';
+            if (dbg.image_size_kb) debugHtml += '<strong>Image sent:</strong> ' + dbg.image_size_kb + ' KB<br>';
             debugHtml += '<strong>Detection confidence:</strong> ' + ((dbg.ximilar_detection_prob || 0) * 100).toFixed(0) + '%<br>';
             debugHtml += '<strong>Best distance:</strong> ' + (dbg.ximilar_best_distance || 0).toFixed(4) + '<br>';
             if (dbg.ximilar_distances && dbg.ximilar_distances.length) {
