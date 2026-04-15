@@ -247,6 +247,17 @@
         .cond-DMG { background:#f8f0f8; border-color:#d8b0d8; color:#6a286a; }
 
         .hidden { display:none !important; }
+
+        /* Queue / processing items in batch */
+        .batch-item.processing { opacity:.7; border-style:dashed; }
+        .batch-item.processing .batch-name { color:var(--muted); }
+        .batch-item.queue-error { border-color:#efb8b4; background:var(--red-bg); }
+        .batch-item.queue-error .batch-name { color:#9d2f2b; }
+        .queue-spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
+        .queue-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase; }
+        .queue-badge-processing { background:var(--blue-bg); color:var(--blue); }
+        .queue-badge-queued { background:rgba(0,0,0,.05); color:var(--muted); }
+        .queue-badge-error { background:var(--red-bg); color:#9d2f2b; }
     </style>
     <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
 </head>
@@ -290,9 +301,9 @@
                     <button class="btn-outline" id="start-btn" onclick="PKScanner.startCamera()">Start Camera</button>
                     <button class="btn-outline" id="flip-btn" class="hidden" onclick="PKScanner.flipCamera()">Flip &#8635;</button>
                     <button class="btn-outline" id="stop-btn" class="hidden" onclick="PKScanner.stopCamera()">Stop</button>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-left:auto;">
-                        <input type="checkbox" id="auto-capture" style="accent-color:var(--accent);">
-                        Auto next
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-left:auto;cursor:pointer;user-select:none;">
+                        <input type="checkbox" id="rapid-fire" style="accent-color:var(--accent);">
+                        Rapid Fire
                     </label>
                 </div>
             </div>
@@ -335,11 +346,20 @@ var PKScanner = (function() {
     var batch = JSON.parse(localStorage.getItem('scan_batch') || '[]');
     var stream = null;
     var facingMode = 'environment';
-    var capturing = false;
     var lastResult = null;
+
+    // Rapid-fire queue
+    var scanQueue = [];
+    var nextScanId = 0;
+    var activeRequests = 0;
+    var MAX_CONCURRENT = 2;
 
     function escHtml(str) {
         return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function isRapidFire() {
+        return document.getElementById('rapid-fire').checked;
     }
 
     // ------------------------------------------------------------------
@@ -384,44 +404,59 @@ var PKScanner = (function() {
     }
 
     // ------------------------------------------------------------------
-    // Capture & Pipeline
+    // Image capture (shared by both modes)
     // ------------------------------------------------------------------
-    document.getElementById('capture-btn').addEventListener('click', captureFrame);
+    function captureImage() {
+        var video = document.getElementById('video');
+        var canvas = document.getElementById('canvas');
+        var vw = video.videoWidth || 1280;
+        var vh = video.videoHeight || 720;
 
-    async function captureFrame() {
-        if (capturing) return;
-        capturing = true;
-        var btn = document.getElementById('capture-btn');
-        btn.disabled = true;
+        var guideW = vw * 0.68 * 1.20;
+        var guideH = guideW * (7 / 5);
+        if (guideH > vh * 0.95) { guideH = vh * 0.95; guideW = guideH * (5 / 7); }
+        var sx = Math.max(0, (vw - guideW) / 2);
+        var sy = Math.max(0, (vh - guideH) / 2);
+        guideW = Math.min(guideW, vw - sx);
+        guideH = Math.min(guideH, vh - sy);
 
-        // Flash effect
+        canvas.width = Math.round(guideW);
+        canvas.height = Math.round(guideH);
+        canvas.getContext('2d').drawImage(video, sx, sy, guideW, guideH, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.75).split(',')[1];
+    }
+
+    function flashEffect() {
         var flash = document.getElementById('flash-overlay');
         flash.classList.add('active');
         setTimeout(function() { flash.classList.remove('active'); }, 150);
+    }
 
+    // ------------------------------------------------------------------
+    // Capture handler — dispatches to rapid-fire or sequential
+    // ------------------------------------------------------------------
+    var sequentialLock = false;
+
+    document.getElementById('capture-btn').addEventListener('click', function() {
+        if (isRapidFire()) {
+            captureRapidFire();
+        } else {
+            captureSequential();
+        }
+    });
+
+    // --- Sequential mode (original behavior) ---
+    async function captureSequential() {
+        if (sequentialLock) return;
+        sequentialLock = true;
+        var btn = document.getElementById('capture-btn');
+        btn.disabled = true;
+
+        flashEffect();
         showStatus('<span class="spinner"></span> Scanning card...', 'info');
 
         try {
-            var video = document.getElementById('video');
-            var canvas = document.getElementById('canvas');
-            var vw = video.videoWidth || 1280;
-            var vh = video.videoHeight || 720;
-
-            // Crop to ~20% larger than the guide rectangle so the card
-            // doesn't need to be perfectly inside the box.
-            var guideW = vw * 0.68 * 1.20;
-            var guideH = guideW * (7 / 5);
-            if (guideH > vh * 0.95) { guideH = vh * 0.95; guideW = guideH * (5 / 7); }
-            var sx = Math.max(0, (vw - guideW) / 2);
-            var sy = Math.max(0, (vh - guideH) / 2);
-            guideW = Math.min(guideW, vw - sx);
-            guideH = Math.min(guideH, vh - sy);
-
-            canvas.width = Math.round(guideW);
-            canvas.height = Math.round(guideH);
-            canvas.getContext('2d').drawImage(video, sx, sy, guideW, guideH, 0, 0, canvas.width, canvas.height);
-            var b64 = canvas.toDataURL('image/jpeg', 0.75).split(',')[1];
-
+            var b64 = captureImage();
             var resp = await fetch('/inventory/scan/pokemon/identify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -432,40 +467,213 @@ var PKScanner = (function() {
 
             if (data.status === 'ERROR') {
                 showStatus(data.error || 'Pipeline error', 'err');
-                showResult(data);
             } else if (data.status === 'NO_MATCH') {
                 showStatus('No matching card found. Try again or adjust angle.', 'warn');
-                showResult(data);
             } else if (data.status === 'AMBIGUOUS') {
                 showStatus('Multiple matches found — pick the correct card below.', 'warn');
-                showResult(data);
             } else {
-                // MATCHED
                 var best = data.best_match;
                 var price = best.market_price ? ('$' + Number(best.market_price).toFixed(2)) : '';
                 showStatus('Matched: ' + best.name + (price ? ' — ' + price : ''), 'ok');
-                showResult(data);
-
-                if (best.confidence === 'HIGH' && document.getElementById('auto-capture').checked) {
-                    addToBatch(best);
-                    setTimeout(function() {
-                        capturing = false;
-                        btn.disabled = false;
-                        captureFrame();
-                    }, 1500);
-                    return;
-                }
             }
+            showResult(data);
         } catch(e) {
             showStatus('Error: ' + e.message, 'err');
         }
 
-        capturing = false;
+        sequentialLock = false;
         btn.disabled = !stream;
     }
 
+    // --- Rapid-fire mode ---
+    function captureRapidFire() {
+        flashEffect();
+
+        var b64 = captureImage();
+        var scanId = nextScanId++;
+        var entry = { id: scanId, b64: b64, status: 'queued', result: null };
+        scanQueue.push(entry);
+
+        renderQueueItem(entry);
+        updateQueueStatus();
+        processQueue();
+    }
+
+    function processQueue() {
+        if (activeRequests >= MAX_CONCURRENT) return;
+
+        var next = null;
+        for (var i = 0; i < scanQueue.length; i++) {
+            if (scanQueue[i].status === 'queued') {
+                next = scanQueue[i];
+                break;
+            }
+        }
+        if (!next) return;
+
+        next.status = 'processing';
+        activeRequests++;
+        updateQueueItemEl(next);
+        updateQueueStatus();
+
+        var entry = next;
+        fetch('/inventory/scan/pokemon/identify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: entry.b64 })
+        })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            entry.result = data;
+            entry.b64 = null;
+            activeRequests--;
+
+            if (data.status === 'MATCHED' && data.best_match) {
+                entry.status = 'matched';
+                addToBatchFromCard(data.best_match);
+            } else if (data.status === 'AMBIGUOUS' && data.best_match) {
+                entry.status = 'review';
+            } else {
+                entry.status = 'error';
+                entry.errorMsg = data.error || 'No match found';
+            }
+
+            updateQueueItemEl(entry);
+            updateQueueStatus();
+            renderBatch();
+            processQueue();
+        })
+        .catch(function(err) {
+            entry.status = 'error';
+            entry.errorMsg = err.message || 'Network error';
+            entry.b64 = null;
+            activeRequests--;
+            updateQueueItemEl(entry);
+            updateQueueStatus();
+            processQueue();
+        });
+
+        processQueue();
+    }
+
     // ------------------------------------------------------------------
-    // Result display
+    // Queue UI rendering
+    // ------------------------------------------------------------------
+    function renderQueueItem(entry) {
+        var list = document.getElementById('batch-list');
+        var el = document.createElement('div');
+        el.className = 'batch-item processing';
+        el.setAttribute('data-scan-id', entry.id);
+        el.innerHTML =
+            '<div class="queue-spinner"></div>' +
+            '<div class="batch-info">' +
+                '<div class="batch-name">Identifying card #' + (entry.id + 1) + '...</div>' +
+                '<div class="batch-meta"><span class="queue-badge queue-badge-queued">Queued</span></div>' +
+            '</div>';
+        list.insertBefore(el, list.firstChild);
+        updateBatchCounts();
+    }
+
+    function updateQueueItemEl(entry) {
+        var el = document.querySelector('[data-scan-id="' + entry.id + '"]');
+        if (!el) return;
+
+        if (entry.status === 'processing') {
+            el.className = 'batch-item processing';
+            el.innerHTML =
+                '<div class="queue-spinner"></div>' +
+                '<div class="batch-info">' +
+                    '<div class="batch-name">Identifying card #' + (entry.id + 1) + '...</div>' +
+                    '<div class="batch-meta"><span class="queue-badge queue-badge-processing">Processing</span></div>' +
+                '</div>';
+        } else if (entry.status === 'matched') {
+            var m = entry.result.best_match;
+            var price = m.market_price ? ('$' + Number(m.market_price).toFixed(2)) : '';
+            var imgSrc = m.image_url_small || m.image_url || '';
+            el.className = 'batch-item';
+            el.removeAttribute('data-scan-id');
+            var thumb = imgSrc
+                ? '<img class="batch-thumb" src="' + escHtml(imgSrc) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+                : '<div class="batch-thumb-placeholder">&#127183;</div>';
+            el.innerHTML =
+                thumb +
+                '<div class="batch-info">' +
+                    '<div class="batch-name">' + escHtml(m.name) + '</div>' +
+                    '<div class="batch-meta">' + escHtml(m.set_name || '') + (m.number ? ' #' + escHtml(m.number) : '') + (price ? ' &middot; ' + price : '') + '</div>' +
+                '</div>' +
+                '<span class="badge badge-high" style="flex-shrink:0;">&#10003;</span>';
+        } else if (entry.status === 'review') {
+            var m = entry.result.best_match;
+            var scanId = entry.id;
+            el.className = 'batch-item';
+            el.innerHTML =
+                '<div class="batch-thumb-placeholder" style="background:var(--yellow-bg);border-color:#f0cda0;">&#9888;</div>' +
+                '<div class="batch-info">' +
+                    '<div class="batch-name">' + escHtml(m.name) + ' ?</div>' +
+                    '<div class="batch-meta">Needs review &middot; ' + escHtml(m.set_name || '') + '</div>' +
+                '</div>' +
+                '<button class="btn-outline" style="padding:4px 10px;font-size:11px;" onclick="PKScanner.reviewQueueItem(' + scanId + ')">Review</button>' +
+                '<button class="batch-del" onclick="PKScanner.removeQueueItem(' + scanId + ')" title="Remove">&#x2715;</button>';
+        } else if (entry.status === 'error') {
+            el.className = 'batch-item queue-error';
+            var scanId = entry.id;
+            el.innerHTML =
+                '<div class="batch-thumb-placeholder" style="background:var(--red-bg);border-color:#efb8b4;color:#9d2f2b;">&#x2715;</div>' +
+                '<div class="batch-info">' +
+                    '<div class="batch-name">' + escHtml(entry.errorMsg || 'Failed') + '</div>' +
+                    '<div class="batch-meta"><span class="queue-badge queue-badge-error">Error</span></div>' +
+                '</div>' +
+                '<button class="batch-del" onclick="PKScanner.removeQueueItem(' + scanId + ')" title="Remove">&#x2715;</button>';
+        }
+    }
+
+    function updateQueueStatus() {
+        var queued = 0, processing = 0, matched = 0, errors = 0;
+        for (var i = 0; i < scanQueue.length; i++) {
+            var s = scanQueue[i].status;
+            if (s === 'queued') queued++;
+            else if (s === 'processing') processing++;
+            else if (s === 'matched') matched++;
+            else if (s === 'error') errors++;
+        }
+
+        var pending = queued + processing;
+        if (pending > 0) {
+            var parts = [];
+            if (processing > 0) parts.push(processing + ' processing');
+            if (queued > 0) parts.push(queued + ' queued');
+            showStatus('<span class="spinner"></span> ' + parts.join(', '), 'info');
+        } else if (scanQueue.length > 0) {
+            var msg = matched + ' identified';
+            if (errors > 0) msg += ', ' + errors + ' failed';
+            showStatus(msg, errors > 0 ? 'warn' : 'ok');
+        }
+
+        updateBatchCounts();
+    }
+
+    function reviewQueueItem(scanId) {
+        var entry = null;
+        for (var i = 0; i < scanQueue.length; i++) {
+            if (scanQueue[i].id === scanId) { entry = scanQueue[i]; break; }
+        }
+        if (!entry || !entry.result) return;
+
+        lastResult = entry.result;
+        showResult(entry.result);
+
+        entry._reviewed = true;
+    }
+
+    function removeQueueItem(scanId) {
+        var el = document.querySelector('[data-scan-id="' + scanId + '"]');
+        if (el) el.remove();
+        scanQueue = scanQueue.filter(function(e) { return e.id !== scanId; });
+        updateQueueStatus();
+    }
+
+    // ------------------------------------------------------------------
+    // Result display (used by sequential mode and queue review)
     // ------------------------------------------------------------------
     function showResult(data) {
         var panel = document.getElementById('result-panel');
@@ -477,7 +685,7 @@ var PKScanner = (function() {
         if (data.best_match && data.status !== 'NO_MATCH' && data.status !== 'ERROR') {
             var m = data.best_match;
             var confClass = m.confidence === 'HIGH' ? 'badge-high' : (m.confidence === 'MEDIUM' ? 'badge-medium' : 'badge-low');
-            var priceStr = m.market_price ? ('$' + Number(m.market_price).toFixed(2)) : '—';
+            var priceStr = m.market_price ? ('$' + Number(m.market_price).toFixed(2)) : '\u2014';
             var imgSrc = m.image_url || m.image_url_small || '';
 
             html += '<div class="result-match">';
@@ -505,7 +713,7 @@ var PKScanner = (function() {
                 html += '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
                 for (var vi = 0; vi < variants.length; vi++) {
                     var v = variants[vi];
-                    var vPrice = v.price ? ' — $' + Number(v.price).toFixed(2) : '';
+                    var vPrice = v.price ? ' \u2014 $' + Number(v.price).toFixed(2) : '';
                     html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price || '') + '">' + escHtml(v.name) + vPrice + '</option>';
                 }
                 html += '</select>';
@@ -520,7 +728,6 @@ var PKScanner = (function() {
             html += '<div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:4px;">' + escHtml(m.match_reason) + '</div>';
         }
 
-        // Candidates — always show when there are alternatives
         var candidates = data.candidates || [];
         if (candidates.length > 1 || data.status === 'AMBIGUOUS') {
             html += '<div style="margin-top:16px;background:var(--yellow-bg);border-radius:12px;padding:14px;">';
@@ -596,8 +803,6 @@ var PKScanner = (function() {
         }
         debugEl.innerHTML = debugHtml;
 
-        // Only scroll to results on desktop; on mobile the camera is at the
-        // top and scrolling away makes the user think the camera is moving.
         if (window.innerWidth > 780) {
             panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
@@ -606,8 +811,9 @@ var PKScanner = (function() {
     function pickCandidate(idx) {
         if (!lastResult || !lastResult.candidates || !lastResult.candidates[idx]) return;
         var picked = lastResult.candidates[idx];
-        addToBatch(picked);
+        addToBatchFromCard(picked);
         showStatus('Added: ' + picked.name, 'ok');
+        renderBatch();
 
         document.querySelectorAll('.candidate-card').forEach(function(el) { el.classList.remove('selected'); });
         var card = document.querySelector('.candidate-card[data-idx="' + idx + '"]');
@@ -616,8 +822,9 @@ var PKScanner = (function() {
 
     function addBestMatch() {
         if (!lastResult || !lastResult.best_match) return;
-        addToBatch(lastResult.best_match);
+        addToBatchFromCard(lastResult.best_match);
         showStatus('Added: ' + lastResult.best_match.name, 'ok');
+        renderBatch();
     }
 
     function retake() {
@@ -651,7 +858,7 @@ var PKScanner = (function() {
         }
     }
 
-    function addToBatch(card) {
+    function addToBatchFromCard(card) {
         var variant = _getVariant();
         var variantPrice = _getVariantPrice();
         var isFoil = variant && variant.toLowerCase().indexOf('holo') >= 0;
@@ -671,7 +878,6 @@ var PKScanner = (function() {
             notes: notes,
         });
         saveBatch();
-        renderBatch();
     }
 
     function removeBatchItem(idx) {
@@ -685,11 +891,16 @@ var PKScanner = (function() {
     }
 
     function clearBatch() {
-        if (!batch.length) return;
-        if (!confirm('Clear all ' + batch.length + ' scanned cards?')) return;
+        var total = batch.length + scanQueue.length;
+        if (!total) return;
+        if (!confirm('Clear all ' + total + ' items?')) return;
         batch = [];
+        scanQueue = [];
         saveBatch();
         renderBatch();
+        renderQueueFromScratch();
+        updateQueueStatus();
+        showStatus('', '');
     }
 
     function saveBatch() {
@@ -697,28 +908,43 @@ var PKScanner = (function() {
     }
 
     function goReview() {
+        var pendingCount = scanQueue.filter(function(e) { return e.status === 'queued' || e.status === 'processing'; }).length;
+        if (pendingCount > 0) {
+            if (!confirm(pendingCount + ' card(s) still processing. Go to review anyway?')) return;
+        }
         if (!batch.length) return;
         window.location.href = '/inventory/scan/batch-review';
     }
 
-    function renderBatch() {
-        var list = document.getElementById('batch-list');
+    function updateBatchCounts() {
         var countEl = document.getElementById('batch-count');
         var totalEl = document.getElementById('batch-total');
         var doneBtn = document.getElementById('done-btn');
         var clearBtn = document.getElementById('clear-btn');
 
-        countEl.textContent = batch.length + (batch.length === 1 ? ' card' : ' cards');
+        var pendingCount = scanQueue.filter(function(e) { return e.status !== 'matched' && e.status !== 'error'; }).length;
+        var totalItems = batch.length;
+        var label = totalItems + (totalItems === 1 ? ' card' : ' cards');
+        if (pendingCount > 0) label += ' + ' + pendingCount + ' pending';
+        countEl.textContent = label;
+
         doneBtn.disabled = !batch.length;
-        clearBtn.disabled = !batch.length;
+        clearBtn.disabled = !batch.length && !scanQueue.length;
 
         var totalPrice = 0;
         for (var t = 0; t < batch.length; t++) {
             if (batch[t].auto_price) totalPrice += Number(batch[t].auto_price);
         }
         totalEl.textContent = batch.length ? ('Batch Total: $' + totalPrice.toFixed(2)) : '';
+    }
 
-        list.innerHTML = '';
+    function renderBatch() {
+        var list = document.getElementById('batch-list');
+
+        // Remove existing non-queue items (keep queue items at top)
+        var existingBatchEls = list.querySelectorAll('.batch-item:not([data-scan-id])');
+        existingBatchEls.forEach(function(el) { el.remove(); });
+
         for (var i = 0; i < batch.length; i++) {
             (function(idx, item) {
                 var el = document.createElement('div');
@@ -756,6 +982,13 @@ var PKScanner = (function() {
                 list.appendChild(el);
             })(i, batch[i]);
         }
+
+        updateBatchCounts();
+    }
+
+    function renderQueueFromScratch() {
+        var list = document.getElementById('batch-list');
+        list.querySelectorAll('[data-scan-id]').forEach(function(el) { el.remove(); });
     }
 
     // ------------------------------------------------------------------
@@ -777,7 +1010,6 @@ var PKScanner = (function() {
 
     renderBatch();
 
-    // Hide flip/stop initially
     document.getElementById('flip-btn').style.display = 'none';
     document.getElementById('stop-btn').style.display = 'none';
 
@@ -792,6 +1024,8 @@ var PKScanner = (function() {
         clearBatch: clearBatch,
         goReview: goReview,
         toggleDebug: toggleDebug,
+        reviewQueueItem: reviewQueueItem,
+        removeQueueItem: removeQueueItem,
     };
 })();
 </script>
