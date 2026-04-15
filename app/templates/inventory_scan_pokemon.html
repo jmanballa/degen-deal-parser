@@ -6,7 +6,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <title>Pok&eacute;mon Card Scanner</title>
+    <title>Degen Eye</title>
     <style>
         :root {
             --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8;
@@ -88,6 +88,26 @@
             border:1px solid rgba(255,255,255,.1);
         }
         .top-bar-title { font-size:15px; font-weight:800; color:#fff; letter-spacing:-.01em; text-shadow:0 1px 4px rgba(0,0,0,.4); }
+        .category-select {
+            margin-left:auto; padding:5px 24px 5px 8px; font-size:12px; font-weight:600;
+            color:#fff; background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.2);
+            border-radius:8px; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+            appearance:none; -webkit-appearance:none;
+            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='white'/%3E%3C/svg%3E");
+            background-repeat:no-repeat; background-position:right 8px center; background-size:10px 6px;
+            cursor:pointer; max-width:160px; text-overflow:ellipsis;
+        }
+        .category-select:focus { outline:none; border-color:rgba(255,255,255,.4); }
+        .category-select option { background:#1a1a2e; color:#fff; }
+        .category-select-desktop {
+            padding:6px 28px 6px 10px; font-size:13px; font-weight:600;
+            color:var(--text,#333); background:var(--bg,#fff); border:1px solid var(--border,#ddd);
+            border-radius:8px; appearance:none; -webkit-appearance:none;
+            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
+            background-repeat:no-repeat; background-position:right 8px center; background-size:10px 6px;
+            cursor:pointer; max-width:220px;
+        }
+        .category-select-desktop:focus { outline:none; border-color:var(--accent,#d55338); }
 
         /* ===== STATUS BAR ===== */
         .status-bar { position:fixed; left:16px; right:16px; bottom:160px; z-index:45; padding:10px 14px; font-size:13px; font-weight:700; border-radius:12px; display:none; box-shadow:0 4px 16px rgba(0,0,0,.3); }
@@ -176,6 +196,8 @@
         .badge-high { background:var(--green-bg); color:var(--green); border:1px solid #a6e2bf; }
         .badge-medium { background:var(--yellow-bg); color:#7a5200; border:1px solid #f0cda0; }
         .badge-low { background:var(--red-bg); color:#9d2f2b; border:1px solid #efb8b4; }
+        .badge-validating { background:rgba(59,130,246,.12); color:#3b82f6; border:1px solid rgba(59,130,246,.3); display:inline-flex; align-items:center; gap:4px; }
+        .spinner-sm { display:inline-block; width:10px; height:10px; border:2px solid rgba(59,130,246,.3); border-top-color:#3b82f6; border-radius:50%; animation:spin .6s linear infinite; }
 
         /* Candidates */
         .candidates-section { margin-top:16px; border-top:1px solid var(--line); padding-top:14px; }
@@ -309,7 +331,10 @@
 <!-- Desktop navigation (hidden on mobile) -->
 <div class="desktop-chrome">
     {% include "_workspace_nav.html" %}
-    <a href="/inventory" class="back-link">&larr; Back to Inventory</a>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <a href="/inventory" class="back-link" style="margin-bottom:0">&larr; Back to Inventory</a>
+        <select id="category-select-desktop" class="category-select-desktop" aria-label="Card game category"></select>
+    </div>
 </div>
 
 <div class="scanner-app" id="scanner-app">
@@ -377,7 +402,10 @@
     <!-- Mobile top bar -->
     <div class="top-bar">
         <a class="top-bar-back" href="/inventory">&larr;</a>
-        <span class="top-bar-title">Pok&eacute;mon Scanner</span>
+        <span class="top-bar-title">Degen Eye</span>
+        <select id="category-select" class="category-select" aria-label="Card game category">
+            <option value="3">Pokemon</option>
+        </select>
     </div>
 
     <!-- Toast notifications -->
@@ -398,9 +426,69 @@ var PKScanner = (function() {
     var MAX_CONCURRENT = 2;
     var reviewingScanId = null;
     var selectedCandidateIdx = null;
+    var selectedCategoryId = localStorage.getItem('degen_eye_category') || '3';
+
+    function loadCategories() {
+        var selMobile = document.getElementById('category-select');
+        var selDesktop = document.getElementById('category-select-desktop');
+        var selectors = [selMobile, selDesktop].filter(Boolean);
+
+        fetch('/inventory/scan/pokemon/categories')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var cats = data.categories || [];
+                if (!cats.length) return;
+                selectors.forEach(function(sel) {
+                    sel.innerHTML = '';
+                    cats.forEach(function(c) {
+                        var opt = document.createElement('option');
+                        opt.value = c.id;
+                        opt.textContent = c.name;
+                        if (c.id === selectedCategoryId) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                });
+                if (!cats.some(function(c) { return c.id === selectedCategoryId; })) {
+                    selectedCategoryId = cats[0].id;
+                    selectors.forEach(function(sel) { sel.value = selectedCategoryId; });
+                }
+            })
+            .catch(function() {});
+
+        function onCategoryChange(e) {
+            selectedCategoryId = e.target.value;
+            localStorage.setItem('degen_eye_category', selectedCategoryId);
+            selectors.forEach(function(sel) { sel.value = selectedCategoryId; });
+        }
+        selectors.forEach(function(sel) { sel.addEventListener('change', onCategoryChange); });
+    }
 
     function escHtml(str) {
         return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function pollValidation(scanId, onUpdate) {
+        var attempts = 0;
+        var maxAttempts = 30;
+        var interval = 1500;
+        function poll() {
+            attempts++;
+            fetch('/inventory/scan/pokemon/validate/' + scanId)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.validation_status === 'pending' && attempts < maxAttempts) {
+                        setTimeout(poll, interval);
+                        return;
+                    }
+                    if (data.validation_status === 'validated' && onUpdate) {
+                        onUpdate(data);
+                    }
+                })
+                .catch(function() {
+                    if (attempts < maxAttempts) setTimeout(poll, interval);
+                });
+        }
+        setTimeout(poll, interval);
     }
 
     function isMobile() { return window.innerWidth <= 780; }
@@ -508,7 +596,7 @@ var PKScanner = (function() {
             var resp = await fetch('/inventory/scan/pokemon/identify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: b64 })
+                body: JSON.stringify({ image: b64, category_id: selectedCategoryId })
             });
             var data = await resp.json();
             lastResult = data;
@@ -522,9 +610,22 @@ var PKScanner = (function() {
             } else {
                 var best = data.best_match;
                 var price = best.market_price ? ('$' + Number(best.market_price).toFixed(2)) : '';
-                showStatus('Matched: ' + best.name + (price ? ' \u2014 ' + price : ''), 'ok');
+                var suffix = data.validation_pending ? ' (verifying\u2026)' : '';
+                showStatus('Matched: ' + best.name + (price ? ' \u2014 ' + price : '') + suffix, 'ok');
             }
             showResult(data);
+
+            if (data.validation_pending && data.scan_id) {
+                pollValidation(data.scan_id, function(updated) {
+                    lastResult = updated;
+                    if (updated.best_match) {
+                        var ub = updated.best_match;
+                        var up = ub.market_price ? ('$' + Number(ub.market_price).toFixed(2)) : '';
+                        showStatus('Verified: ' + ub.name + (up ? ' \u2014 ' + up : ''), 'ok');
+                    }
+                    showResult(updated);
+                });
+            }
         } catch(e) {
             showStatus('Error: ' + e.message, 'err');
         }
@@ -564,7 +665,7 @@ var PKScanner = (function() {
         fetch('/inventory/scan/pokemon/identify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: entry.b64 })
+            body: JSON.stringify({ image: entry.b64, category_id: selectedCategoryId })
         })
         .then(function(resp) { return resp.json(); })
         .then(function(data) {
@@ -577,13 +678,32 @@ var PKScanner = (function() {
                 addToBatchFromCard(data.best_match, entry.id);
                 var m = data.best_match;
                 var tp = m.market_price ? (' \u2014 $' + Number(m.market_price).toFixed(2)) : '';
-                showToast('\u2713 ' + m.name + tp);
+                showToast('\u2713 ' + m.name + (data.validation_pending ? ' (verifying\u2026)' : '') + tp);
             } else if (data.status === 'AMBIGUOUS' && data.best_match) {
                 entry.status = 'review';
                 showToast('\u26A0 ' + data.best_match.name + ' \u2014 needs review');
             } else {
                 entry.status = 'error';
                 entry.errorMsg = data.error || 'No match found';
+            }
+
+            if (data.validation_pending && data.scan_id) {
+                (function(queueEntry) {
+                    pollValidation(data.scan_id, function(updated) {
+                        queueEntry.result = updated;
+                        if (updated.best_match) {
+                            var prev = queueEntry._prevBestName || '';
+                            var newName = updated.best_match.name || '';
+                            if (prev && prev !== newName) {
+                                showToast('Updated: ' + newName);
+                            }
+                            addToBatchFromCard(updated.best_match, queueEntry.id);
+                        }
+                        updateQueueItemEl(queueEntry);
+                        renderBatch();
+                    });
+                    queueEntry._prevBestName = (data.best_match || {}).name || '';
+                })(entry);
             }
 
             updateQueueItemEl(entry);
@@ -760,6 +880,9 @@ var PKScanner = (function() {
             }
             html += '<div class="result-details">';
             html += '<span class="badge ' + confClass + '">' + m.confidence + '</span>';
+            if (data.validation_pending) {
+                html += '<span class="badge badge-validating"><span class="spinner-sm"></span> Verifying</span>';
+            }
             html += '<div class="result-name">' + escHtml(m.name) + '</div>';
             html += '<div class="result-set">' + escHtml(m.set_name) + '</div>';
             html += '<div class="result-number">#' + escHtml(m.number) + (m.rarity ? ' &middot; ' + escHtml(m.rarity) : '') + '</div>';
@@ -838,6 +961,9 @@ var PKScanner = (function() {
         var isDual = engines.length > 1;
         var isXimilar = dbg.engine === 'ximilar' || engines.indexOf('ximilar') >= 0;
         var debugHtml = '<strong>Engine' + (isDual ? 's' : '') + ':</strong> ' + escHtml(engines.join(' + ')) + '<br>';
+        if (dbg.pipeline_tier) {
+            debugHtml += '<strong>Pipeline tier:</strong> ' + escHtml(dbg.pipeline_tier) + '<br>';
+        }
 
         if (isDual && data.disambiguation_method) {
             var verdict = data.disambiguation_method === 'dual_engine_agree' ? '\u2705 Both engines agree' : '\u26A0 Engines disagree';
@@ -1307,6 +1433,7 @@ var PKScanner = (function() {
     document.getElementById('stop-btn').style.display = 'none';
 
     Drawer.init();
+    loadCategories();
 
     if (isMobile()) {
         document.getElementById('rapid-fire').checked = true;

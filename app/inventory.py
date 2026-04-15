@@ -23,7 +23,7 @@ _templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 from .auth import has_role
 from .card_scanner import identify_card_from_image, lookup_card_image_and_price
 from .cert_lookup import lookup_cert
-from .pokemon_scanner import run_pipeline as run_pokemon_pipeline, get_scan_history
+from .pokemon_scanner import run_pipeline as run_pokemon_pipeline, get_scan_history, fetch_tcg_categories, get_validation_result
 from .config import get_settings
 from .db import get_session
 from .inventory_barcode import (
@@ -645,12 +645,21 @@ async def inventory_scan_pokemon_page(request: Request):
     )
 
 
+@router.get("/inventory/scan/pokemon/categories")
+async def inventory_scan_categories(request: Request):
+    """Return TCGTracking categories with preferred ordering."""
+    if denial := _require_viewer(request):
+        return denial
+    categories = await fetch_tcg_categories()
+    return JSONResponse({"categories": categories})
+
+
 @router.post("/inventory/scan/pokemon/identify")
 async def inventory_scan_pokemon_identify(request: Request):
     """
-    Run the full Pokemon card scanning pipeline on a base64 image.
+    Run the full card scanning pipeline on a base64 image.
 
-    Request body: {"image": "<base64 string>"}
+    Request body: {"image": "<base64 string>", "category_id": "3"}
     Response: ScanResult JSON with best_match, candidates, extracted_fields, debug.
     """
     if denial := _require_viewer(request):
@@ -668,7 +677,9 @@ async def inventory_scan_pokemon_identify(request: Request):
     if "," in base64_image:
         base64_image = base64_image.split(",", 1)[1]
 
-    result = await run_pokemon_pipeline(base64_image)
+    category_id = (body.get("category_id") or "3").strip()
+
+    result = await run_pokemon_pipeline(base64_image, category_id=category_id)
 
     status_code = 200
     if result.get("status") == "ERROR":
@@ -683,6 +694,17 @@ async def inventory_scan_pokemon_history(request: Request):
     if denial := _require_viewer(request):
         return denial
     return JSONResponse(get_scan_history())
+
+
+@router.get("/inventory/scan/pokemon/validate/{scan_id}")
+async def inventory_scan_pokemon_validate(request: Request, scan_id: str):
+    """Poll for background OCR validation result."""
+    if denial := _require_viewer(request):
+        return denial
+    result = get_validation_result(scan_id)
+    if result is None:
+        return JSONResponse({"error": "Unknown scan_id"}, status_code=404)
+    return JSONResponse(result)
 
 
 @router.get("/inventory/scan/pokemon/debug", response_class=HTMLResponse)

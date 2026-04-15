@@ -23,7 +23,7 @@ from .config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-VISION_MODEL = "gpt-4o-mini"
+VISION_MODEL = "gpt-5-nano"
 
 SCRYFALL_NAMED_URL = "https://api.scryfall.com/cards/named"
 SCRYFALL_SEARCH_URL = "https://api.scryfall.com/cards/search"

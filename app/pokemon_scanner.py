@@ -17,6 +17,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 
@@ -97,7 +98,7 @@ SCORING_WEIGHTS = {
 }
 
 DISAMBIGUATION_THRESHOLD = 15
-VISION_MODEL = "gpt-4o-mini"
+VISION_MODEL = "gpt-5-nano"
 
 XIMILAR_TCG_URL = "https://api.ximilar.com/collectibles/v2/tcg_id"
 GOOGLE_VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
@@ -127,6 +128,14 @@ _tcgdex_sets_cache: list[dict] | None = None
 
 # In-memory ring buffer of recent scan results for debugging
 _scan_history: collections.deque[dict] = collections.deque(maxlen=25)
+
+# Background OCR validation: scan_id -> (timestamp, updated_result_or_None)
+_pending_validations: dict[str, tuple[float, dict | None]] = {}
+_VALIDATION_TTL = 300  # expire pending validations after 5 minutes
+
+# Confidence thresholds for the tiered pipeline
+XIMILAR_CONFIDENCE_HIGH = 0.85   # ≥ this → accept Ximilar, skip OCR
+XIMILAR_CONFIDENCE_MEDIUM = 0.60 # ≥ this → optimistic return, background OCR
 
 
 # ---------------------------------------------------------------------------
@@ -1068,29 +1077,96 @@ async def _enrich_price(candidate: ScoredCandidate, ptcg_key: str = "") -> None:
 TCGTRACKING_BASE = "https://tcgtracking.com/tcgapi/v1"
 TCGTRACKING_POKEMON_CATS = ["3", "85"]  # 3 = Pokemon, 85 = Pokemon Japan
 
+# Preferred category ordering for the frontend selector
+_PREFERRED_CAT_ORDER = [
+    "3",   # Pokemon
+    "85",  # Pokemon Japan
+    "68",  # One Piece Card Game
+    "80",  # Dragon Ball Super Fusion World
+    "27",  # Dragon Ball Super CCG
+    "23",  # Dragon Ball Z TCG
+    "1",   # Magic
+    "2",   # YuGiOh
+    "71",  # Lorcana TCG
+]
+
 # Cache: set_name (lowercase) -> {set_id, products, pricing}
 _tcgtracking_cache: dict[str, dict] = {}
 
+# Cache for TCGTracking categories (fetched once per server lifetime)
+_tcg_categories_cache: list[dict] | None = None
 
-async def _enrich_price_fast(candidate: ScoredCandidate, ptcg_key: str = "") -> None:
+
+async def fetch_tcg_categories() -> list[dict]:
+    """Fetch and cache TCGTracking categories with preferred ordering."""
+    global _tcg_categories_cache
+    if _tcg_categories_cache is not None:
+        return _tcg_categories_cache
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{TCGTRACKING_BASE}/categories")
+            if resp.status_code != 200:
+                logger.warning("[pokemon_scanner] Failed to fetch TCGTracking categories: %s", resp.status_code)
+                return []
+            raw_cats = resp.json().get("categories") or resp.json().get("data") or []
+            if isinstance(resp.json(), list):
+                raw_cats = resp.json()
+    except Exception as exc:
+        logger.error("[pokemon_scanner] Error fetching TCGTracking categories: %s", exc)
+        return []
+
+    cat_map = {}
+    for cat in raw_cats:
+        cat_id = str(cat.get("id", ""))
+        name = cat.get("display_name") or cat.get("name") or ""
+        cat_map[cat_id] = {"id": cat_id, "name": name}
+
+    ordered: list[dict] = []
+    seen = set()
+    for pref_id in _PREFERRED_CAT_ORDER:
+        if pref_id in cat_map:
+            ordered.append(cat_map[pref_id])
+            seen.add(pref_id)
+
+    remaining = sorted(
+        [c for cid, c in cat_map.items() if cid not in seen],
+        key=lambda c: c["name"].lower(),
+    )
+    ordered.extend(remaining)
+
+    _tcg_categories_cache = ordered
+    return ordered
+
+
+async def _enrich_price_fast(
+    candidate: ScoredCandidate, ptcg_key: str = "", category_id: str = "3",
+) -> None:
     """Fast price lookup using TCGTracking.com (real TCGPlayer prices, no auth).
 
     Strategy: search for set -> match product by number -> get TCGPlayer price.
-    Falls back to PokemonTCG API if TCGTracking fails.
+    Falls back to PokemonTCG API for Pokemon categories only.
     """
     if candidate.market_price is not None:
         return
     if not candidate.name or not candidate.set_name:
         return
 
+    is_pokemon = category_id in ("3", "85")
+    cat_ids_to_try = [category_id]
+    if is_pokemon and category_id == "3":
+        cat_ids_to_try = ["3", "85"]
+    elif is_pokemon and category_id == "85":
+        cat_ids_to_try = ["85", "3"]
+
     async with httpx.AsyncClient(timeout=5.0) as client:
         # --- Try 1: TCGTracking (TCGPlayer prices, free, fast) ---
         try:
-            set_key = candidate.set_name.lower()
+            set_key = f"{category_id}:{candidate.set_name.lower()}"
             cached = _tcgtracking_cache.get(set_key)
 
             if not cached:
-                for cat_id in TCGTRACKING_POKEMON_CATS:
+                for cat_id in cat_ids_to_try:
                     search_resp = await client.get(
                         f"{TCGTRACKING_BASE}/{cat_id}/search",
                         params={"q": candidate.set_name},
@@ -1167,7 +1243,9 @@ async def _enrich_price_fast(candidate: ScoredCandidate, ptcg_key: str = "") -> 
         except Exception as exc:
             logger.warning("[pokemon_scanner] TCGTracking price lookup failed: %s", exc)
 
-        # --- Try 2: PokemonTCG API fallback ---
+        # --- Try 2: PokemonTCG API fallback (Pokemon categories only) ---
+        if not is_pokemon:
+            return
         try:
             headers = {"X-Api-Key": ptcg_key} if ptcg_key else {}
             parts = [f'name:"{candidate.name}"']
@@ -1337,7 +1415,9 @@ def _ximilar_to_scored(card_data: dict, distance: float, source: str = "ximilar"
     )
 
 
-async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any]:
+async def _run_ximilar_pipeline(
+    image_b64: str, api_token: str, category_id: str = "3",
+) -> dict[str, Any]:
     """Run card identification via Ximilar's visual recognition API."""
     t_start = time.monotonic()
     debug_info: dict[str, Any] = {
@@ -1481,12 +1561,12 @@ async def _run_ximilar_pipeline(image_b64: str, api_token: str) -> dict[str, Any
     t_stage = time.monotonic()
     settings = get_settings()
     try:
-        await _enrich_price_fast(best, settings.pokemon_tcg_api_key)
+        await _enrich_price_fast(best, settings.pokemon_tcg_api_key, category_id=category_id)
     except Exception as exc:
         logger.debug("[pokemon_scanner] Ximilar price enrichment failed for %s: %s", best.name, exc)
     for alt in scored_list[1:]:
         try:
-            await _enrich_price_fast(alt, settings.pokemon_tcg_api_key)
+            await _enrich_price_fast(alt, settings.pokemon_tcg_api_key, category_id=category_id)
         except Exception:
             pass
     debug_info["stage_times_ms"]["price_enrich"] = _elapsed(t_stage)
@@ -1681,34 +1761,151 @@ def _merge_results(
     return merged
 
 
-async def run_pipeline(image_b64: str) -> dict[str, Any]:
+def _ximilar_confidence(result: dict) -> float:
+    """Extract a 0-1 confidence value from a Ximilar pipeline result."""
+    best = result.get("best_match") or {}
+    return best.get("score", 0) / 100.0
+
+
+async def _background_ocr_validate(
+    scan_id: str,
+    image_b64: str,
+    ximilar_result: dict,
+    category_id: str,
+) -> None:
+    """Run legacy OCR pipeline in background and store merged result for polling."""
+    try:
+        legacy_result = await _run_legacy_pipeline(image_b64, category_id)
+        merged = _merge_results(ximilar_result, legacy_result)
+        merged["scan_id"] = scan_id
+        merged["validation_status"] = "validated"
+
+        _save_to_history(merged)
+        _pending_validations[scan_id] = (time.monotonic(), merged)
+
+        logger.info(
+            "[pokemon_scanner] Background OCR validation complete for scan_id=%s: status=%s",
+            scan_id, merged.get("status"),
+        )
+    except Exception as exc:
+        logger.error("[pokemon_scanner] Background OCR validation failed for scan_id=%s: %s", scan_id, exc)
+        _pending_validations[scan_id] = (time.monotonic(), {"validation_status": "error", "error": str(exc)})
+
+
+async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]:
     """
-    Run card scanning pipeline. When both Ximilar and Google Vision API keys
-    are configured, runs both pipelines in parallel and merges results.
+    Confidence-tiered card scanning pipeline.
+
+    When both Ximilar and Google Vision API keys are configured:
+      - Ximilar confidence >= 0.85: accept immediately, skip OCR
+      - Ximilar confidence 0.60-0.84: return Ximilar optimistically,
+        trigger OCR validation in background (poll via scan_id)
+      - Ximilar confidence < 0.60: wait for OCR, merge, return
+
     Falls back to whichever single pipeline is available.
+    category_id controls price enrichment (which TCGTracking category to search).
     """
     settings = get_settings()
     has_ximilar = bool(settings.ximilar_api_token)
     has_ocr = bool(settings.google_vision_api_key)
 
-    if has_ximilar and has_ocr:
-        logger.info("[pokemon_scanner] Running dual-engine pipeline (Ximilar + legacy OCR)")
-        ximilar_result, legacy_result = await asyncio.gather(
-            _safe_run(_run_ximilar_pipeline, image_b64, settings.ximilar_api_token),
-            _safe_run(_run_legacy_pipeline, image_b64),
+    # No Ximilar → legacy only
+    if not has_ximilar:
+        return await _run_legacy_pipeline(image_b64, category_id)
+
+    # Run Ximilar first (fast: 2-4s)
+    try:
+        ximilar_result = await _run_ximilar_pipeline(image_b64, settings.ximilar_api_token, category_id)
+    except Exception as exc:
+        logger.error("[pokemon_scanner] Ximilar pipeline failed: %s", exc)
+        if has_ocr:
+            return await _run_legacy_pipeline(image_b64, category_id)
+        return asdict(ScanResult(
+            status="ERROR",
+            error=f"Ximilar pipeline failed: {exc}",
+            processing_time_ms=0,
+        ))
+
+    # No OCR available → return Ximilar regardless of confidence
+    if not has_ocr:
+        return ximilar_result
+
+    confidence = _ximilar_confidence(ximilar_result)
+    x_status = ximilar_result.get("status", "ERROR")
+    scan_id = str(uuid.uuid4())
+
+    if confidence >= XIMILAR_CONFIDENCE_HIGH and x_status not in ("ERROR", "NO_MATCH"):
+        # HIGH confidence — accept immediately, no OCR
+        logger.info(
+            "[pokemon_scanner] HIGH confidence (%.2f) — accepting Ximilar, skipping OCR, category=%s",
+            confidence, category_id,
         )
-        return _merge_results(ximilar_result, legacy_result)
+        ximilar_result["scan_id"] = scan_id
+        ximilar_result.setdefault("debug", {})["pipeline_tier"] = "high_confidence"
+        ximilar_result.setdefault("debug", {})["engines_used"] = ["ximilar"]
+        return ximilar_result
 
-    if has_ximilar:
-        try:
-            return await _run_ximilar_pipeline(image_b64, settings.ximilar_api_token)
-        except Exception as exc:
-            logger.error("[pokemon_scanner] Ximilar pipeline failed, falling back to legacy: %s", exc)
+    elif confidence >= XIMILAR_CONFIDENCE_MEDIUM and x_status not in ("ERROR", "NO_MATCH"):
+        # MEDIUM confidence — return optimistically, fire background OCR
+        logger.info(
+            "[pokemon_scanner] MEDIUM confidence (%.2f) — optimistic return + background OCR, category=%s",
+            confidence, category_id,
+        )
+        ximilar_result["scan_id"] = scan_id
+        ximilar_result["validation_pending"] = True
+        ximilar_result.setdefault("debug", {})["pipeline_tier"] = "medium_confidence"
+        ximilar_result.setdefault("debug", {})["engines_used"] = ["ximilar"]
 
-    return await _run_legacy_pipeline(image_b64)
+        _pending_validations[scan_id] = (time.monotonic(), None)  # sentinel: OCR in progress
+
+        import copy
+        ximilar_copy = copy.deepcopy(ximilar_result)
+        asyncio.create_task(_background_ocr_validate(
+            scan_id, image_b64, ximilar_copy, category_id,
+        ))
+
+        return ximilar_result
+
+    else:
+        # LOW confidence — wait for OCR, merge, return
+        logger.info(
+            "[pokemon_scanner] LOW confidence (%.2f) — waiting for OCR pipeline, category=%s",
+            confidence, category_id,
+        )
+        legacy_result = await _safe_run(_run_legacy_pipeline, image_b64, category_id)
+        merged = _merge_results(ximilar_result, legacy_result)
+        merged["scan_id"] = scan_id
+        merged.setdefault("debug", {})["pipeline_tier"] = "low_confidence"
+        return merged
 
 
-async def _run_legacy_pipeline(image_b64: str) -> dict[str, Any]:
+def get_validation_result(scan_id: str) -> dict | None:
+    """Check if a background OCR validation has completed.
+
+    Returns:
+      - None if scan_id is unknown
+      - {"validation_status": "pending"} if OCR is still running
+      - The full merged result dict if validation is complete
+    """
+    _cleanup_stale_validations()
+    if scan_id not in _pending_validations:
+        return None
+    ts, result = _pending_validations[scan_id]
+    if result is None:
+        return {"validation_status": "pending", "scan_id": scan_id}
+    _pending_validations.pop(scan_id, None)
+    return result
+
+
+def _cleanup_stale_validations() -> None:
+    """Remove expired entries to prevent unbounded memory growth."""
+    now = time.monotonic()
+    stale = [k for k, (ts, _) in _pending_validations.items() if now - ts > _VALIDATION_TTL]
+    for k in stale:
+        _pending_validations.pop(k, None)
+
+
+async def _run_legacy_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]:
     """
     Legacy 7-stage pipeline: OCR -> Lookup -> Score -> Disambiguate.
     Used when Ximilar API token is not configured.
@@ -1804,9 +2001,13 @@ async def _run_legacy_pipeline(image_b64: str) -> dict[str, Any]:
 
     # --- Price enrichment for top candidates ---
     t_stage = time.monotonic()
+    is_pokemon_cat = category_id in ("3", "85")
     for sc in scored[:5]:
         try:
-            await _enrich_price(sc, settings.pokemon_tcg_api_key)
+            if is_pokemon_cat:
+                await _enrich_price(sc, settings.pokemon_tcg_api_key)
+            else:
+                await _enrich_price_fast(sc, settings.pokemon_tcg_api_key, category_id=category_id)
         except Exception as exc:
             logger.debug("[pokemon_scanner] Price enrichment failed for %s: %s", sc.name, exc)
     debug_info["stage_times_ms"]["price_enrich"] = _elapsed(t_stage)
