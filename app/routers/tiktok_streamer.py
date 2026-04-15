@@ -495,6 +495,7 @@ def tiktok_streamer_page(
     orders = session.exec(
         select(TikTokOrder).order_by(TikTokOrder.created_at.desc()).limit(50)
     ).all()
+    orders = [o for o in orders if o.subtotal_price or o.total_price or o.line_items_json]
 
     cards = [_build_streamer_order_card(o) for o in orders]
     buyer_totals = _compute_buyer_lifetime_totals(session)
@@ -588,6 +589,7 @@ def tiktok_streamer_poll(
             pass
 
     orders = session.exec(query).all()
+    orders = [o for o in orders if o.subtotal_price or o.total_price or o.line_items_json]
     cards = [_build_streamer_order_card(o) for o in orders]
     if cards:
         buyer_totals = _compute_buyer_lifetime_totals(session)
