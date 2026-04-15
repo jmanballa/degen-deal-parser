@@ -808,7 +808,7 @@ var PKScanner = (function() {
             var condSel = el.querySelector('.batch-cond');
             var delBtn = el.querySelector('.batch-del');
             if (condSel) condSel.addEventListener('change', function(e) {
-                setBatchCond(parseInt(e.target.dataset.batchIdx), e.target.value);
+                setBatchCond(parseInt(e.target.dataset.batchIdx), e.target.value, el);
             });
             if (delBtn) delBtn.addEventListener('click', function(e) {
                 var idx = parseInt(e.target.dataset.batchIdx);
@@ -938,7 +938,18 @@ var PKScanner = (function() {
                     var v = variants[vi];
                     var vLabel = v.price != null ? ' \u2014 $' + Number(v.price).toFixed(2) : (v.low_price != null ? ' \u2014 $' + Number(v.low_price).toFixed(2) + ' (TCG Low)' : '');
                     var selected = detectedV && v.name === detectedV ? ' selected' : '';
-                    html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '"' + selected + '>' + escHtml(v.name) + vLabel + '</option>';
+                    var condsAttr = v.conditions ? ' data-conditions="' + escHtml(JSON.stringify(v.conditions)) + '"' : '';
+                    html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '"' + condsAttr + selected + '>' + escHtml(v.name) + vLabel + '</option>';
+                }
+                html += '</select></div>';
+            }
+            var hasConditions = variants.some(function(v) { return v.conditions; });
+            if (hasConditions) {
+                html += '<div style="margin-top:6px;">';
+                html += '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Condition:</label>';
+                html += '<select id="condition-select" onchange="PKScanner.onResultConditionChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                for (var ci = 0; ci < CONDITIONS.length; ci++) {
+                    html += '<option value="' + CONDITIONS[ci] + '"' + (CONDITIONS[ci] === 'NM' ? ' selected' : '') + '>' + CONDITIONS[ci] + '</option>';
                 }
                 html += '</select></div>';
             }
@@ -1090,6 +1101,8 @@ var PKScanner = (function() {
 
         var variantContainer = document.getElementById('variant-select');
         if (variantContainer) variantContainer.parentElement.remove();
+        var condContainer = document.getElementById('condition-select');
+        if (condContainer) condContainer.parentElement.remove();
         var variants2 = card.available_variants || [];
         if (variants2.length >= 1) {
             var detailsEl = document.querySelector('.result-details');
@@ -1101,13 +1114,29 @@ var PKScanner = (function() {
                 for (var vi = 0; vi < variants2.length; vi++) {
                     var v = variants2[vi];
                     var vLabel = v.price != null ? ' \u2014 $' + Number(v.price).toFixed(2) : (v.low_price != null ? ' \u2014 $' + Number(v.low_price).toFixed(2) + ' (TCG Low)' : '');
-                    selHtml += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '">' + escHtml(v.name) + vLabel + '</option>';
+                    var condsAttr = v.conditions ? ' data-conditions="' + escHtml(JSON.stringify(v.conditions)) + '"' : '';
+                    selHtml += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '"' + condsAttr + '>' + escHtml(v.name) + vLabel + '</option>';
                 }
                 selHtml += '</select>';
                 div.innerHTML = lbl + selHtml;
                 var actionsEl = detailsEl.querySelector('.result-actions');
                 if (actionsEl) detailsEl.insertBefore(div, actionsEl);
                 else detailsEl.appendChild(div);
+
+                var hasConditions = variants2.some(function(v) { return v.conditions; });
+                if (hasConditions) {
+                    var condDiv = document.createElement('div');
+                    condDiv.style.cssText = 'margin-top:6px;';
+                    var condLbl = '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Condition:</label>';
+                    var condSelHtml = '<select id="condition-select" onchange="PKScanner.onResultConditionChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                    for (var cci = 0; cci < CONDITIONS.length; cci++) {
+                        condSelHtml += '<option value="' + CONDITIONS[cci] + '"' + (CONDITIONS[cci] === 'NM' ? ' selected' : '') + '>' + CONDITIONS[cci] + '</option>';
+                    }
+                    condSelHtml += '</select>';
+                    condDiv.innerHTML = condLbl + condSelHtml;
+                    if (actionsEl) detailsEl.insertBefore(condDiv, actionsEl);
+                    else detailsEl.appendChild(condDiv);
+                }
             }
         }
     }
@@ -1171,6 +1200,18 @@ var PKScanner = (function() {
         if (!sel) return null;
         var opt = sel.options[sel.selectedIndex];
         if (!opt) return null;
+        var condSel = document.getElementById('condition-select');
+        var cond = condSel ? condSel.value : 'NM';
+        var condsRaw = opt.getAttribute('data-conditions');
+        if (condsRaw) {
+            var conds = JSON.parse(condsRaw);
+            var varObj = {
+                price: opt.getAttribute('data-price') !== '' ? parseFloat(opt.getAttribute('data-price')) : null,
+                low_price: opt.getAttribute('data-low') !== '' ? parseFloat(opt.getAttribute('data-low')) : null,
+                conditions: conds
+            };
+            return _resolveConditionPrice(varObj, cond);
+        }
         var p = opt.getAttribute('data-price');
         if (p !== '' && p !== null) return { value: parseFloat(p), isTcgLow: false };
         var lp = opt.getAttribute('data-low');
@@ -1178,14 +1219,22 @@ var PKScanner = (function() {
         return null;
     }
 
-    function onVariantChange() {
+    function _updateResultPriceDisplay() {
         var vp = _getVariantPrice();
         var priceEl = document.querySelector('.result-price');
-        if (priceEl && vp) {
+        if (priceEl && vp && vp.value != null) {
             priceEl.innerHTML = '$' + vp.value.toFixed(2) + (vp.isTcgLow ? ' <span style="font-size:11px;color:var(--muted);font-weight:500;">(TCG Low)</span>' : '');
         } else if (priceEl) {
             priceEl.innerHTML = '<span style="color:var(--muted);">No price data</span>';
         }
+    }
+
+    function onVariantChange() {
+        _updateResultPriceDisplay();
+    }
+
+    function onResultConditionChange() {
+        _updateResultPriceDisplay();
     }
 
     function addToBatchFromCard(card, scanId, detectedVariant) {
@@ -1223,10 +1272,13 @@ var PKScanner = (function() {
             autoPrice = card.market_price || null;
         }
 
+        var condSel = document.getElementById('condition-select');
+        var selectedCond = condSel ? condSel.value : 'NM';
+
         var item = {
             card_name: card.name || card.card_name || '',
             game: 'Pokemon',
-            condition: 'NM',
+            condition: selectedCond,
             set_name: card.set_name || '',
             card_number: card.number || card.card_number || '',
             image_url: card.image_url || '',
@@ -1258,8 +1310,31 @@ var PKScanner = (function() {
         renderBatch();
     }
 
-    function setBatchCond(idx, cond) {
-        if (batch[idx]) { batch[idx].condition = cond; saveBatch(); }
+    function setBatchCond(idx, cond, containerEl) {
+        if (!batch[idx]) return;
+        batch[idx].condition = cond;
+        var variants = batch[idx]._available_variants || [];
+        var currentVariant = batch[idx].variant || '';
+        var varObj = null;
+        for (var vi = 0; vi < variants.length; vi++) {
+            if (variants[vi].name === currentVariant) { varObj = variants[vi]; break; }
+        }
+        if (varObj) {
+            var resolved = _resolveConditionPrice(varObj, cond);
+            batch[idx].auto_price = resolved.value;
+            var notes = batch[idx].notes || '';
+            notes = notes.replace(/ \| Price: TCG Low/g, '');
+            if (resolved.isTcgLow) notes += ' | Price: TCG Low';
+            batch[idx].notes = notes;
+            if (containerEl) {
+                var priceLabel = containerEl.querySelector('.batch-price-label');
+                if (priceLabel) {
+                    priceLabel.textContent = resolved.value ? ('$' + resolved.value.toFixed(2) + (resolved.isTcgLow ? ' (L)' : '')) : '';
+                }
+            }
+        }
+        saveBatch();
+        updateBatchCounts();
     }
 
     function clearBatch() {
@@ -1320,13 +1395,28 @@ var PKScanner = (function() {
         totalEl.textContent = batch.length ? ('$' + totalPrice.toFixed(2)) : '';
     }
 
+    function _resolveConditionPrice(variant, condition) {
+        if (!variant) return { value: null, isTcgLow: false };
+        condition = condition || 'NM';
+        var conds = variant.conditions;
+        if (conds && conds[condition]) {
+            var ce = conds[condition];
+            if (ce.mkt != null) return { value: ce.mkt, isTcgLow: false };
+            if (ce.low != null) return { value: ce.low, isTcgLow: true };
+        }
+        if (variant.price != null) return { value: variant.price, isTcgLow: false };
+        if (variant.low_price != null) return { value: variant.low_price, isTcgLow: true };
+        return { value: null, isTcgLow: false };
+    }
+
     function _buildBatchVariantHtml(variants, selectedVariant, batchIdx) {
         if (!variants || !variants.length) return '';
         var html = '<select class="batch-variant" data-batch-idx="' + batchIdx + '" style="font-size:10px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;max-width:110px;background:#fff;">';
         for (var vk = 0; vk < variants.length; vk++) {
             var v = variants[vk];
             var sel = selectedVariant && v.name === selectedVariant ? ' selected' : '';
-            html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '"' + sel + '>' + escHtml(v.name) + '</option>';
+            var condsAttr = v.conditions ? ' data-conditions="' + escHtml(JSON.stringify(v.conditions)) + '"' : '';
+            html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '"' + condsAttr + sel + '>' + escHtml(v.name) + '</option>';
         }
         html += '</select>';
         return html;
@@ -1338,27 +1428,31 @@ var PKScanner = (function() {
         varSel.addEventListener('change', function(e) {
             var bi = parseInt(e.target.dataset.batchIdx);
             var opt = e.target.options[e.target.selectedIndex];
-            var mp = opt.getAttribute('data-price');
-            var lp = opt.getAttribute('data-low');
-            var newPrice = null;
-            var isLow = false;
-            if (mp !== '' && mp !== null) { newPrice = parseFloat(mp); }
-            else if (lp !== '' && lp !== null) { newPrice = parseFloat(lp); isLow = true; }
+            var condSel = el.querySelector('.batch-cond');
+            var cond = condSel ? condSel.value : (batch[bi] ? batch[bi].condition : 'NM');
+            var condsRaw = opt.getAttribute('data-conditions');
+            var conds = condsRaw ? JSON.parse(condsRaw) : null;
+            var varObj = {
+                price: opt.getAttribute('data-price') !== '' ? parseFloat(opt.getAttribute('data-price')) : null,
+                low_price: opt.getAttribute('data-low') !== '' ? parseFloat(opt.getAttribute('data-low')) : null,
+                conditions: conds
+            };
+            var resolved = _resolveConditionPrice(varObj, cond);
             if (batch[bi]) {
-                batch[bi].auto_price = newPrice;
+                batch[bi].auto_price = resolved.value;
                 batch[bi].variant = opt.value;
                 batch[bi].is_foil = opt.value.toLowerCase().indexOf('holo') >= 0;
                 var notes = batch[bi].notes || '';
                 notes = notes.replace(/ \| Price: TCG Low/g, '').replace(/ \| Variant: [^|]*/g, '');
                 notes = (notes ? notes + ' | ' : '') + 'Variant: ' + opt.value;
-                if (isLow) notes += ' | Price: TCG Low';
+                if (resolved.isTcgLow) notes += ' | Price: TCG Low';
                 batch[bi].notes = notes;
                 saveBatch();
                 updateBatchCounts();
             }
             var priceLabel = el.querySelector('.batch-price-label');
             if (priceLabel) {
-                priceLabel.textContent = newPrice ? ('$' + newPrice.toFixed(2) + (isLow ? ' (L)' : '')) : '';
+                priceLabel.textContent = resolved.value ? ('$' + resolved.value.toFixed(2) + (resolved.isTcgLow ? ' (L)' : '')) : '';
             }
         });
     }
@@ -1402,7 +1496,7 @@ var PKScanner = (function() {
                     '<button class="batch-del" data-idx="' + idx + '" title="Remove">&#x2715;</button>';
 
                 el.querySelector('.batch-cond').addEventListener('change', function(e) {
-                    setBatchCond(parseInt(e.target.dataset.idx), e.target.value);
+                    setBatchCond(parseInt(e.target.dataset.idx), e.target.value, el);
                 });
                 el.querySelector('.batch-del').addEventListener('click', function(e) {
                     removeBatchItem(parseInt(e.target.dataset.idx));
@@ -1587,6 +1681,7 @@ var PKScanner = (function() {
         addBestMatch: addBestMatch,
         pickCandidate: pickCandidate,
         onVariantChange: onVariantChange,
+        onResultConditionChange: onResultConditionChange,
         retake: retake,
         clearBatch: clearBatch,
         goReview: goReview,

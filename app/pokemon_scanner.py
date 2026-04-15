@@ -1182,15 +1182,17 @@ async def _enrich_price_fast(
                     set_info = sets[0]
                     set_id = set_info["id"]
 
-                    prod_resp, price_resp = await asyncio.gather(
+                    prod_resp, price_resp, sku_resp = await asyncio.gather(
                         client.get(f"{TCGTRACKING_BASE}/{cat_id}/sets/{set_id}"),
                         client.get(f"{TCGTRACKING_BASE}/{cat_id}/sets/{set_id}/pricing"),
+                        client.get(f"{TCGTRACKING_BASE}/{cat_id}/sets/{set_id}/skus"),
                     )
 
                     products = prod_resp.json().get("products", []) if prod_resp.status_code == 200 else []
                     pricing = price_resp.json().get("prices", {}) if price_resp.status_code == 200 else {}
+                    skus = sku_resp.json().get("products", {}) if sku_resp.status_code == 200 else {}
 
-                    cached = {"set_id": set_id, "cat_id": cat_id, "products": products, "pricing": pricing}
+                    cached = {"set_id": set_id, "cat_id": cat_id, "products": products, "pricing": pricing, "skus": skus}
                     _tcgtracking_cache[set_key] = cached
                     break
 
@@ -1231,6 +1233,34 @@ async def _enrich_price_fast(
                                 "price": round(float(mp), 2) if mp is not None else None,
                                 "low_price": round(float(lp), 2) if lp is not None else None,
                             })
+
+                    prod_skus = cached.get("skus", {}).get(prod_id, {})
+                    if prod_skus and variants:
+                        _VAR_CODE_MAP = {
+                            "N": "Normal", "RH": "Reverse Holofoil", "H": "Holofoil",
+                            "1H": "1st Edition Holofoil", "1N": "1st Edition Normal",
+                        }
+                        cond_by_variant: dict[str, dict[str, dict]] = {}
+                        for sku_data in prod_skus.values():
+                            var_code = sku_data.get("var", "")
+                            cnd = sku_data.get("cnd", "")
+                            var_name = _VAR_CODE_MAP.get(var_code, var_code)
+                            if not cnd:
+                                continue
+                            cond_by_variant.setdefault(var_name, {})
+                            entry: dict[str, float] = {}
+                            if "mkt" in sku_data and sku_data["mkt"] is not None:
+                                entry["mkt"] = round(float(sku_data["mkt"]), 2)
+                            if "low" in sku_data and sku_data["low"] is not None:
+                                entry["low"] = round(float(sku_data["low"]), 2)
+                            if entry:
+                                cond_by_variant[var_name][cnd] = entry
+
+                        for v in variants:
+                            conds = cond_by_variant.get(v["name"])
+                            if conds:
+                                v["conditions"] = conds
+
                     if variants:
                         candidate.available_variants = variants
                     for v in variants:
