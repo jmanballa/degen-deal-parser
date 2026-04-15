@@ -467,6 +467,27 @@ var PKScanner = (function() {
         return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    function _pickDisplayPrice(match, variants, detectedVariant) {
+        if (detectedVariant && variants.length) {
+            for (var i = 0; i < variants.length; i++) {
+                if (variants[i].name === detectedVariant) {
+                    if (variants[i].price != null) return { value: variants[i].price, isTcgLow: false };
+                    if (variants[i].low_price != null) return { value: variants[i].low_price, isTcgLow: true };
+                }
+            }
+        }
+        if (match.market_price) return { value: match.market_price, isTcgLow: false };
+        if (variants.length) {
+            for (var j = 0; j < variants.length; j++) {
+                if (variants[j].price != null) return { value: variants[j].price, isTcgLow: false };
+            }
+            for (var k = 0; k < variants.length; k++) {
+                if (variants[k].low_price != null) return { value: variants[k].low_price, isTcgLow: true };
+            }
+        }
+        return { value: null, isTcgLow: false };
+    }
+
     function pollValidation(scanId, onUpdate) {
         var attempts = 0;
         var maxAttempts = 30;
@@ -677,7 +698,10 @@ var PKScanner = (function() {
                 entry.status = 'matched';
                 addToBatchFromCard(data.best_match, entry.id);
                 var m = data.best_match;
-                var tp = m.market_price ? (' \u2014 $' + Number(m.market_price).toFixed(2)) : '';
+                var tp = '';
+                var tvariants = m.available_variants || [];
+                var tDp = _pickDisplayPrice(m, tvariants, data.detected_variant);
+                if (tDp.value) tp = ' \u2014 $' + tDp.value.toFixed(2) + (tDp.isTcgLow ? ' (TCG Low)' : '');
                 showToast('\u2713 ' + m.name + (data.validation_pending ? ' (verifying\u2026)' : '') + tp);
             } else if (data.status === 'AMBIGUOUS' && data.best_match) {
                 entry.status = 'review';
@@ -886,24 +910,28 @@ var PKScanner = (function() {
             html += '<div class="result-name">' + escHtml(m.name) + '</div>';
             html += '<div class="result-set">' + escHtml(m.set_name) + '</div>';
             html += '<div class="result-number">#' + escHtml(m.number) + (m.rarity ? ' &middot; ' + escHtml(m.rarity) : '') + '</div>';
-            if (m.market_price) {
-                html += '<div class="result-price">' + priceStr + '</div>';
+            var variants = m.available_variants || [];
+            var displayPrice = _pickDisplayPrice(m, variants, data.detected_variant);
+            html += '<div class="result-price">';
+            if (displayPrice.value) {
+                html += '$' + displayPrice.value.toFixed(2);
+                if (displayPrice.isTcgLow) html += ' <span style="font-size:11px;color:var(--muted);font-weight:500;">(TCG Low)</span>';
             } else {
                 var tcgpUrl = m.tcgplayer_url || ('https://www.tcgplayer.com/search/pokemon/product?q=' + encodeURIComponent(m.name + ' ' + m.set_name));
-                html += '<div class="result-price" style="font-size:13px;">';
                 html += '<span style="color:var(--muted);">No price data</span> ';
                 html += '<a href="' + escHtml(tcgpUrl) + '" target="_blank" rel="noopener" style="color:var(--blue);font-weight:700;font-size:12px;">Check TCGPlayer &rarr;</a>';
-                html += '</div>';
             }
-            var variants = m.available_variants || [];
-            if (variants.length > 1) {
+            html += '</div>';
+            if (variants.length >= 1) {
+                var detectedV = data.detected_variant || '';
                 html += '<div style="margin-top:8px;">';
                 html += '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant / Finish:</label>';
                 html += '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
                 for (var vi = 0; vi < variants.length; vi++) {
                     var v = variants[vi];
-                    var vPrice = v.price ? ' \u2014 $' + Number(v.price).toFixed(2) : '';
-                    html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price || '') + '">' + escHtml(v.name) + vPrice + '</option>';
+                    var vLabel = v.price != null ? ' \u2014 $' + Number(v.price).toFixed(2) : (v.low_price != null ? ' \u2014 $' + Number(v.low_price).toFixed(2) + ' (TCG Low)' : '');
+                    var selected = detectedV && v.name === detectedV ? ' selected' : '';
+                    html += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '"' + selected + '>' + escHtml(v.name) + vLabel + '</option>';
                 }
                 html += '</select></div>';
             }
@@ -1043,14 +1071,38 @@ var PKScanner = (function() {
         if (setEl) setEl.textContent = card.set_name || '';
         if (numEl) numEl.textContent = '#' + (card.number || '') + (card.rarity ? ' \u00b7 ' + card.rarity : '');
         if (priceEl) {
-            if (card.market_price) {
-                priceEl.textContent = '$' + Number(card.market_price).toFixed(2);
-                priceEl.style.cssText = '';
+            var variants = card.available_variants || [];
+            var dp = _pickDisplayPrice(card, variants, null);
+            if (dp.value) {
+                priceEl.innerHTML = '$' + dp.value.toFixed(2) + (dp.isTcgLow ? ' <span style="font-size:11px;color:var(--muted);font-weight:500;">(TCG Low)</span>' : '');
             } else {
                 priceEl.innerHTML = '<span style="color:var(--muted);">No price data</span>';
             }
         }
         if (imgEl && card.image_url) { imgEl.src = card.image_url; imgEl.style.display = ''; }
+
+        var variantContainer = document.getElementById('variant-select');
+        if (variantContainer) variantContainer.parentElement.remove();
+        var variants2 = card.available_variants || [];
+        if (variants2.length >= 1) {
+            var detailsEl = document.querySelector('.result-details');
+            if (detailsEl) {
+                var div = document.createElement('div');
+                div.style.cssText = 'margin-top:8px;';
+                var lbl = '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant / Finish:</label>';
+                var selHtml = '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                for (var vi = 0; vi < variants2.length; vi++) {
+                    var v = variants2[vi];
+                    var vLabel = v.price != null ? ' \u2014 $' + Number(v.price).toFixed(2) : (v.low_price != null ? ' \u2014 $' + Number(v.low_price).toFixed(2) + ' (TCG Low)' : '');
+                    selHtml += '<option value="' + escHtml(v.name) + '" data-price="' + (v.price != null ? v.price : '') + '" data-low="' + (v.low_price != null ? v.low_price : '') + '">' + escHtml(v.name) + vLabel + '</option>';
+                }
+                selHtml += '</select>';
+                div.innerHTML = lbl + selHtml;
+                var actionsEl = detailsEl.querySelector('.result-actions');
+                if (actionsEl) detailsEl.insertBefore(div, actionsEl);
+                else detailsEl.appendChild(div);
+            }
+        }
     }
 
     function addBestMatch() {
@@ -1111,24 +1163,38 @@ var PKScanner = (function() {
         var sel = document.getElementById('variant-select');
         if (!sel) return null;
         var opt = sel.options[sel.selectedIndex];
-        var p = opt ? opt.getAttribute('data-price') : null;
-        return p ? parseFloat(p) : null;
+        if (!opt) return null;
+        var p = opt.getAttribute('data-price');
+        if (p !== '' && p !== null) return { value: parseFloat(p), isTcgLow: false };
+        var lp = opt.getAttribute('data-low');
+        if (lp !== '' && lp !== null) return { value: parseFloat(lp), isTcgLow: true };
+        return null;
     }
 
     function onVariantChange() {
-        var price = _getVariantPrice();
+        var vp = _getVariantPrice();
         var priceEl = document.querySelector('.result-price');
-        if (priceEl && price) {
-            priceEl.textContent = '$' + price.toFixed(2);
+        if (priceEl && vp) {
+            priceEl.innerHTML = '$' + vp.value.toFixed(2) + (vp.isTcgLow ? ' <span style="font-size:11px;color:var(--muted);font-weight:500;">(TCG Low)</span>' : '');
+        } else if (priceEl) {
+            priceEl.innerHTML = '<span style="color:var(--muted);">No price data</span>';
         }
     }
 
     function addToBatchFromCard(card, scanId) {
         var variant = _getVariant();
-        var variantPrice = _getVariantPrice();
+        var vp = _getVariantPrice();
         var isFoil = variant && variant.toLowerCase().indexOf('holo') >= 0;
         var notes = card.rarity ? ('Rarity: ' + card.rarity) : '';
         if (variant) notes = (notes ? notes + ' | ' : '') + 'Variant: ' + variant;
+
+        var autoPrice = null;
+        if (vp) {
+            autoPrice = vp.value;
+            if (vp.isTcgLow) notes = (notes ? notes + ' | ' : '') + 'Price: TCG Low';
+        } else {
+            autoPrice = card.market_price || null;
+        }
 
         var item = {
             card_name: card.name || card.card_name || '',
@@ -1137,7 +1203,7 @@ var PKScanner = (function() {
             set_name: card.set_name || '',
             card_number: card.number || card.card_number || '',
             image_url: card.image_url || '',
-            auto_price: variantPrice || card.market_price || null,
+            auto_price: autoPrice,
             is_foil: isFoil,
             variant: variant,
             notes: notes,

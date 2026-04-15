@@ -983,6 +983,8 @@ def score_candidates(
             variant=c.variant,
             source=c.source,
             market_price=c.market_price,
+            tcgplayer_url=c.tcgplayer_url,
+            available_variants=c.available_variants,
             score=round(total, 1),
             confidence=confidence,
             score_breakdown=breakdown,
@@ -1219,10 +1221,21 @@ async def _enrich_price_fast(
                     prod_id = str(matched_product["id"])
                     prod_prices = cached["pricing"].get(prod_id, {}).get("tcg", {})
 
-                    for subtype in prod_prices.values():
-                        mp = subtype.get("market")
-                        if mp is not None:
-                            candidate.market_price = round(float(mp), 2)
+                    variants = []
+                    for subtype_name, subtype_data in prod_prices.items():
+                        mp = subtype_data.get("market")
+                        lp = subtype_data.get("low")
+                        if mp is not None or lp is not None:
+                            variants.append({
+                                "name": subtype_name,
+                                "price": round(float(mp), 2) if mp is not None else None,
+                                "low_price": round(float(lp), 2) if lp is not None else None,
+                            })
+                    if variants:
+                        candidate.available_variants = variants
+                    for v in variants:
+                        if v["price"] is not None:
+                            candidate.market_price = v["price"]
                             break
 
                     if not candidate.tcgplayer_url and matched_product.get("tcgplayer_url"):
@@ -1235,8 +1248,8 @@ async def _enrich_price_fast(
 
                     if candidate.market_price:
                         logger.info(
-                            "[pokemon_scanner] TCGTracking price: %s = $%.2f",
-                            candidate.name, candidate.market_price,
+                            "[pokemon_scanner] TCGTracking price: %s = $%.2f (%d variants)",
+                            candidate.name, candidate.market_price, len(variants),
                         )
                         return
 
@@ -1269,17 +1282,40 @@ async def _enrich_price_fast(
                             best_card = card
                             break
 
+                _PTCG_FALLBACK_LABELS = {
+                    "normal": "Normal",
+                    "holofoil": "Holofoil",
+                    "reverseHolofoil": "Reverse Holofoil",
+                    "1stEditionHolofoil": "1st Edition Holofoil",
+                    "1stEditionNormal": "1st Edition Normal",
+                }
                 prices_wrap = best_card.get("tcgplayer", {}).get("prices", {})
-                for price_type in ("normal", "holofoil", "reverseHolofoil", "1stEditionHolofoil"):
-                    if price_type in prices_wrap:
-                        mp = prices_wrap[price_type].get("market")
-                        if mp is not None:
-                            try:
-                                candidate.market_price = round(float(mp), 2)
-                            except (ValueError, TypeError):
-                                pass
-                            if candidate.market_price:
-                                break
+                ptcg_variants = []
+                for price_key, label in _PTCG_FALLBACK_LABELS.items():
+                    if price_key in prices_wrap:
+                        mp = prices_wrap[price_key].get("market")
+                        lp = prices_wrap[price_key].get("low")
+                        mp_val = None
+                        lp_val = None
+                        try:
+                            if mp is not None:
+                                mp_val = round(float(mp), 2)
+                        except (ValueError, TypeError):
+                            pass
+                        try:
+                            if lp is not None:
+                                lp_val = round(float(lp), 2)
+                        except (ValueError, TypeError):
+                            pass
+                        if mp_val is not None or lp_val is not None:
+                            ptcg_variants.append({"name": label, "price": mp_val, "low_price": lp_val})
+
+                if ptcg_variants and not candidate.available_variants:
+                    candidate.available_variants = ptcg_variants
+                for v in ptcg_variants:
+                    if v["price"] is not None and candidate.market_price is None:
+                        candidate.market_price = v["price"]
+                        break
 
                 tcgp_url = best_card.get("tcgplayer", {}).get("url")
                 if tcgp_url and not candidate.tcgplayer_url:
@@ -1413,6 +1449,28 @@ def _ximilar_to_scored(card_data: dict, distance: float, source: str = "ximilar"
         score_breakdown={"ximilar_distance": round(distance, 4)},
         match_reason=f"Visual match: {card_data.get('full_name', card_data.get('name', ''))}",
     )
+
+
+def _detect_variant_from_tags(tags: list[str]) -> str | None:
+    """Map Ximilar visual tags to a TCGTracking variant subtype name."""
+    tag_set = {t.lower() for t in tags}
+    is_1st = any("1st" in t for t in tag_set)
+    is_reverse = "reverse holo" in tag_set
+    is_foil = "foil/holo" in tag_set or any(
+        "rare" in t for t in tag_set if t != "non-foil"
+    )
+
+    if is_1st and is_foil:
+        return "1st Edition Holofoil"
+    if is_1st:
+        return "1st Edition Normal"
+    if is_reverse:
+        return "Reverse Holofoil"
+    if is_foil:
+        return "Holofoil"
+    if "non-foil" in tag_set:
+        return "Normal"
+    return None
 
 
 async def _run_ximilar_pipeline(
@@ -1596,6 +1654,10 @@ async def _run_ximilar_pipeline(
     )
 
     result_dict = asdict(result)
+    detected_variant = _detect_variant_from_tags(tags)
+    if detected_variant:
+        result_dict["detected_variant"] = detected_variant
+        debug_info["detected_variant"] = detected_variant
     _save_to_history(result_dict)
     return result_dict
 
