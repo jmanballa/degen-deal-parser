@@ -77,8 +77,8 @@ AI provider (optional — defaults to OpenAI):
 AI_PROVIDER=openai                 # or "nvidia"
 # If AI_PROVIDER=nvidia:
 NVIDIA_API_KEY=<nvidia inference hub key>
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL=aws/anthropic/bedrock-claude-opus-4-6     # heavy model (vision identification)
+NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1     # inference-api, NOT integrate.api — integrate accepts text but 404s on multimodal
+NVIDIA_MODEL=aws/anthropic/bedrock-claude-opus-4-7      # heavy model (vision identification; must be multimodal-capable)
 NVIDIA_FAST_MODEL=aws/anthropic/claude-haiku-4-5-v1    # fast model (text query parsing)
 NVIDIA_TIEBREAKER_MODEL=gcp/google/gemini-3.1-pro-preview  # ensemble tiebreaker, only called when Ximilar + vision disagree
 ```

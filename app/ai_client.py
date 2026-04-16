@@ -66,7 +66,7 @@ def get_model(*, default: str = "gpt-5-nano") -> str:
     """Return the model name for the active provider."""
     s = get_settings()
     if _provider() == "nvidia":
-        return s.nvidia_model or "aws/anthropic/bedrock-claude-opus-4-6"
+        return s.nvidia_model or "aws/anthropic/bedrock-claude-opus-4-7"
     return default
 
 

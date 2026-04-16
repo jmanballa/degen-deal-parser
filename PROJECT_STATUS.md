@@ -328,8 +328,8 @@ AI provider configuration (both parser and scanner use this):
 AI_PROVIDER=openai     # or "nvidia"
 # If using NVIDIA Inference Hub:
 NVIDIA_API_KEY
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL=aws/anthropic/bedrock-claude-opus-4-6     # heavy (vision identification)
+NVIDIA_BASE_URL=https://inference-api.nvidia.com/v1    # inference-api, NOT integrate.api — integrate 404s on multimodal payloads
+NVIDIA_MODEL=aws/anthropic/bedrock-claude-opus-4-7     # heavy (vision identification; multimodal)
 NVIDIA_FAST_MODEL=aws/anthropic/claude-haiku-4-5-v1    # fast (query parsing)
 NVIDIA_TIEBREAKER_MODEL=gcp/google/gemini-3.1-pro-preview  # ensemble tiebreaker (only fires on Ximilar+vision disagreement)
 ```

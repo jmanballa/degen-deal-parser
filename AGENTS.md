@@ -14,7 +14,7 @@ Current stack:
 - PostgreSQL (production on Machine B) / SQLite (local dev on Machine A) with SQLModel ORM
 - AI providers (configurable via `AI_PROVIDER` env var):
   - OpenAI API (`gpt-5-nano` for parser, vision, query parsing)
-  - NVIDIA Inference Hub — OpenAI-compatible endpoint serving Anthropic Claude models (`aws/anthropic/bedrock-claude-opus-4-6` for vision, `aws/anthropic/claude-haiku-4-5-v1` for fast/lightweight tasks)
+  - NVIDIA Inference Hub — OpenAI-compatible endpoint at `https://inference-api.nvidia.com/v1` serving Anthropic Claude models (`aws/anthropic/bedrock-claude-opus-4-7` for multimodal vision, `aws/anthropic/claude-haiku-4-5-v1` for fast/lightweight tasks) and Google Gemini (`gcp/google/gemini-3.1-pro-preview` as the ensemble tiebreaker). The `inference-api` host is required — `integrate.api.nvidia.com` accepts text chat but 404s on multimodal content.
 - Ximilar Collectibles API (visual card recognition)
 - TCG card data APIs: TCGdex + PokemonTCG (Pokemon), Scryfall (Magic), YGOPRODeck (Yu-Gi-Oh), OPTCG API (One Piece), Lorcast (Lorcana), TCGTracking (pricing/variants/conditions for all TCGs)
 - TikTok Shop Open Platform API (orders, products, live analytics)

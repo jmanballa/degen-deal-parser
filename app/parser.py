@@ -31,6 +31,11 @@ MODEL_PRICING_PER_MILLION = {
         "cached_input": 1.50,
         "output": 75.00,
     },
+    "aws/anthropic/bedrock-claude-opus-4-7": {
+        "input": 15.00,
+        "cached_input": 1.50,
+        "output": 75.00,
+    },
     "aws/anthropic/claude-haiku-4-5-v1": {
         "input": 1.00,
         "cached_input": 0.10,
