@@ -645,22 +645,34 @@ def fixup_transaction_parse_status_aliases() -> None:
         raise
 
 
+def _pg_migrate_statement(stmt: str, label: str) -> None:
+    """Run a single migration DDL statement in its own short transaction with a lock timeout.
+
+    If the lock can't be acquired within 5 seconds, the statement is skipped rather
+    than blocking the entire app startup (and cascading into a full server hang).
+    """
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+            conn.execute(text(stmt))
+    except Exception as exc:
+        print(f"[db] migration skipped ({label}): {exc}")
+
+
 def ensure_postgres_schema() -> None:
     if not is_postgres_database_url(database_url):
         return
 
+    for table_name, columns in POSTGRES_ADDITIVE_MIGRATIONS.items():
+        pg_table = f'"{table_name}"' if table_name == "user" else table_name
+        for column_name, column_type in columns.items():
+            _pg_migrate_statement(
+                f"ALTER TABLE {pg_table} ADD COLUMN IF NOT EXISTS {column_name} {column_type}",
+                f"{table_name}.{column_name}",
+            )
+    for idx_stmt in POSTGRES_INDEX_MIGRATIONS:
+        _pg_migrate_statement(idx_stmt, idx_stmt[:60])
     with engine.begin() as connection:
-        for table_name, columns in POSTGRES_ADDITIVE_MIGRATIONS.items():
-            pg_table = f'"{table_name}"' if table_name == "user" else table_name
-            for column_name, column_type in columns.items():
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {pg_table} "
-                        f"ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
-                    )
-                )
-        for idx_stmt in POSTGRES_INDEX_MIGRATIONS:
-            connection.execute(text(idx_stmt))
         migrate_legacy_postgres_shopify_orders(connection)
 
 
