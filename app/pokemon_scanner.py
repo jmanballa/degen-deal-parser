@@ -103,6 +103,10 @@ XIMILAR_TCG_URL = "https://api.ximilar.com/collectibles/v2/tcg_id"
 GOOGLE_VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
 TCGDEX_BASE = "https://api.tcgdex.net/v2/en"
 POKEMONTCG_BASE = "https://api.pokemontcg.io/v2"
+SCRYFALL_BASE = "https://api.scryfall.com"
+YGOPRODECK_BASE = "https://db.ygoprodeck.com/api/v7"
+OPTCG_BASE = "https://optcgapi.com/api"
+LORCAST_BASE = "https://api.lorcast.com/v0"
 
 COLLECTOR_NUM_PATTERNS = [
     re.compile(r"(TG\d{1,3})\s*/\s*(TG\d{1,3})", re.I), # TG12/TG30
@@ -761,6 +765,370 @@ async def _pokemontcg_search(
         ))
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Multi-TCG search backends
+# ---------------------------------------------------------------------------
+
+async def _scryfall_search(
+    client: httpx.AsyncClient,
+    name: Optional[str] = None,
+    set_name: Optional[str] = None,
+    number: Optional[str] = None,
+    limit: int = 10,
+) -> list[CandidateCard]:
+    """Search Scryfall for Magic: The Gathering cards."""
+    if not name:
+        return []
+    q_parts = [name]
+    if set_name:
+        q_parts.append(f"set:{set_name}")
+    if number:
+        clean_num = number.split("/")[0] if "/" in number else number
+        q_parts.append(f"number:{clean_num}")
+
+    params = {"q": " ".join(q_parts), "unique": "prints", "order": "released", "dir": "desc"}
+    try:
+        resp = await client.get(f"{SCRYFALL_BASE}/cards/search", params=params)
+        if resp.status_code != 200:
+            return []
+        data = resp.json().get("data") or []
+    except Exception as exc:
+        logger.warning("[pokemon_scanner] Scryfall search failed: %s", exc)
+        return []
+
+    results: list[CandidateCard] = []
+    for card in data[:limit]:
+        images = card.get("image_uris") or {}
+        faces = card.get("card_faces") or []
+        if not images and faces:
+            images = faces[0].get("image_uris") or {}
+        set_info_name = card.get("set_name", "")
+        col_num = card.get("collector_number", "")
+        price_str = (card.get("prices") or {}).get("usd")
+        price = None
+        if price_str:
+            try:
+                price = round(float(price_str), 2)
+            except (ValueError, TypeError):
+                pass
+        results.append(CandidateCard(
+            id=card.get("id", ""),
+            name=card.get("name", ""),
+            number=col_num,
+            set_id=card.get("set", ""),
+            set_name=set_info_name,
+            image_url=images.get("normal", ""),
+            image_url_small=images.get("small", ""),
+            rarity=card.get("rarity"),
+            source="scryfall",
+            market_price=price,
+            tcgplayer_url=card.get("purchase_uris", {}).get("tcgplayer"),
+        ))
+    return results
+
+
+async def _ygoprodeck_search(
+    client: httpx.AsyncClient,
+    name: Optional[str] = None,
+    set_name: Optional[str] = None,
+    limit: int = 10,
+) -> list[CandidateCard]:
+    """Search YGOPRODeck for Yu-Gi-Oh cards."""
+    if not name:
+        return []
+    params: dict[str, str] = {"fname": name, "num": str(limit * 2), "offset": "0"}
+    if set_name:
+        params["cardset"] = set_name
+
+    try:
+        resp = await client.get(f"{YGOPRODECK_BASE}/cardinfo.php", params=params)
+        if resp.status_code != 200:
+            return []
+        data = resp.json().get("data") or []
+    except Exception as exc:
+        logger.warning("[pokemon_scanner] YGOPRODeck search failed: %s", exc)
+        return []
+
+    results: list[CandidateCard] = []
+    seen: set[str] = set()
+    for card in data:
+        card_images = card.get("card_images") or []
+        img = card_images[0].get("image_url", "") if card_images else ""
+        img_small = card_images[0].get("image_url_small", "") if card_images else ""
+        card_sets = card.get("card_sets") or []
+        if not card_sets:
+            key = card.get("name", "")
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(CandidateCard(
+                id=str(card.get("id", "")),
+                name=card.get("name", ""),
+                number="",
+                set_id="",
+                set_name="",
+                image_url=img,
+                image_url_small=img_small,
+                rarity=card.get("race"),
+                source="ygoprodeck",
+            ))
+            continue
+        for cs in card_sets:
+            key = f"{card.get('name','')}|{cs.get('set_code','')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            price = None
+            price_str = cs.get("set_price")
+            if price_str:
+                try:
+                    price = round(float(price_str), 2)
+                    if price <= 0:
+                        price = None
+                except (ValueError, TypeError):
+                    pass
+            results.append(CandidateCard(
+                id=f"{card.get('id','')}_{cs.get('set_code','')}",
+                name=card.get("name", ""),
+                number=cs.get("set_code", ""),
+                set_id=cs.get("set_code", ""),
+                set_name=cs.get("set_name", ""),
+                image_url=img,
+                image_url_small=img_small,
+                rarity=cs.get("set_rarity"),
+                source="ygoprodeck",
+                market_price=price,
+            ))
+            if len(results) >= limit:
+                break
+        if len(results) >= limit:
+            break
+    return results[:limit]
+
+
+async def _optcg_search(
+    client: httpx.AsyncClient,
+    name: Optional[str] = None,
+    set_name: Optional[str] = None,
+    limit: int = 10,
+) -> list[CandidateCard]:
+    """Search OPTCG API for One Piece Card Game cards."""
+    if not name:
+        return []
+    params: dict[str, str] = {"card_name": name}
+    if set_name:
+        params["set_name"] = set_name
+
+    try:
+        resp = await client.get(f"{OPTCG_BASE}/sets/filtered/", params=params)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        if not isinstance(data, list):
+            data = data.get("data") or data.get("results") or []
+    except Exception as exc:
+        logger.warning("[pokemon_scanner] OPTCG search failed: %s", exc)
+        return []
+
+    results: list[CandidateCard] = []
+    seen: set[str] = set()
+    for card in data:
+        card_set_id = card.get("card_set_id") or ""
+        card_name = card.get("card_name") or ""
+        key = f"{card_name}|{card_set_id}"
+        if key in seen:
+            continue
+        seen.add(key)
+
+        price = None
+        mp = card.get("market_price")
+        if mp is not None:
+            try:
+                price = round(float(mp), 2)
+                if price <= 0:
+                    price = None
+            except (ValueError, TypeError):
+                pass
+
+        results.append(CandidateCard(
+            id=card_set_id,
+            name=card_name,
+            number=card_set_id,
+            set_id=card.get("set_id", ""),
+            set_name=card.get("set_name", ""),
+            image_url=card.get("card_image", ""),
+            image_url_small=card.get("card_image", ""),
+            rarity=card.get("rarity"),
+            source="optcg",
+            market_price=price,
+        ))
+        if len(results) >= limit:
+            break
+    return results[:limit]
+
+
+async def _lorcast_search(
+    client: httpx.AsyncClient,
+    name: Optional[str] = None,
+    set_name: Optional[str] = None,
+    number: Optional[str] = None,
+    limit: int = 10,
+) -> list[CandidateCard]:
+    """Search Lorcast for Disney Lorcana cards."""
+    if not name:
+        return []
+    q_parts = [name]
+    if set_name:
+        q_parts.append(f"set:{set_name}")
+    if number:
+        q_parts.append(f"number:{number}")
+
+    try:
+        resp = await client.get(
+            f"{LORCAST_BASE}/cards/search",
+            params={"q": " ".join(q_parts), "unique": "prints"},
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json().get("results") or []
+    except Exception as exc:
+        logger.warning("[pokemon_scanner] Lorcast search failed: %s", exc)
+        return []
+
+    results: list[CandidateCard] = []
+    for card in data[:limit]:
+        images = (card.get("image_uris") or {}).get("digital") or {}
+        set_info = card.get("set") or {}
+        col_num = card.get("collector_number", "")
+        version = card.get("version") or ""
+        display_name = card.get("name", "")
+        if version:
+            display_name = f"{display_name} - {version}"
+
+        price = None
+        prices = card.get("prices") or {}
+        for price_key in ("usd", "usd_foil"):
+            val = prices.get(price_key)
+            if val is not None:
+                try:
+                    price = round(float(val), 2)
+                    if price > 0:
+                        break
+                    price = None
+                except (ValueError, TypeError):
+                    pass
+
+        results.append(CandidateCard(
+            id=card.get("id", ""),
+            name=display_name,
+            number=col_num,
+            set_id=set_info.get("code", ""),
+            set_name=set_info.get("name", ""),
+            image_url=images.get("large") or images.get("normal", ""),
+            image_url_small=images.get("small") or images.get("normal", ""),
+            rarity=card.get("rarity"),
+            source="lorcast",
+            market_price=price,
+            tcgplayer_url=f"https://www.tcgplayer.com/product/{card['tcgplayer_id']}" if card.get("tcgplayer_id") else None,
+        ))
+    return results
+
+
+async def _tcgtracking_product_search(
+    client: httpx.AsyncClient,
+    name: Optional[str] = None,
+    set_name: Optional[str] = None,
+    category_id: str = "27",
+    limit: int = 10,
+) -> list[CandidateCard]:
+    """Fallback: search TCGTracking by set, then match products by card name.
+
+    For TCGs without a dedicated card-name API (Dragon Ball, etc.).
+    Requires set_name to find the right set first.
+    """
+    if not set_name:
+        return []
+
+    try:
+        search_resp = await client.get(
+            f"{TCGTRACKING_BASE}/{category_id}/search",
+            params={"q": set_name},
+        )
+        if search_resp.status_code != 200:
+            return []
+        sets = search_resp.json().get("sets") or []
+        if not sets:
+            return []
+
+        set_id = sets[0]["id"]
+        prod_resp = await client.get(f"{TCGTRACKING_BASE}/{category_id}/sets/{set_id}")
+        if prod_resp.status_code != 200:
+            return []
+        products = prod_resp.json().get("products") or []
+    except Exception as exc:
+        logger.warning("[pokemon_scanner] TCGTracking product search failed: %s", exc)
+        return []
+
+    name_lower = (name or "").lower()
+    results: list[CandidateCard] = []
+    for prod in products:
+        clean = (prod.get("clean_name") or prod.get("name") or "").lower()
+        if name_lower and name_lower not in clean:
+            continue
+        prod_num = prod.get("number") or ""
+        img_raw = prod.get("image_url") or ""
+        img_large = img_raw.replace("_200w.jpg", "_400w.jpg") if img_raw else ""
+
+        results.append(CandidateCard(
+            id=str(prod.get("id", "")),
+            name=prod.get("clean_name") or prod.get("name", ""),
+            number=prod_num,
+            set_id=str(set_id),
+            set_name=sets[0].get("name", ""),
+            image_url=img_large,
+            image_url_small=img_raw,
+            source="tcgtracking",
+            tcgplayer_url=prod.get("tcgplayer_url"),
+        ))
+        if len(results) >= limit:
+            break
+    return results
+
+
+async def _lookup_candidates_by_category(
+    fields: ExtractedFields, category_id: str, ptcg_key: str = "",
+) -> list[CandidateCard]:
+    """Route candidate lookup to the appropriate API based on TCG category."""
+    is_pokemon = category_id in ("3", "85")
+
+    if is_pokemon:
+        return await lookup_candidates(fields, api_key=ptcg_key)
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        if category_id == "1":
+            return await _scryfall_search(
+                client, name=fields.card_name, set_name=fields.set_name,
+                number=fields.collector_number,
+            )
+        if category_id == "2":
+            return await _ygoprodeck_search(
+                client, name=fields.card_name, set_name=fields.set_name,
+            )
+        if category_id == "68":
+            return await _optcg_search(
+                client, name=fields.card_name, set_name=fields.set_name,
+            )
+        if category_id == "71":
+            return await _lorcast_search(
+                client, name=fields.card_name, set_name=fields.set_name,
+                number=fields.collector_number,
+            )
+        return await _tcgtracking_product_search(
+            client, name=fields.card_name, set_name=fields.set_name,
+            category_id=category_id,
+        )
 
 
 async def lookup_candidates(fields: ExtractedFields, api_key: str = "") -> list[CandidateCard]:
@@ -2093,8 +2461,10 @@ async def text_search_cards(query: str, category_id: str = "3") -> dict[str, Any
     if not fields.card_name and not fields.collector_number:
         return asdict(ScanResult(status="NO_MATCH", error="Could not parse search query"))
 
-    # If the parser didn't extract a set_name, try to match against known sets
-    if not fields.set_name and fields.card_name:
+    is_pokemon = category_id in ("3", "85")
+
+    # For Pokemon: try heuristic set extraction from the query against known sets
+    if is_pokemon and not fields.set_name and fields.card_name:
         tcgdex_sets = await _fetch_tcgdex_sets()
         set_names = sorted(
             [(s.get("name", ""), s.get("id", "")) for s in tcgdex_sets if s.get("name")],
@@ -2120,11 +2490,10 @@ async def text_search_cards(query: str, category_id: str = "3") -> dict[str, Any
     settings = get_settings()
     ptcg_key = settings.pokemon_tcg_api_key or ""
 
-    candidates = await lookup_candidates(fields, api_key=ptcg_key)
+    candidates = await _lookup_candidates_by_category(fields, category_id, ptcg_key)
 
-    # Supplement with a broad PokemonTCG name search so cards missing from
-    # TCGdex (or without images there) still appear with reliable images.
-    if fields.card_name:
+    # Pokemon-only: supplement with a broad PokemonTCG name search for image coverage
+    if is_pokemon and fields.card_name:
         async with httpx.AsyncClient(timeout=10.0) as client:
             ptcg_extra = await _pokemontcg_search(
                 client, name=fields.card_name, api_key=ptcg_key, limit=10,
