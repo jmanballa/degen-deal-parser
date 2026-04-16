@@ -168,6 +168,10 @@
                             <div class="label">Resolved at</div>
                             <div>{{ message["ai_resolver_reasoning"].get("resolved_at") or "—" }}</div>
                         </div>
+                        <div class="detail-card">
+                            <div class="label">Images sent</div>
+                            <div>{{ message["ai_resolver_reasoning"].get("images_sent", 0) }}</div>
+                        </div>
                     </div>
                 </div>
                 {% endif %}

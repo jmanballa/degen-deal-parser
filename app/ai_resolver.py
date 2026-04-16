@@ -51,6 +51,15 @@ from .models import (
     normalize_parse_status,
     utcnow,
 )
+from .parser import is_image_url
+
+# Cap on images sent to the resolver per row. The primary row's images
+# come first; any remaining budget is filled with sibling images
+# (which often carry the other half of a stitched deal). Claude Opus
+# tolerates many more, but keeping this bounded limits token cost and
+# keeps the prompt reviewable in logs.
+MAX_PRIMARY_IMAGES = 3
+MAX_SIBLING_IMAGES = 3
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -119,6 +128,48 @@ class ResolverContext:
     siblings_after: list[DiscordMessage]
     author_history: list[DiscordMessage]
     correction_hints: list[dict[str, Any]]
+    # (url, source_label) tuples in the order they should appear in the
+    # multipart prompt. source_label lets the model know whether a given
+    # image is from the primary row or a sibling.
+    images: list[tuple[str, str]]
+
+
+def _row_image_urls(row: DiscordMessage) -> list[str]:
+    try:
+        attachments = json.loads(row.attachment_urls_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return [url for url in attachments if isinstance(url, str) and is_image_url(url)]
+
+
+def _collect_context_images(
+    primary: DiscordMessage,
+    siblings_before: list[DiscordMessage],
+    siblings_after: list[DiscordMessage],
+) -> list[tuple[str, str]]:
+    images: list[tuple[str, str]] = []
+
+    for url in _row_image_urls(primary)[:MAX_PRIMARY_IMAGES]:
+        images.append((url, f"primary row id={primary.id}"))
+
+    remaining = MAX_SIBLING_IMAGES
+    for row in siblings_before + siblings_after:
+        if remaining <= 0:
+            break
+        sibling_urls = _row_image_urls(row)
+        if not sibling_urls:
+            continue
+        # Take only the first image per sibling so one image-heavy row
+        # doesn't starve the budget.
+        images.append(
+            (
+                sibling_urls[0],
+                f"sibling row id={row.id} at {row.created_at.isoformat() if row.created_at else 'unknown'}",
+            )
+        )
+        remaining -= 1
+
+    return images
 
 
 def _serialize_message_for_prompt(row: DiscordMessage) -> dict[str, Any]:
@@ -189,65 +240,96 @@ def _build_context(session: Session, row: DiscordMessage) -> ResolverContext:
         limit=max(settings.ai_resolver_max_correction_hints, 0),
     )
 
+    siblings_before_list = list(siblings_before)
+    siblings_after_list = list(siblings_after)
+    images = _collect_context_images(row, siblings_before_list, siblings_after_list)
+
     return ResolverContext(
         primary=row,
-        siblings_before=list(siblings_before),
-        siblings_after=list(siblings_after),
+        siblings_before=siblings_before_list,
+        siblings_after=siblings_after_list,
         author_history=list(author_history),
         correction_hints=correction_hints,
+        images=images,
     )
 
 
 def _build_prompt(context: ResolverContext) -> str:
     primary = context.primary
 
-    images = json.loads(primary.attachment_urls_json or "[]")
+    primary_attachments = json.loads(primary.attachment_urls_json or "[]")
     payload = {
         "primary_message": _serialize_message_for_prompt(primary),
-        "primary_attachment_urls": images,
+        "primary_attachment_urls": primary_attachments,
         "previous_parse_disagreement": json.loads(primary.parse_disagreement_json or "null"),
         "siblings_before": [_serialize_message_for_prompt(r) for r in context.siblings_before],
         "siblings_after": [_serialize_message_for_prompt(r) for r in context.siblings_after],
         "author_history": [_serialize_message_for_prompt(r) for r in context.author_history],
         "correction_hints": context.correction_hints,
     }
-    return (
-        "Resolve this review_required row using the provided context. "
-        "Return ONLY a single JSON object as specified in the system prompt.\n\n"
-        "CONTEXT:\n"
-        + json.dumps(payload, indent=2, default=str)
-    )
+    if context.images:
+        payload["attached_images"] = [
+            {"index": idx, "source": label, "url": url}
+            for idx, (url, label) in enumerate(context.images, start=1)
+        ]
+
+    lines = [
+        "Resolve this review_required row using the provided context.",
+        "Return ONLY a single JSON object as specified in the system prompt.",
+    ]
+    if context.images:
+        lines.append(
+            f"{len(context.images)} image(s) are attached below the JSON. "
+            "Each image's 'source' field in attached_images tells you which "
+            "row it belongs to (primary or sibling)."
+        )
+    lines.append("")
+    lines.append("CONTEXT:")
+    lines.append(json.dumps(payload, indent=2, default=str))
+    return "\n".join(lines)
 
 
-def _call_resolver_model(prompt: str) -> dict[str, Any]:
+def _build_user_content(prompt: str, images: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Build a chat.completions multipart user-content array.
+
+    When no images are attached, returns a single text part. When images
+    are present, returns [text, image_url, image_url, ...] so the model
+    can see both the context JSON and the actual images.
+    """
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for url, _label in images:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": url, "detail": "auto"},
+            }
+        )
+    return content
+
+
+def _call_resolver_model(
+    prompt: str,
+    images: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
     client = get_ai_client().with_options(timeout=90.0)
     model = get_model()
+    user_content = _build_user_content(prompt, images or [])
 
-    if is_nvidia():
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": STORE_RULES_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=2048,
-        )
-        raw_text = response.choices[0].message.content or "{}"
-    else:
-        # OpenAI path - use chat.completions for parity; the Responses API
-        # would require a schema and is omitted here to keep the resolver
-        # portable.
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": STORE_RULES_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            max_tokens=2048,
-        )
-        raw_text = response.choices[0].message.content or "{}"
+    # Both providers use chat.completions with the multipart content form
+    # so vision works uniformly (NVIDIA Claude supports image_url blocks;
+    # OpenAI GPT-5 does too). The OpenAI Responses API path was
+    # intentionally omitted to keep the resolver provider-portable.
+    _ = is_nvidia  # referenced to keep the import meaningful in logs
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": STORE_RULES_SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=2048,
+    )
+    raw_text = response.choices[0].message.content or "{}"
 
     try:
         return json.loads(raw_text)
@@ -286,6 +368,7 @@ def _apply_resolution(
         "proposed_parse": parse if isinstance(parse, dict) else None,
         "resolved_at": utcnow().isoformat(),
         "model": get_model(),
+        "images_sent": int(response.get("_images_sent") or 0),
     }
     row.ai_resolver_reasoning_json = json.dumps(reasoning_payload, sort_keys=True)
 
@@ -356,7 +439,7 @@ def resolve_one(session: Session, row_id: int) -> dict[str, Any] | None:
     prompt = _build_prompt(context)
 
     try:
-        response = _call_resolver_model(prompt)
+        response = _call_resolver_model(prompt, images=context.images)
     except Exception as exc:
         logger.warning("ai_resolver: model call failed for row %s: %s", row_id, exc)
         reasoning_payload = {
@@ -371,12 +454,14 @@ def resolve_one(session: Session, row_id: int) -> dict[str, Any] | None:
         session.add(row)
         return reasoning_payload
 
+    response["_images_sent"] = len(context.images)
     auto_resolved = _apply_resolution(session, row, response)
     return {
         "resolution": response.get("resolution"),
         "confidence": response.get("confidence"),
         "auto_resolved": auto_resolved,
         "row_id": row_id,
+        "images_sent": len(context.images),
     }
 
 
