@@ -2000,10 +2000,32 @@ async def _run_vision_pipeline(image_b64: str, category_id: str = "3") -> dict[s
         _save_to_history(result_dict)
         return result_dict
 
+    # Re-rank so a candidate matching vision's full "X/Y" collector number
+    # wins over an unrelated printing that merely shares the numerator.
+    # Waterfall lookups sometimes surface an older popular printing (e.g.
+    # Ampharos #1/64 Neo Revelation) above the one vision actually saw
+    # (Ampharos #1/127 Platinum) when the vision-supplied set_name doesn't
+    # resolve cleanly in TCGdex.
+    want_full_num = _norm_number(fields.collector_number) if fields.collector_number else ""
+    want_name = _norm_name(fields.card_name)
+
+    def _candidate_rank(c: CandidateCard) -> tuple[int, int, int]:
+        cand_num = _norm_number(c.number)
+        cand_name = _norm_name(c.name)
+        # Higher tuple wins when reverse-sorted.
+        full_num_match = 1 if (want_full_num and "/" in want_full_num and cand_num == want_full_num) else 0
+        num_core_match = 1 if (
+            want_full_num and cand_num.split("/")[0] == want_full_num.split("/")[0]
+        ) else 0
+        name_match = 1 if (want_name and cand_name == want_name) else 0
+        return (full_num_match, name_match, num_core_match)
+
+    candidates = sorted(candidates, key=_candidate_rank, reverse=True)
+
     # Promote the top candidate. The vision model already disambiguated; the
-    # database lookup confirms it exists. Confidence is HIGH when the top
-    # candidate exactly matches the vision model on (name, number); else
-    # MEDIUM (name matched but collector number or set drifted).
+    # database lookup confirms it exists. HIGH requires name AND full "X/Y"
+    # number (or a number-only string when vision didn't see the denominator)
+    # to match. Name-only or numerator-only matches mark MEDIUM.
     top_n = candidates[:10]
     top = top_n[0]
     scored_top_n: list[ScoredCandidate] = []
@@ -2017,22 +2039,38 @@ async def _run_vision_pipeline(image_b64: str, category_id: str = "3") -> dict[s
         )
         scored_top_n.append(sc)
 
-    def _num_core(n: Optional[str]) -> str:
-        return (n or "").split("/")[0].lstrip("0")
-
-    top_name_match = (
+    top_name_match = bool(
         fields.card_name
         and top.name.strip().lower() == fields.card_name.strip().lower()
     )
-    top_number_match = (
-        not fields.collector_number
-        or _num_core(top.number) == _num_core(fields.collector_number)
+    top_norm = _norm_number(top.number)
+    want_norm = _norm_number(fields.collector_number)
+    # Full-number match when either (a) vision didn't see a number at all, or
+    # (b) the normalized strings match exactly (including denominator when both
+    # have one). A candidate with "1/64" never satisfies want "1/127" here.
+    top_full_number_match = (not want_norm) or (top_norm == want_norm)
+    top_numerator_only_match = bool(
+        want_norm and top_norm.split("/")[0] == want_norm.split("/")[0]
     )
-    if top_name_match and top_number_match:
+
+    if top_name_match and top_full_number_match:
         scored_top_n[0].score = 100.0
         scored_top_n[0].confidence = "HIGH"
         scored_top_n[0].match_reason = "vision+db exact match"
         status = "MATCHED"
+    elif top_name_match and top_numerator_only_match:
+        # Same card name and numerator, different denominator → most likely
+        # the DB lookup landed on a different printing than vision saw.
+        scored_top_n[0].score = 55.0
+        scored_top_n[0].confidence = "MEDIUM"
+        scored_top_n[0].match_reason = (
+            f"vision saw #{fields.collector_number}, db closest match is #{top.number}"
+        )
+        status = "AMBIGUOUS" if len(scored_top_n) > 1 else "MATCHED"
+        logger.info(
+            "[pokemon_scanner] Vision pipeline: numerator-only match — vision=%s #%s, db=%s #%s (set=%s)",
+            fields.card_name, fields.collector_number, top.name, top.number, top.set_name,
+        )
     else:
         scored_top_n[0].score = 65.0
         scored_top_n[0].confidence = "MEDIUM"
@@ -2081,7 +2119,22 @@ def _norm_name(s: Optional[str]) -> str:
 
 
 def _norm_number(s: Optional[str]) -> str:
-    return (s or "").split("/")[0].strip().lstrip("0")
+    """Normalize a collector number so ``1/127`` and ``001/127`` compare equal
+    but ``1/127`` and ``1/64`` do not.
+
+    Previously this stripped the denominator entirely, which caused false
+    positives: two different Pokémon with the same numerator (e.g. Ampharos
+    #1/127 Platinum vs #1/64 Neo Revelation) compared equal and got promoted
+    to MATCHED/HIGH. Preserving the denominator when both sides have ``X/Y``
+    fixes this while still tolerating leading-zero OCR drift.
+    """
+    s = (s or "").strip()
+    if not s:
+        return ""
+    if "/" in s:
+        num, tot = s.split("/", 1)
+        return f"{num.strip().lstrip('0') or '0'}/{tot.strip().lstrip('0') or '0'}"
+    return s.lstrip("0") or "0"
 
 
 def _best_match_tuple(result: Optional[dict]) -> tuple[str, str]:
