@@ -88,3 +88,38 @@ def has_ai_key() -> bool:
     if _provider() == "nvidia":
         return bool(s.nvidia_api_key)
     return bool(s.openai_api_key)
+
+
+# ---------------------------------------------------------------------------
+# Tiebreaker (ensemble third-opinion model)
+#
+# Used only when Ximilar and the primary vision model disagree on a scan. The
+# tiebreaker is currently routed through the same NVIDIA Inference Hub client
+# so it shares the existing auth path; the only thing that changes is the
+# model id (defaults to Gemini 3.1 Pro preview hosted on NVIDIA).
+# ---------------------------------------------------------------------------
+
+def get_tiebreaker_client() -> OpenAI:
+    """Return an OpenAI-compatible client to use for the tiebreaker call.
+
+    Routed through the existing NVIDIA client today. Kept as its own function
+    so callers remain semantically clear and the provider can be swapped in
+    one place later without touching call sites.
+    """
+    return get_ai_client()
+
+
+def get_tiebreaker_model() -> str:
+    """Return the model id used for tiebreaker calls."""
+    s = get_settings()
+    return s.nvidia_tiebreaker_model or "gcp/google/gemini-3.1-pro-preview"
+
+
+def has_tiebreaker_key() -> bool:
+    """Return True when the tiebreaker is usable with the current config.
+
+    Today the tiebreaker rides the NVIDIA endpoint, so availability is tied to
+    ``is_nvidia()`` + ``NVIDIA_API_KEY`` being set.
+    """
+    s = get_settings()
+    return is_nvidia() and bool(s.nvidia_api_key)

@@ -22,7 +22,15 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 
 import httpx
-from .ai_client import get_ai_client, get_fast_model, get_model, has_ai_key
+from .ai_client import (
+    get_ai_client,
+    get_fast_model,
+    get_model,
+    get_tiebreaker_client,
+    get_tiebreaker_model,
+    has_ai_key,
+    has_tiebreaker_key,
+)
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -2483,28 +2491,567 @@ def _ximilar_confidence(result: dict) -> float:
     return best.get("score", 0) / 100.0
 
 
-async def _background_ocr_validate(
+# ---------------------------------------------------------------------------
+# Stage F2: Direct vision-model identification (replaces the legacy OCR path)
+# ---------------------------------------------------------------------------
+
+_VISION_IDENTIFY_PROMPT = (
+    "You are identifying a trading card from a photo. "
+    "Return JSON with exactly these fields:\n"
+    "  game (one of: pokemon, magic, yugioh, onepiece, lorcana, dragonball, other)\n"
+    "  card_name (the card name exactly as printed, including variant suffixes like \"ex\", \"VMAX\", \"V\")\n"
+    "  set_name (the full set name if visible — do not guess)\n"
+    "  collector_number (in \"X/Y\" format if both are visible, else just \"X\", else null)\n"
+    "  variant_hint (e.g., \"Full Art\", \"Reverse Holo\", \"1st Edition\", or null)\n"
+    "  language (e.g., \"English\", \"Japanese\")\n"
+    "  confidence (0.0-1.0 — how certain you are)\n"
+    "Return only JSON. No markdown fences. No explanation.\n"
+    "If you cannot identify the card, return {\"confidence\": 0.0}."
+)
+
+# Ximilar-style game -> TCGTracking category_id (subset of _XIMILAR_TAG_TO_CATEGORY
+# constrained to the canonical labels the vision prompt asks for). Used only
+# for a debug warning when the user-selected category mismatches the model's
+# opinion — the caller's category still wins for the database lookup.
+_VISION_GAME_TO_CATEGORY: dict[str, str] = {
+    "pokemon": "3",
+    "magic": "1",
+    "yugioh": "2",
+    "onepiece": "68",
+    "lorcana": "71",
+    "dragonball": "27",
+    # "other" intentionally absent
+}
+
+
+async def _run_vision_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]:
+    """Identify a card directly via a vision-capable chat model.
+
+    Replaces the OCR + field-extraction + disambiguation waterfall with a
+    single call. The model returns structured fields that anchor a precise
+    database lookup via ``_lookup_candidates_by_category``; no fuzzy scoring.
+
+    Returns a ScanResult dict shaped the same as ``_run_ximilar_pipeline`` so
+    the orchestrator, frontend, and history page stay compatible.
+    """
+    t_start = time.monotonic()
+    debug_info: dict[str, Any] = {
+        "engine": "vision",
+        "extraction_method": "vision",
+        "stage_times_ms": {},
+        "engines_used": ["vision"],
+    }
+
+    def _early(r: ScanResult) -> dict:
+        d = asdict(r)
+        d["debug"] = {**d.get("debug", {}), **debug_info}
+        d["game"] = _game_for_category(category_id)
+        _save_to_history(d)
+        return d
+
+    if not has_ai_key():
+        logger.error("[pokemon_scanner] Vision pipeline requested but no AI key configured")
+        return _early(ScanResult(
+            status="ERROR",
+            error="No AI key configured for vision identification",
+            processing_time_ms=_elapsed(t_start),
+        ))
+
+    # Resize for vision model: 1024px max dim keeps small-text detail for
+    # collector numbers and set symbols while keeping the payload reasonable.
+    t_stage = time.monotonic()
+    try:
+        raw_bytes = base64.b64decode(image_b64)
+    except Exception:
+        return _early(ScanResult(
+            status="ERROR",
+            error="Invalid base64 image data",
+            processing_time_ms=_elapsed(t_start),
+        ))
+
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(raw_bytes))
+        max_dim = max(img.size)
+        if max_dim > 1024:
+            scale = 1024 / max_dim
+            new_size = (int(img.size[0] * scale), int(img.size[1] * scale))
+            img = img.resize(new_size, Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        send_b64 = base64.b64encode(buf.getvalue()).decode()
+    except Exception as exc:
+        logger.warning("[pokemon_scanner] Vision pipeline image resize failed, sending raw: %s", exc)
+        send_b64 = image_b64
+    debug_info["stage_times_ms"]["preprocess"] = _elapsed(t_stage)
+
+    # Vision model call
+    t_stage = time.monotonic()
+    model_name = get_model()
+    debug_info["model"] = model_name
+    try:
+        client = get_ai_client().with_options(timeout=30.0)
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _VISION_IDENTIFY_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{send_b64}"}},
+                ],
+            }],
+            max_tokens=400,
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content or ""
+    except Exception as exc:
+        logger.error("[pokemon_scanner] Vision model call failed (model=%s): %s", model_name, exc)
+        debug_info["stage_times_ms"]["vision_call"] = _elapsed(t_stage)
+        return _early(ScanResult(
+            status="ERROR",
+            error=f"Vision model call failed: {exc}",
+            processing_time_ms=_elapsed(t_start),
+        ))
+    debug_info["stage_times_ms"]["vision_call"] = _elapsed(t_stage)
+
+    data = _loads_ai_json(raw)
+    if data is None:
+        logger.warning(
+            "[pokemon_scanner] Vision model returned non-JSON (model=%s): %s",
+            model_name, raw[:200],
+        )
+        debug_info["vision_raw_snippet"] = raw[:300]
+        return _early(ScanResult(
+            status="NO_MATCH",
+            error="Vision model returned unparseable output",
+            processing_time_ms=_elapsed(t_start),
+        ))
+
+    vision_confidence = float(data.get("confidence") or 0.0)
+    debug_info["vision_confidence"] = vision_confidence
+
+    if vision_confidence < 0.3 or (not data.get("card_name") and not data.get("collector_number")):
+        logger.info(
+            "[pokemon_scanner] Vision model declined to identify (confidence=%.2f, data=%s)",
+            vision_confidence, {k: v for k, v in data.items() if k != "raw"},
+        )
+        fields = ExtractedFields(
+            card_name=data.get("card_name") or None,
+            set_name=data.get("set_name") or None,
+            collector_number=data.get("collector_number") or None,
+            language=data.get("language") or None,
+            variant_hints=[data.get("variant_hint")] if data.get("variant_hint") else [],
+            extraction_method="vision",
+        )
+        result_dict = asdict(ScanResult(
+            status="NO_MATCH",
+            error="Vision model could not identify the card",
+            extracted_fields=asdict(fields),
+            processing_time_ms=_elapsed(t_start),
+        ))
+        result_dict["debug"] = {**(result_dict.get("debug") or {}), **debug_info}
+        result_dict["game"] = _game_for_category(category_id)
+        _save_to_history(result_dict)
+        return result_dict
+
+    # Warn (don't override) when the model's opinion disagrees with the caller's
+    # category selection. Using the caller's category keeps text-search-style
+    # consistency; the user's UI dropdown is authoritative.
+    model_game = (data.get("game") or "").strip().lower()
+    if model_game and _VISION_GAME_TO_CATEGORY.get(model_game) not in (None, category_id):
+        logger.info(
+            "[pokemon_scanner] Vision model thinks game=%s (cat=%s) but scan category=%s",
+            model_game, _VISION_GAME_TO_CATEGORY.get(model_game), category_id,
+        )
+        debug_info["vision_game_mismatch"] = {"vision": model_game, "scan": category_id}
+
+    # Build ExtractedFields from the vision response
+    fields = ExtractedFields(
+        card_name=data.get("card_name") or None,
+        set_name=data.get("set_name") or None,
+        collector_number=data.get("collector_number") or None,
+        language=data.get("language") or None,
+        variant_hints=[data.get("variant_hint")] if data.get("variant_hint") else [],
+        extraction_method="vision",
+    )
+
+    logger.info(
+        "[pokemon_scanner] Vision extracted: name=%s, number=%s, set=%s, variant=%s, conf=%.2f",
+        fields.card_name, fields.collector_number, fields.set_name,
+        data.get("variant_hint"), vision_confidence,
+    )
+
+    # Database lookup (reuses the same router used by text search)
+    t_stage = time.monotonic()
+    settings = get_settings()
+    ptcg_key = settings.pokemon_tcg_api_key or ""
+    candidates = await _lookup_candidates_by_category(fields, category_id, ptcg_key)
+    debug_info["stage_times_ms"]["lookup"] = _elapsed(t_stage)
+
+    if not candidates:
+        logger.warning(
+            "[pokemon_scanner] Vision pipeline: no DB candidates for name=%s number=%s set=%s cat=%s",
+            fields.card_name, fields.collector_number, fields.set_name, category_id,
+        )
+        result_dict = asdict(ScanResult(
+            status="NO_MATCH",
+            error=f"No database match for '{fields.card_name}' {fields.collector_number or ''}".strip(),
+            extracted_fields=asdict(fields),
+            processing_time_ms=_elapsed(t_start),
+        ))
+        result_dict["debug"] = {**(result_dict.get("debug") or {}), **debug_info}
+        result_dict["game"] = _game_for_category(category_id)
+        _save_to_history(result_dict)
+        return result_dict
+
+    # Promote the top candidate. The vision model already disambiguated; the
+    # database lookup confirms it exists. Confidence is HIGH when the top
+    # candidate exactly matches the vision model on (name, number); else
+    # MEDIUM (name matched but collector number or set drifted).
+    top_n = candidates[:10]
+    top = top_n[0]
+    scored_top_n: list[ScoredCandidate] = []
+    for c in top_n:
+        sc = ScoredCandidate(
+            **{k: getattr(c, k) for k in (
+                "id", "name", "number", "set_id", "set_name", "image_url",
+                "image_url_small", "rarity", "variant", "source", "market_price",
+                "tcgplayer_url", "available_variants",
+            )},
+        )
+        scored_top_n.append(sc)
+
+    def _num_core(n: Optional[str]) -> str:
+        return (n or "").split("/")[0].lstrip("0")
+
+    top_name_match = (
+        fields.card_name
+        and top.name.strip().lower() == fields.card_name.strip().lower()
+    )
+    top_number_match = (
+        not fields.collector_number
+        or _num_core(top.number) == _num_core(fields.collector_number)
+    )
+    if top_name_match and top_number_match:
+        scored_top_n[0].score = 100.0
+        scored_top_n[0].confidence = "HIGH"
+        scored_top_n[0].match_reason = "vision+db exact match"
+        status = "MATCHED"
+    else:
+        scored_top_n[0].score = 65.0
+        scored_top_n[0].confidence = "MEDIUM"
+        scored_top_n[0].match_reason = "vision identified but db closest match differs"
+        status = "AMBIGUOUS" if len(scored_top_n) > 1 else "MATCHED"
+
+    for s in scored_top_n[1:]:
+        s.score = 40.0
+        s.confidence = "LOW"
+        s.match_reason = "alternative db candidate"
+
+    # Price enrichment for the top 8 candidates in parallel
+    t_stage = time.monotonic()
+    await asyncio.gather(
+        *[_enrich_price_fast(c, ptcg_key=ptcg_key, category_id=category_id) for c in scored_top_n[:8]],
+        return_exceptions=True,
+    )
+    debug_info["stage_times_ms"]["price_enrich"] = _elapsed(t_stage)
+
+    result_dict = asdict(ScanResult(
+        status=status,
+        best_match=asdict(scored_top_n[0]),
+        candidates=[asdict(c) for c in scored_top_n],
+        extracted_fields=asdict(fields),
+        processing_time_ms=_elapsed(t_start),
+    ))
+    result_dict["debug"] = {**(result_dict.get("debug") or {}), **debug_info}
+    result_dict["game"] = _game_for_category(category_id)
+
+    logger.info(
+        "[pokemon_scanner] Vision pipeline: status=%s, best=%s #%s, candidates=%d, time=%.0fms",
+        status, scored_top_n[0].name, scored_top_n[0].number,
+        len(scored_top_n), result_dict["processing_time_ms"],
+    )
+
+    _save_to_history(result_dict)
+    return result_dict
+
+
+# ---------------------------------------------------------------------------
+# Stage F3: Tiebreaker (Gemini 3.1 Pro via NVIDIA)
+# ---------------------------------------------------------------------------
+
+def _norm_name(s: Optional[str]) -> str:
+    return (s or "").strip().lower()
+
+
+def _norm_number(s: Optional[str]) -> str:
+    return (s or "").split("/")[0].strip().lstrip("0")
+
+
+def _best_match_tuple(result: Optional[dict]) -> tuple[str, str]:
+    """Return a normalized (name, number_core) key from a result's best_match."""
+    if not result:
+        return ("", "")
+    bm = result.get("best_match") or {}
+    return (_norm_name(bm.get("name")), _norm_number(bm.get("number")))
+
+
+async def _run_tiebreaker(
+    image_b64: str,
+    ximilar_result: Optional[dict],
+    vision_result: Optional[dict],
+) -> Optional[dict]:
+    """Ask a third vision model to identify the card when the first two disagree.
+
+    Returns ``{"card_name", "collector_number", "confidence", "raw", "model"}``
+    on success, or ``None`` when the tiebreaker is unavailable / failed. The
+    caller decides what to do with the verdict (2-of-3 majority, etc.).
+    """
+    if not has_tiebreaker_key():
+        return None
+
+    t_start = time.monotonic()
+    model_name = get_tiebreaker_model()
+
+    try:
+        # Resize identically to the primary vision pipeline so the two models
+        # see the same input and we can trust a majority vote.
+        raw_bytes = base64.b64decode(image_b64)
+        from PIL import Image
+        img = Image.open(io.BytesIO(raw_bytes))
+        max_dim = max(img.size)
+        if max_dim > 1024:
+            scale = 1024 / max_dim
+            new_size = (int(img.size[0] * scale), int(img.size[1] * scale))
+            img = img.resize(new_size, Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        send_b64 = base64.b64encode(buf.getvalue()).decode()
+    except Exception as exc:
+        logger.warning("[pokemon_scanner] Tiebreaker image preprocess failed: %s", exc)
+        send_b64 = image_b64
+
+    try:
+        client = get_tiebreaker_client().with_options(timeout=30.0)
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _VISION_IDENTIFY_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{send_b64}"}},
+                ],
+            }],
+            max_tokens=400,
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content or ""
+    except Exception as exc:
+        logger.error("[pokemon_scanner] Tiebreaker call failed (model=%s): %s", model_name, exc)
+        return None
+
+    data = _loads_ai_json(raw)
+    if data is None:
+        logger.warning(
+            "[pokemon_scanner] Tiebreaker returned non-JSON (model=%s): %s",
+            model_name, raw[:200],
+        )
+        return None
+
+    verdict = {
+        "card_name": data.get("card_name") or None,
+        "collector_number": data.get("collector_number") or None,
+        "confidence": float(data.get("confidence") or 0.0),
+        "raw": data,
+        "model": model_name,
+        "processing_time_ms": _elapsed(t_start),
+    }
+
+    ximilar_tuple = _best_match_tuple(ximilar_result)
+    vision_tuple = _best_match_tuple(vision_result)
+    gemini_tuple = (_norm_name(verdict["card_name"]), _norm_number(verdict["collector_number"]))
+    if gemini_tuple == ximilar_tuple and gemini_tuple != ("", ""):
+        winner = "ximilar"
+    elif gemini_tuple == vision_tuple and gemini_tuple != ("", ""):
+        winner = "vision"
+    else:
+        winner = "none"
+    logger.info(
+        "[pokemon_scanner] Tiebreaker fired — ximilar=%s vision=%s gemini=%s → winner=%s (model=%s, conf=%.2f)",
+        ximilar_tuple, vision_tuple, gemini_tuple, winner, model_name, verdict["confidence"],
+    )
+    verdict["winner"] = winner
+    return verdict
+
+
+# ---------------------------------------------------------------------------
+# Stage F4: Engine merge (Ximilar vs vision, with optional tiebreaker)
+# ---------------------------------------------------------------------------
+
+async def _merge_engine_results(
+    ximilar_result: Optional[dict],
+    vision_result: Optional[dict],
+    image_b64: str,
+) -> dict:
+    """Reconcile two engine outputs into a single ScanResult.
+
+    - Both agree on (name, number) → Ximilar result, HIGH confidence.
+    - Disagree + tiebreaker available → ask tiebreaker, take 2-of-3 majority.
+    - Disagree + no tiebreaker + vision confidence > 0.8 → vision wins.
+    - Otherwise → AMBIGUOUS with both (or all three) candidates.
+
+    Always stamps ``debug.tiebreaker_used`` and ``debug.tiebreaker_winner`` so
+    the debug page can show whether the ensemble fired.
+    """
+
+    def _stamp_tb(result: dict, *, used: bool, winner: Optional[str]) -> dict:
+        result.setdefault("debug", {})
+        result["debug"]["tiebreaker_used"] = used
+        result["debug"]["tiebreaker_winner"] = winner
+        existing_engines = result["debug"].get("engines_used") or []
+        new_engines = ["ximilar", "vision"]
+        if used:
+            new_engines.append("gemini")
+        result["debug"]["engines_used"] = list(dict.fromkeys(existing_engines + new_engines))
+        return result
+
+    # Missing engine paths — caller uses whichever single engine is available
+    if ximilar_result is None and vision_result is None:
+        return _stamp_tb(
+            asdict(ScanResult(status="ERROR", error="Both engines failed")),
+            used=False, winner=None,
+        )
+    if ximilar_result is None:
+        return _stamp_tb(dict(vision_result or {}), used=False, winner=None)
+    if vision_result is None:
+        return _stamp_tb(dict(ximilar_result), used=False, winner=None)
+
+    ximilar_tuple = _best_match_tuple(ximilar_result)
+    vision_tuple = _best_match_tuple(vision_result)
+
+    # Agreement: trust the Ximilar result (richer variant metadata / tcgplayer
+    # links) but promote confidence to HIGH since a second model confirmed.
+    if ximilar_tuple == vision_tuple and ximilar_tuple != ("", ""):
+        merged = dict(ximilar_result)
+        if merged.get("best_match"):
+            merged["best_match"] = {**merged["best_match"], "confidence": "HIGH", "score": max(
+                float(merged["best_match"].get("score") or 0), 95.0,
+            )}
+        merged["status"] = "MATCHED"
+        logger.info(
+            "[pokemon_scanner] Engines agree — name=%s number=%s (no tiebreaker needed)",
+            ximilar_tuple[0], ximilar_tuple[1],
+        )
+        return _stamp_tb(merged, used=False, winner=None)
+
+    # Disagreement — try tiebreaker first
+    verdict = await _run_tiebreaker(image_b64, ximilar_result, vision_result)
+    if verdict is not None:
+        winner = verdict.get("winner")
+        if winner == "ximilar":
+            merged = dict(ximilar_result)
+            if merged.get("best_match"):
+                merged["best_match"] = {**merged["best_match"], "confidence": "HIGH"}
+            merged["status"] = "MATCHED"
+            return _stamp_tb(merged, used=True, winner="ximilar")
+        if winner == "vision":
+            merged = dict(vision_result)
+            if merged.get("best_match"):
+                merged["best_match"] = {**merged["best_match"], "confidence": "HIGH"}
+            merged["status"] = "MATCHED"
+            return _stamp_tb(merged, used=True, winner="vision")
+        # Three-way disagreement — present all as candidates and let the user decide
+        merged = dict(ximilar_result)
+        merged["status"] = "AMBIGUOUS"
+        combined: list[dict] = list(merged.get("candidates") or [])
+        for vc in (vision_result.get("candidates") or [])[:3]:
+            if all(
+                (_norm_name(vc.get("name")), _norm_number(vc.get("number"))) !=
+                (_norm_name(ec.get("name")), _norm_number(ec.get("number")))
+                for ec in combined
+            ):
+                combined.append(vc)
+        merged["candidates"] = combined[:10]
+        merged.setdefault("debug", {})["hard_case"] = True
+        merged["debug"]["tiebreaker_verdict"] = {
+            "card_name": verdict.get("card_name"),
+            "collector_number": verdict.get("collector_number"),
+            "confidence": verdict.get("confidence"),
+        }
+        logger.warning(
+            "[pokemon_scanner] Hard case: all three engines disagree — ximilar=%s vision=%s gemini=(%s,%s)",
+            ximilar_tuple, vision_tuple,
+            _norm_name(verdict.get("card_name")), _norm_number(verdict.get("collector_number")),
+        )
+        return _stamp_tb(merged, used=True, winner="none")
+
+    # No tiebreaker available — fall back to vision-confidence heuristic
+    vision_conf = 0.0
+    try:
+        vision_conf = float((vision_result.get("debug") or {}).get("vision_confidence") or 0.0)
+    except (TypeError, ValueError):
+        vision_conf = 0.0
+
+    if vision_conf > 0.8:
+        merged = dict(vision_result)
+        merged["status"] = "MATCHED"
+        logger.info(
+            "[pokemon_scanner] Disagreement + no tiebreaker — vision wins by confidence=%.2f",
+            vision_conf,
+        )
+        return _stamp_tb(merged, used=False, winner=None)
+
+    # Low-confidence disagreement — surface both as candidates
+    merged = dict(ximilar_result)
+    merged["status"] = "AMBIGUOUS"
+    combined: list[dict] = list(merged.get("candidates") or [])
+    for vc in (vision_result.get("candidates") or [])[:3]:
+        if all(
+            (_norm_name(vc.get("name")), _norm_number(vc.get("number"))) !=
+            (_norm_name(ec.get("name")), _norm_number(ec.get("number")))
+            for ec in combined
+        ):
+            combined.append(vc)
+    merged["candidates"] = combined[:10]
+    logger.info(
+        "[pokemon_scanner] Disagreement + no tiebreaker + low vision confidence (%.2f) → AMBIGUOUS",
+        vision_conf,
+    )
+    return _stamp_tb(merged, used=False, winner=None)
+
+
+async def _background_vision_validate(
     scan_id: str,
     image_b64: str,
     ximilar_result: dict,
     category_id: str,
 ) -> None:
-    """Run legacy OCR pipeline in background and store merged result for polling."""
+    """Run the vision pipeline in background and store merged result for polling.
+
+    Fires for MEDIUM-confidence Ximilar scans so the UI can return immediately
+    and then upgrade via `/validate/{scan_id}` once the ensemble has agreed
+    (or the tiebreaker has arbitrated).
+    """
     try:
-        legacy_result = await _run_legacy_pipeline(image_b64, category_id)
-        merged = _merge_results(ximilar_result, legacy_result)
+        vision_result = await _run_vision_pipeline(image_b64, category_id)
+        merged = await _merge_engine_results(ximilar_result, vision_result, image_b64)
         merged["scan_id"] = scan_id
         merged["validation_status"] = "validated"
+        merged.setdefault("debug", {})["pipeline_tier"] = "medium_confidence_validated"
 
         _save_to_history(merged)
         _insert_pending_validation(scan_id, (time.monotonic(), merged))
 
         logger.info(
-            "[pokemon_scanner] Background OCR validation complete for scan_id=%s: status=%s",
+            "[pokemon_scanner] Background vision validation complete for scan_id=%s: status=%s, tiebreaker_winner=%s",
             scan_id, merged.get("status"),
+            merged.get("debug", {}).get("tiebreaker_winner"),
         )
     except Exception as exc:
-        logger.error("[pokemon_scanner] Background OCR validation failed for scan_id=%s: %s", scan_id, exc)
+        logger.error(
+            "[pokemon_scanner] Background vision validation failed for scan_id=%s: %s",
+            scan_id, exc,
+        )
         _insert_pending_validation(
             scan_id,
             (time.monotonic(), {"validation_status": "error", "error": str(exc)}),
@@ -2672,18 +3219,20 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
     """
     Confidence-tiered card scanning pipeline.
 
-    When both Ximilar and Google Vision API keys are configured:
-      - Ximilar confidence >= 0.85: accept immediately, skip OCR
+    With Ximilar configured:
+      - Ximilar confidence >= 0.85: accept immediately, no vision call
       - Ximilar confidence 0.60-0.84: return Ximilar optimistically,
-        trigger OCR validation in background (poll via scan_id)
-      - Ximilar confidence < 0.60: wait for OCR, merge, return
+        trigger vision validation in background (poll via scan_id)
+      - Ximilar confidence < 0.60: wait for vision pipeline, merge, return
 
-    Falls back to whichever single pipeline is available.
-    category_id controls price enrichment (which TCGTracking category to search).
+    Falls back to whichever single engine is available. When Ximilar is not
+    configured and an AI key is present, the vision pipeline runs on its own.
+    ``category_id`` controls price enrichment (which TCGTracking category to
+    search).
     """
     settings = get_settings()
     has_ximilar = bool(settings.ximilar_api_token)
-    has_ocr = bool(settings.google_vision_api_key)
+    has_vision = has_ai_key()
 
     def _stamp_game(result: dict) -> dict:
         """Ensure every orchestrator return path has a canonical ``game`` field.
@@ -2697,25 +3246,44 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
         result["game"] = _game_for_category(effective)
         return result
 
-    # No Ximilar → legacy only
+    # No Ximilar → vision only (if available)
     if not has_ximilar:
-        return _stamp_game(await _run_legacy_pipeline(image_b64, category_id))
+        if not has_vision:
+            return _stamp_game(asdict(ScanResult(
+                status="ERROR",
+                error="No scanning engine configured. Set XIMILAR_API_TOKEN or an AI provider key.",
+            )))
+        result = await _run_vision_pipeline(image_b64, category_id)
+        result.setdefault("debug", {})["pipeline_tier"] = "vision_only"
+        result["debug"]["engines_used"] = ["vision"]
+        result["debug"].setdefault("tiebreaker_used", False)
+        result["debug"].setdefault("tiebreaker_winner", None)
+        return _stamp_game(result)
 
     # Run Ximilar first (fast: 2-4s)
     try:
         ximilar_result = await _run_ximilar_pipeline(image_b64, settings.ximilar_api_token, category_id)
     except Exception as exc:
         logger.error("[pokemon_scanner] Ximilar pipeline failed: %s", exc)
-        if has_ocr:
-            return _stamp_game(await _run_legacy_pipeline(image_b64, category_id))
+        if has_vision:
+            result = await _run_vision_pipeline(image_b64, category_id)
+            result.setdefault("debug", {})["pipeline_tier"] = "ximilar_failed_vision_fallback"
+            result["debug"]["engines_used"] = ["vision"]
+            result["debug"].setdefault("tiebreaker_used", False)
+            result["debug"].setdefault("tiebreaker_winner", None)
+            return _stamp_game(result)
         return _stamp_game(asdict(ScanResult(
             status="ERROR",
             error=f"Ximilar pipeline failed: {exc}",
             processing_time_ms=0,
         )))
 
-    # No OCR available → return Ximilar regardless of confidence
-    if not has_ocr:
+    # No vision available → return Ximilar regardless of confidence
+    if not has_vision:
+        ximilar_result.setdefault("debug", {})["pipeline_tier"] = "ximilar_only"
+        ximilar_result["debug"]["engines_used"] = ["ximilar"]
+        ximilar_result["debug"].setdefault("tiebreaker_used", False)
+        ximilar_result["debug"].setdefault("tiebreaker_winner", None)
         return _stamp_game(ximilar_result)
 
     confidence = _ximilar_confidence(ximilar_result)
@@ -2723,45 +3291,53 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
     scan_id = str(uuid.uuid4())
 
     if confidence >= XIMILAR_CONFIDENCE_HIGH and x_status not in ("ERROR", "NO_MATCH"):
-        # HIGH confidence — accept immediately, no OCR
+        # HIGH confidence — accept immediately, no vision call
         logger.info(
-            "[pokemon_scanner] HIGH confidence (%.2f) — accepting Ximilar, skipping OCR, category=%s",
+            "[pokemon_scanner] HIGH confidence (%.2f) — accepting Ximilar, skipping vision, category=%s",
             confidence, category_id,
         )
         ximilar_result["scan_id"] = scan_id
         ximilar_result.setdefault("debug", {})["pipeline_tier"] = "high_confidence"
-        ximilar_result.setdefault("debug", {})["engines_used"] = ["ximilar"]
+        ximilar_result["debug"]["engines_used"] = ["ximilar"]
+        ximilar_result["debug"]["tiebreaker_used"] = False
+        ximilar_result["debug"]["tiebreaker_winner"] = None
         return _stamp_game(ximilar_result)
 
     elif confidence >= XIMILAR_CONFIDENCE_MEDIUM and x_status not in ("ERROR", "NO_MATCH"):
-        # MEDIUM confidence — return optimistically, fire background OCR
+        # MEDIUM confidence — return optimistically, fire background vision validation
         logger.info(
-            "[pokemon_scanner] MEDIUM confidence (%.2f) — optimistic return + background OCR, category=%s",
+            "[pokemon_scanner] MEDIUM confidence (%.2f) — optimistic return + background vision validation, category=%s",
             confidence, category_id,
         )
         ximilar_result["scan_id"] = scan_id
         ximilar_result["validation_pending"] = True
         ximilar_result.setdefault("debug", {})["pipeline_tier"] = "medium_confidence"
-        ximilar_result.setdefault("debug", {})["engines_used"] = ["ximilar"]
+        ximilar_result["debug"]["engines_used"] = ["ximilar"]
+        ximilar_result["debug"]["tiebreaker_used"] = False
+        ximilar_result["debug"]["tiebreaker_winner"] = None
 
-        _insert_pending_validation(scan_id, (time.monotonic(), None))  # sentinel: OCR in progress
+        _insert_pending_validation(scan_id, (time.monotonic(), None))  # sentinel: vision in progress
 
         import copy
         ximilar_copy = copy.deepcopy(ximilar_result)
-        asyncio.create_task(_background_ocr_validate(
+        asyncio.create_task(_background_vision_validate(
             scan_id, image_b64, ximilar_copy, category_id,
         ))
 
         return _stamp_game(ximilar_result)
 
     else:
-        # LOW confidence — wait for OCR, merge, return
+        # LOW confidence — wait for vision, merge, return
         logger.info(
-            "[pokemon_scanner] LOW confidence (%.2f) — waiting for OCR pipeline, category=%s",
+            "[pokemon_scanner] LOW confidence (%.2f) — waiting for vision pipeline, category=%s",
             confidence, category_id,
         )
-        legacy_result = await _safe_run(_run_legacy_pipeline, image_b64, category_id)
-        merged = _merge_results(ximilar_result, legacy_result)
+        try:
+            vision_result = await _run_vision_pipeline(image_b64, category_id)
+        except Exception as exc:
+            logger.error("[pokemon_scanner] Vision pipeline failed in LOW tier: %s", exc)
+            vision_result = None
+        merged = await _merge_engine_results(ximilar_result, vision_result, image_b64)
         merged["scan_id"] = scan_id
         merged.setdefault("debug", {})["pipeline_tier"] = "low_confidence"
         return _stamp_game(merged)

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     nvidia_base_url: str = Field(default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_BASE_URL")
     nvidia_model: str = Field(default="aws/anthropic/bedrock-claude-opus-4-6", alias="NVIDIA_MODEL")
     nvidia_fast_model: str = Field(default="aws/anthropic/claude-haiku-4-5-v1", alias="NVIDIA_FAST_MODEL")
+    # Tiebreaker is only invoked when Ximilar and the vision model disagree on a
+    # LOW/MEDIUM-confidence scan, so there is no per-scan cost when scans go
+    # smoothly. Shares the NVIDIA endpoint; no separate API key required.
+    nvidia_tiebreaker_model: str = Field(default="gcp/google/gemini-3.1-pro-preview", alias="NVIDIA_TIEBREAKER_MODEL")
     discord_channel_ids: str = Field(default="", alias="DISCORD_CHANNEL_IDS")
     discord_ingest_enabled: bool = Field(default=True, alias="DISCORD_INGEST_ENABLED")
     parser_worker_enabled: bool = Field(default=True, alias="PARSER_WORKER_ENABLED")
