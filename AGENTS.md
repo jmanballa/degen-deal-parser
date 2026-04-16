@@ -12,7 +12,11 @@ Current stack:
 - Python 3.14, FastAPI, Uvicorn
 - discord.py for Discord ingestion
 - PostgreSQL (production on Machine B) / SQLite (local dev on Machine A) with SQLModel ORM
-- OpenAI API (parser fallback only)
+- AI providers (configurable via `AI_PROVIDER` env var):
+  - OpenAI API (`gpt-5-nano` for parser, vision, query parsing)
+  - NVIDIA Inference Hub — OpenAI-compatible endpoint serving Anthropic Claude models (`aws/anthropic/bedrock-claude-opus-4-6` for vision, `aws/anthropic/claude-haiku-4-5-v1` for fast/lightweight tasks)
+- Ximilar Collectibles API (visual card recognition)
+- TCG card data APIs: TCGdex + PokemonTCG (Pokemon), Scryfall (Magic), YGOPRODeck (Yu-Gi-Oh), OPTCG API (One Piece), Lorcast (Lorcana), TCGTracking (pricing/variants/conditions for all TCGs)
 - TikTok Shop Open Platform API (orders, products, live analytics)
 - TikSync SDK (live chat WebSocket)
 - Jinja2 templates with vanilla JS + Chart.js
@@ -204,13 +208,15 @@ Router agent (route handlers split from old main.py):
 - `app/routers/stream_manager.py` — `/stream-manager`
 
 Inventory agent:
-- `app/inventory.py` — inventory CRUD routes, scanning, label generation, Shopify push
+- `app/inventory.py` — inventory CRUD routes, scanning, label generation, Shopify push, text-search route
 - `app/inventory_barcode.py` — barcode generation (DGN-XXXXXX format)
 - `app/inventory_pricing.py` — auto-pricing lookups (Scryfall, 130point, etc.)
 - `app/inventory_shopify.py` — Shopify product sync, mark-sold-from-order
-- `app/card_scanner.py` — camera-based card identification via AI
+- `app/card_scanner.py` — legacy camera-based card identification via AI
+- `app/pokemon_scanner.py` — multi-TCG card scanner (camera + text search) with confidence-tiered Ximilar + AI/OCR pipeline, per-TCG card lookup, and TCGTracking price enrichment
+- `app/ai_client.py` — AI provider factory (OpenAI / NVIDIA), `get_model()` for vision and `get_fast_model()` for lightweight tasks
 - `app/cert_lookup.py` — grading cert number lookup (PSA, BGS, CGC, SGC)
-- `app/templates/inventory*.html` — 8 inventory templates
+- `app/templates/inventory*.html` — 8+ inventory templates including `inventory_scan_pokemon.html` (Degen Eye scanner)
 
 TikTok / Streamer agent:
 - `app/tiktok_ingest.py`
@@ -449,6 +455,54 @@ The inventory system (`/inventory`) provides:
 - **Status tracking** — in_stock, listed, sold, returned, missing
 
 Models: `InventoryItem`, `PriceHistory` in `app/models.py`
+
+## Degen Eye Card Scanner
+
+The Degen Eye scanner (`/inventory/scan/pokemon`, despite the URL it supports all major TCGs) is implemented in `app/pokemon_scanner.py`. It powers both camera-based and text-based card identification across multiple trading card games.
+
+### Pipeline
+
+1. **Image scanning** — confidence-tiered pipeline:
+   - **Ximilar Collectibles API** runs first (visual recognition, fast)
+   - If Ximilar confidence >= 0.85 → accept immediately, skip OCR
+   - If Ximilar confidence 0.60-0.84 → return Ximilar optimistically, validate via legacy OCR/AI in background (poll via `scan_id`)
+   - If Ximilar confidence < 0.60 → wait for OCR + AI disambiguation, merge, return
+2. **Text search** (`text_search_cards`) — free-text query parsing + per-TCG card lookup
+3. **Scoring** (`score_candidates`) — Levenshtein name match + collector number + set consistency, banded HIGH/MEDIUM/LOW
+4. **Price enrichment** (`_enrich_price_fast`) — TCGTracking lookup for variants + condition pricing for the top 8 candidates
+
+### Multi-TCG Card Lookup (text search routing)
+
+`text_search_cards()` routes by TCGTracking `category_id` to the right card-name search backend. All backends return `list[CandidateCard]` so scoring + enrichment work the same downstream.
+
+| TCG | Category ID | Backend | Endpoint |
+|---|---|---|---|
+| Pokemon | 3, 85 | `lookup_candidates` | TCGdex (`api.tcgdex.net`) + PokemonTCG (`api.pokemontcg.io`) waterfall |
+| Magic | 1 | `_scryfall_search` | `https://api.scryfall.com/cards/search` |
+| Yu-Gi-Oh | 2 | `_ygoprodeck_search` | `https://db.ygoprodeck.com/api/v7/cardinfo.php` (requires both `num` AND `offset`) |
+| One Piece | 68 | `_optcg_search` | `https://optcgapi.com/api/sets/filtered/?card_name=...` |
+| Lorcana | 71 | `_lorcast_search` | `https://api.lorcast.com/v0/cards/search` |
+| Dragon Ball / other | other | `_tcgtracking_product_search` | TCGTracking set search + product name match (requires set hint) |
+
+Price enrichment via TCGTracking (`tcgtracking.com/tcgapi/v1`) works for **all** categories — pulls TCGPlayer market/low pricing, available variants (Normal, Holofoil, Reverse, 1st Edition, etc.), and per-condition pricing (NM/LP/MP/HP/DMG) from the `/skus` endpoint.
+
+### Frontend (`app/templates/inventory_scan_pokemon.html`)
+
+Mobile-first scanner with:
+- Camera capture + rapid-fire scan queue with client-side batching (`localStorage`)
+- Category selector (`#category-select`) for switching TCGs — value is sent as `category_id` with every scan/search
+- Variant + condition selectors per batch item; price auto-updates from TCGTracking conditions data via `_resolveConditionPrice`
+- Edit sheet (tap a batch item to edit fields or replace via search)
+- Search sheet — text search modal with manual-add support (`POST /inventory/scan/pokemon/text-search`)
+
+### Important rules
+
+- **AI provider** — `app/ai_client.py` switches between OpenAI and NVIDIA Inference Hub via `AI_PROVIDER` env var. `get_model()` returns the heavy model (Opus / `gpt-5-nano`) for vision; `get_fast_model()` returns Haiku / nano for lightweight text parsing.
+- **Settings attribute name is `pokemon_tcg_api_key`** (snake_case with underscore between `pokemon` and `tcg`), NOT `pokemontcg_api_key`. The original `text_search_cards` had a typo here that crashed the endpoint.
+- **YGOPRODeck `num` parameter requires `offset`** to be paired with it, otherwise returns 400 "You cannot use only one of 'offset' or 'num'".
+- **PokemonTCG set search** uses wildcard suffix and strips trailing "Set" because PokemonTCG names the original Base Set as just "Base", not "Base Set".
+- **TCGdex card-name search** is limited to 10 results — sort by `prefer_set` and `prefer_number` BEFORE the cutoff so the right card makes it into the candidate pool.
+- **Image backfill** — TCGdex sometimes returns cards without images; `text_search_cards` runs a supplementary PokemonTCG name search and `_enrich_price_fast` backfills via TCGTracking's `image_url`.
 
 ## Stream Manager
 

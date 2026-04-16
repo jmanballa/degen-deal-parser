@@ -141,6 +141,26 @@ XIMILAR_CONFIDENCE_HIGH = 0.85   # ≥ this → accept Ximilar, skip OCR
 XIMILAR_CONFIDENCE_MEDIUM = 0.60 # ≥ this → optimistic return, background OCR
 
 
+def _loads_ai_json(raw: str) -> Optional[dict]:
+    """Parse a JSON object from an AI response, tolerating markdown fences.
+
+    Used across all ``chat.completions`` call sites because NVIDIA's
+    OpenAI-compatible endpoint (which serves Claude) does not support
+    ``response_format={"type": "json_object"}``. Returns None on failure.
+    """
+    if not raw:
+        return None
+    s = raw.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s)
+        s = re.sub(r"\s*```$", "", s)
+    try:
+        parsed = json.loads(s)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 # ---------------------------------------------------------------------------
 # Stage B: Preprocess
 # ---------------------------------------------------------------------------
@@ -312,12 +332,14 @@ def _ai_extract_fields(raw_text: str, openai_key: str) -> Optional[ExtractedFiel
                 {"role": "system", "content": _AI_EXTRACT_PROMPT},
                 {"role": "user", "content": raw_text},
             ],
-            response_format={"type": "json_object"},
             max_tokens=300,
             temperature=0.1,
         )
         raw_json = response.choices[0].message.content or "{}"
-        data = json.loads(raw_json)
+        data = _loads_ai_json(raw_json)
+        if data is None:
+            logger.warning("[pokemon_scanner] AI extraction returned non-JSON: %s", raw_json[:200])
+            return None
 
         fields = ExtractedFields()
         fields.card_name = data.get("card_name") or None
@@ -1845,11 +1867,13 @@ async def disambiguate_with_vision(
         response = client.chat.completions.create(
             model=VISION_MODEL,
             messages=[{"role": "user", "content": content_parts}],
-            response_format={"type": "json_object"},
             max_tokens=300,
         )
         raw = response.choices[0].message.content or "{}"
-        result = __import__("json").loads(raw)
+        result = _loads_ai_json(raw)
+        if result is None:
+            logger.warning("[pokemon_scanner] Vision disambiguation returned non-JSON: %s", raw[:200])
+            return None
         idx = result.get("bestMatchIndex")
         if isinstance(idx, int) and 0 <= idx < len(candidates):
             logger.info(
@@ -1950,6 +1974,31 @@ _XIMILAR_TAG_TO_CATEGORY: dict[str, str] = {
     "weiss schwarz": "19",
     "union arena": "82",
 }
+
+
+# TCGTracking category_id -> canonical game name stored on inventory items.
+# Keep these in sync with _XIMILAR_TAG_TO_CATEGORY.
+_CATEGORY_TO_GAME: dict[str, str] = {
+    "1": "Magic",
+    "2": "Yu-Gi-Oh",
+    "3": "Pokemon",
+    "16": "Cardfight Vanguard",
+    "19": "Weiss Schwarz",
+    "23": "Dragon Ball",
+    "27": "Dragon Ball",
+    "57": "Digimon",
+    "62": "Flesh and Blood",
+    "68": "One Piece",
+    "71": "Lorcana",
+    "80": "Dragon Ball",
+    "82": "Union Arena",
+    "85": "Pokemon",
+}
+
+
+def _game_for_category(cat_id: str) -> str:
+    """Return the canonical inventory game name for a TCGTracking category_id."""
+    return _CATEGORY_TO_GAME.get(str(cat_id or ""), "Other")
 
 
 def _detect_category_from_ximilar(tags: list[str], set_name: str = "") -> str | None:
@@ -2128,8 +2177,11 @@ async def _run_ximilar_pipeline(
     for alt in scored_list[1:]:
         try:
             await _enrich_price_fast(alt, settings.pokemon_tcg_api_key, category_id=category_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(
+                "[pokemon_scanner] Ximilar alternative price enrichment failed for %s: %s",
+                alt.name, exc,
+            )
     debug_info["stage_times_ms"]["price_enrich"] = _elapsed(t_stage)
 
     # Determine status
@@ -2161,6 +2213,7 @@ async def _run_ximilar_pipeline(
     if detected_variant:
         result_dict["detected_variant"] = detected_variant
         debug_info["detected_variant"] = detected_variant
+    result_dict["game"] = _game_for_category(category_id)
     _save_to_history(result_dict)
     return result_dict
 
@@ -2416,12 +2469,11 @@ def _parse_search_query(query: str) -> ExtractedFields:
                 max_tokens=200,
                 temperature=0.0,
             )
-            raw = (response.choices[0].message.content or "").strip()
-            # Strip markdown fences if the model wraps JSON in ```
-            if raw.startswith("```"):
-                raw = re.sub(r"^```(?:json)?\s*", "", raw)
-                raw = re.sub(r"\s*```$", "", raw)
-            data = json.loads(raw)
+            raw = response.choices[0].message.content or ""
+            data = _loads_ai_json(raw)
+            if data is None:
+                logger.warning("[pokemon_scanner] Text search parse returned non-JSON: %s", raw[:200])
+                raise ValueError("non-JSON AI response")
             ai_name = data.get("card_name") or None
             ai_set = data.get("set_name") or None
             ai_number = data.get("collector_number") or None
@@ -2454,12 +2506,14 @@ async def text_search_cards(query: str, category_id: str = "3") -> dict[str, Any
     """Search for cards by text query. Returns same shape as scan pipeline."""
     t_start = time.monotonic()
 
+    game = _game_for_category(category_id)
+
     if not query or not query.strip():
-        return asdict(ScanResult(status="ERROR", error="Empty search query"))
+        return {**asdict(ScanResult(status="ERROR", error="Empty search query")), "game": game}
 
     fields = _parse_search_query(query.strip())
     if not fields.card_name and not fields.collector_number:
-        return asdict(ScanResult(status="NO_MATCH", error="Could not parse search query"))
+        return {**asdict(ScanResult(status="NO_MATCH", error="Could not parse search query")), "game": game}
 
     is_pokemon = category_id in ("3", "85")
 
@@ -2512,11 +2566,11 @@ async def text_search_cards(query: str, category_id: str = "3") -> dict[str, Any
                 existing_card.image_url_small = pc.image_url_small
 
     if not candidates:
-        return asdict(ScanResult(
+        return {**asdict(ScanResult(
             status="NO_MATCH",
             error=f"No cards found for '{query}'",
             processing_time_ms=round((time.monotonic() - t_start) * 1000, 1),
-        ))
+        )), "game": game}
 
     scored = score_candidates(candidates, fields)
 
@@ -2537,6 +2591,7 @@ async def text_search_cards(query: str, category_id: str = "3") -> dict[str, Any
     )
     result_dict = asdict(result)
     result_dict["debug"] = {"engine": "text_search", "query": query}
+    result_dict["game"] = _game_for_category(category_id)
     return result_dict
 
 
@@ -2557,9 +2612,21 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
     has_ximilar = bool(settings.ximilar_api_token)
     has_ocr = bool(settings.google_vision_api_key)
 
+    def _stamp_game(result: dict) -> dict:
+        """Ensure every orchestrator return path has a canonical ``game`` field.
+
+        Uses ``debug.effective_category_id`` when Ximilar auto-detected a
+        different category, else the caller's ``category_id``.
+        """
+        if result.get("game"):
+            return result
+        effective = (result.get("debug") or {}).get("effective_category_id") or category_id
+        result["game"] = _game_for_category(effective)
+        return result
+
     # No Ximilar → legacy only
     if not has_ximilar:
-        return await _run_legacy_pipeline(image_b64, category_id)
+        return _stamp_game(await _run_legacy_pipeline(image_b64, category_id))
 
     # Run Ximilar first (fast: 2-4s)
     try:
@@ -2567,16 +2634,16 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
     except Exception as exc:
         logger.error("[pokemon_scanner] Ximilar pipeline failed: %s", exc)
         if has_ocr:
-            return await _run_legacy_pipeline(image_b64, category_id)
-        return asdict(ScanResult(
+            return _stamp_game(await _run_legacy_pipeline(image_b64, category_id))
+        return _stamp_game(asdict(ScanResult(
             status="ERROR",
             error=f"Ximilar pipeline failed: {exc}",
             processing_time_ms=0,
-        ))
+        )))
 
     # No OCR available → return Ximilar regardless of confidence
     if not has_ocr:
-        return ximilar_result
+        return _stamp_game(ximilar_result)
 
     confidence = _ximilar_confidence(ximilar_result)
     x_status = ximilar_result.get("status", "ERROR")
@@ -2591,7 +2658,7 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
         ximilar_result["scan_id"] = scan_id
         ximilar_result.setdefault("debug", {})["pipeline_tier"] = "high_confidence"
         ximilar_result.setdefault("debug", {})["engines_used"] = ["ximilar"]
-        return ximilar_result
+        return _stamp_game(ximilar_result)
 
     elif confidence >= XIMILAR_CONFIDENCE_MEDIUM and x_status not in ("ERROR", "NO_MATCH"):
         # MEDIUM confidence — return optimistically, fire background OCR
@@ -2612,7 +2679,7 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
             scan_id, image_b64, ximilar_copy, category_id,
         ))
 
-        return ximilar_result
+        return _stamp_game(ximilar_result)
 
     else:
         # LOW confidence — wait for OCR, merge, return
@@ -2624,7 +2691,7 @@ async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]
         merged = _merge_results(ximilar_result, legacy_result)
         merged["scan_id"] = scan_id
         merged.setdefault("debug", {})["pipeline_tier"] = "low_confidence"
-        return merged
+        return _stamp_game(merged)
 
 
 def get_validation_result(scan_id: str) -> dict | None:

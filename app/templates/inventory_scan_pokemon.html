@@ -503,6 +503,28 @@ var PKScanner = (function() {
     var selectedCandidateIdx = null;
     var selectedCategoryId = localStorage.getItem('degen_eye_category') || '3';
 
+    // Mirror of app/pokemon_scanner.py's _CATEGORY_TO_GAME. Used only as a
+    // fallback when the backend response doesn't include a canonical game.
+    var CATEGORY_TO_GAME = {
+        '1': 'Magic',
+        '2': 'Yu-Gi-Oh',
+        '3': 'Pokemon',
+        '16': 'Cardfight Vanguard',
+        '19': 'Weiss Schwarz',
+        '23': 'Dragon Ball',
+        '27': 'Dragon Ball',
+        '57': 'Digimon',
+        '62': 'Flesh and Blood',
+        '68': 'One Piece',
+        '71': 'Lorcana',
+        '80': 'Dragon Ball',
+        '82': 'Union Arena',
+        '85': 'Pokemon'
+    };
+    function categoryIdToGame(catId) {
+        return CATEGORY_TO_GAME[String(catId || '')] || 'Other';
+    }
+
     function loadCategories() {
         var selMobile = document.getElementById('category-select');
         var selDesktop = document.getElementById('category-select-desktop');
@@ -771,7 +793,7 @@ var PKScanner = (function() {
 
             if (data.status === 'MATCHED' && data.best_match) {
                 entry.status = 'matched';
-                addToBatchFromCard(data.best_match, entry.id, data.detected_variant);
+                addToBatchFromCard(data.best_match, entry.id, data.detected_variant, data.game);
                 var m = data.best_match;
                 var tp = '';
                 var tvariants = m.available_variants || [];
@@ -820,7 +842,7 @@ var PKScanner = (function() {
                                 }
                                 saveBatch();
                             } else {
-                                addToBatchFromCard(updated.best_match, queueEntry.id, updated.detected_variant);
+                                addToBatchFromCard(updated.best_match, queueEntry.id, updated.detected_variant, updated.game);
                             }
                         }
                         updateQueueItemEl(queueEntry);
@@ -1263,12 +1285,13 @@ var PKScanner = (function() {
         }
         if (!card) return;
 
+        var resultGame = (lastResult && lastResult.game) || null;
         if (reviewingScanId !== null) {
-            addToBatchFromCard(card, reviewingScanId);
+            addToBatchFromCard(card, reviewingScanId, null, resultGame);
             _resolveQueueItem(reviewingScanId, card);
             reviewingScanId = null;
         } else {
-            addToBatchFromCard(card);
+            addToBatchFromCard(card, undefined, null, resultGame);
         }
         showToast('\u2713 Added: ' + card.name, 2000);
         renderBatch();
@@ -1350,7 +1373,7 @@ var PKScanner = (function() {
         _updateResultPriceDisplay();
     }
 
-    function addToBatchFromCard(card, scanId, detectedVariant) {
+    function addToBatchFromCard(card, scanId, detectedVariant, game) {
         var variant = _getVariant();
         var vp = _getVariantPrice();
 
@@ -1390,7 +1413,7 @@ var PKScanner = (function() {
 
         var item = {
             card_name: card.name || card.card_name || '',
-            game: 'Pokemon',
+            game: game || categoryIdToGame(selectedCategoryId),
             condition: selectedCond,
             set_name: card.set_name || '',
             card_number: card.number || card.card_number || '',
@@ -1868,12 +1891,14 @@ var PKScanner = (function() {
     var _searchMode = 'add';
     var _searchReplaceIdx = -1;
     var _searchCandidates = [];
+    var _searchGame = null;
     var _searchSelectedIdx = -1;
 
     function openSearchSheet(mode, batchIdx) {
         _searchMode = mode || 'add';
         _searchReplaceIdx = (batchIdx !== undefined) ? batchIdx : -1;
         _searchCandidates = [];
+        _searchGame = null;
         _searchSelectedIdx = -1;
 
         var title = mode === 'replace' ? 'Search Different Card' : 'Add Card';
@@ -1924,6 +1949,7 @@ var PKScanner = (function() {
         })
         .then(function(data) {
             _searchCandidates = data.candidates || [];
+            _searchGame = data.game || null;
             if (!_searchCandidates.length) {
                 results.innerHTML = '<div class="search-empty">No cards found for &ldquo;' + escHtml(query) + '&rdquo;</div>';
                 return;
@@ -2061,7 +2087,7 @@ var PKScanner = (function() {
 
         var item = {
             card_name: c.name || '',
-            game: 'Pokemon',
+            game: _searchGame || categoryIdToGame(selectedCategoryId),
             condition: condition,
             set_name: c.set_name || '',
             card_number: c.number || '',
@@ -2088,6 +2114,7 @@ var PKScanner = (function() {
         _searchMode = 'add';
         _searchReplaceIdx = -1;
         _searchCandidates = [];
+        _searchGame = null;
         _searchSelectedIdx = -1;
         document.getElementById('search-overlay').classList.remove('open');
     }

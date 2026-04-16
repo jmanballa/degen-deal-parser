@@ -37,6 +37,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_hosted.ps1
 **Inventory:**
 - Card inventory management with barcode generation, camera scanning, slab cert lookup
 - Auto-pricing, Shopify integration, label printing
+- **Degen Eye multi-TCG scanner** (`/inventory/scan/pokemon`) — camera + text-based card search across Pokemon, Magic, Yu-Gi-Oh, One Piece, Lorcana, Dragon Ball, etc. Uses Ximilar visual recognition plus dedicated per-TCG card APIs (Scryfall, YGOPRODeck, OPTCG, Lorcast, TCGdex, PokemonTCG) with TCGTracking for variant + condition-level pricing
 
 ## Key Pages
 
@@ -70,6 +71,23 @@ OPENAI_API_KEY=<openai key>
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<strong password>
 ```
+
+AI provider (optional — defaults to OpenAI):
+```
+AI_PROVIDER=openai                 # or "nvidia"
+# If AI_PROVIDER=nvidia:
+NVIDIA_API_KEY=<nvidia inference hub key>
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=aws/anthropic/bedrock-claude-opus-4-6     # heavy model for vision / disambiguation
+NVIDIA_FAST_MODEL=aws/anthropic/claude-haiku-4-5-v1    # fast model for query parsing
+```
+
+Card scanner (optional — only needed for Degen Eye `/inventory/scan/pokemon`):
+```
+XIMILAR_API_TOKEN=<ximilar collectibles token>  # visual card recognition
+POKEMON_TCG_API_KEY=<pokemontcg.io key>         # higher rate limits for PokemonTCG API
+```
+TCGTracking's public API is currently unauthenticated, so no key is needed for variant/condition pricing.
 
 TikTok (needed for order sync and streamer dashboard):
 ```

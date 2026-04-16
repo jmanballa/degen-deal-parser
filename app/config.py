@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     ai_provider: str = Field(default="openai", alias="AI_PROVIDER")
     nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
-    nvidia_base_url: str = Field(default="https://inference-api.nvidia.com", alias="NVIDIA_BASE_URL")
+    nvidia_base_url: str = Field(default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_BASE_URL")
     nvidia_model: str = Field(default="aws/anthropic/bedrock-claude-opus-4-6", alias="NVIDIA_MODEL")
     nvidia_fast_model: str = Field(default="aws/anthropic/claude-haiku-4-5-v1", alias="NVIDIA_FAST_MODEL")
     discord_channel_ids: str = Field(default="", alias="DISCORD_CHANNEL_IDS")

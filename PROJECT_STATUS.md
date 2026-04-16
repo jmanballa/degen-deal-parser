@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-04-14
+Last updated: 2026-04-16
 
 ## What Is This
 
@@ -10,7 +10,7 @@ Two main verticals:
 1. **Discord deal parsing** — ingests Discord deal-log messages, parses them into structured transactions, normalizes for financial reporting
 2. **TikTok Shop livestream tools** — order sync, real-time streamer dashboard, analytics, product management
 
-Stack: Python 3.14, FastAPI, Uvicorn, PostgreSQL (prod) / SQLite (dev), discord.py, OpenAI API (parser fallback), TikTok Shop Open Platform API, TikSync SDK (live chat WebSocket), Jinja2 + vanilla JS + Chart.js, role-based auth.
+Stack: Python 3.14, FastAPI, Uvicorn, PostgreSQL (prod) / SQLite (dev), discord.py, AI (OpenAI or NVIDIA Inference Hub — Claude Opus for vision, Haiku for lightweight tasks), Ximilar Collectibles API, multi-TCG card data APIs (TCGdex, PokemonTCG, Scryfall, YGOPRODeck, OPTCG, Lorcast, TCGTracking), TikTok Shop Open Platform API, TikSync SDK (live chat WebSocket), Jinja2 + vanilla JS + Chart.js, role-based auth.
 
 ---
 
@@ -95,7 +95,9 @@ As of April 2026, `app/main.py` was refactored from ~12,000 lines into a modular
 | `inventory_barcode.py` | Barcode generation (DGN-XXXXXX format) |
 | `inventory_pricing.py` | Auto-pricing lookups (Scryfall, 130point) |
 | `inventory_shopify.py` | Shopify product sync, mark-sold-from-order |
-| `card_scanner.py` | AI-powered card identification from camera images |
+| `card_scanner.py` | Legacy AI-powered card identification from camera images |
+| `pokemon_scanner.py` | Multi-TCG card scanner: Ximilar + OCR pipeline, text search, per-TCG lookup (Pokemon/Magic/Yu-Gi-Oh/One Piece/Lorcana/+), TCGTracking price enrichment |
+| `ai_client.py` | AI provider factory (OpenAI / NVIDIA Inference Hub); `get_model()` heavy, `get_fast_model()` lightweight |
 | `cert_lookup.py` | Grading cert number lookup (PSA, BGS, CGC, SGC) |
 
 ### Key Scripts
@@ -178,6 +180,23 @@ As of April 2026, `app/main.py` was refactored from ~12,000 lines into a modular
 - Shopify integration — push items to Shopify, auto-mark sold from incoming orders
 - Item status tracking (in_stock, listed, sold, returned, missing)
 
+### Degen Eye Multi-TCG Scanner (`/inventory/scan/pokemon`)
+- **Confidence-tiered image pipeline** — Ximilar Collectibles API first; if confidence >= 0.85, return immediately; otherwise merge with legacy OCR + AI vision disambiguation
+- **Auto-detects card game** from Ximilar tags (Pokemon, Magic, Yu-Gi-Oh, One Piece, Lorcana, Dragon Ball, etc.) for correct pricing category
+- **Manual card addition via text search** — `POST /inventory/scan/pokemon/text-search` parses free-text queries (AI + heuristic fallback) and returns ranked candidates with images and prices
+- **Multi-TCG text search routing** — queries route to dedicated card-name APIs by TCGTracking category:
+  - Pokemon → TCGdex + PokemonTCG waterfall (with set-filtered supplementary lookup and image backfill)
+  - Magic → Scryfall
+  - Yu-Gi-Oh → YGOPRODeck
+  - One Piece → OPTCG API
+  - Lorcana → Lorcast
+  - Other TCGs (Dragon Ball, etc.) → TCGTracking product search fallback
+- **Edit scanned cards inline** — tap a scanned card to edit fields or trigger "Search for Different Card" to swap the match
+- **TCGTracking price enrichment across all TCGs** — fetches TCGPlayer market + low prices, variant list (Normal, Holofoil, Reverse, 1st Edition, etc.), and condition-specific prices (NM/LP/MP/HP/DMG) via `/skus` endpoint
+- **Variant + condition selectors** — picked variant/condition updates the displayed price immediately from pre-fetched `conditions_pricing`
+- **Rapid-fire camera scan queue** — client-side batching with `localStorage`, mobile-first UI
+- **Configurable AI provider** — defaults to OpenAI (`gpt-5-nano`); can switch to NVIDIA Inference Hub (Claude Opus for vision, Haiku for fast query parsing) via `AI_PROVIDER` env var
+
 ### Stream Management
 - Multi-stream account support — tabbed schedule interface (e.g., "Main Stream", "Second Stream")
 - Team scheduling with AM/PM time display
@@ -252,6 +271,16 @@ Future goal: make the platform multi-tenant SaaS. No work started yet.
 ## Recent Commits (Last 20)
 
 ```
+8b6bbd2 add multi-TCG text search: Scryfall (Magic), YGOPRODeck (Yu-Gi-Oh), OPTCG (One Piece), Lorcast (Lorcana), TCGTracking fallback
+439671c auto-detect card game category from Ximilar tags for correct pricing
+2f1e7c3 fix pricing for non-Pokemon games: flexible number matching + name-only fallback
+6af460c fix: always fetch condition pricing from TCGTracking even if base price exists
+9d06f37 fix search sheet: update price on variant/condition change
+6d0278c fix text search: remove response_format, add heuristic set extraction, fix TCGdex sort key
+a2e1020 improve text search: set-filtered PokemonTCG lookup, image backfill, TCGdex set prioritization
+b3bfb75 fix fast model name to claude-haiku-4-5-v1, fall through to heuristic on empty AI result
+6c9d648 add NVIDIA_FAST_MODEL for lightweight AI tasks (defaults to Haiku)
+4d3378d fix text search crash: wrong settings attribute name
 782dc9b Merge duplicate line items per order in buyer detail drilldown
 8a276b5 Fix leaderboard UX: add buyer scroll arrows, mobile-friendly detail panels with product images
 23e0e44 Add click-to-expand drilldowns on streamer leaderboard
@@ -262,16 +291,6 @@ f14eb11 Pin Jinja2 to 3.1.5 to fix unhashable cache key bug in 3.1.6
 ec9229f Fix three data accuracy bugs found by Codex audit
 755b506 Add Client & Product Intelligence page at /tiktok/clients
 370c316 Simplify Log Hit modal: remove hit value, stream label, and extra fields
-6a86bc7 Fix PostgreSQL GROUP BY error in buyer lifetime query
-0b7113e Comprehensive security, performance, and code quality audit fixes
-950a2ed Fix missing imports in admin_actions.py causing 500 on channel add with backfill
-283ee22 Add automated PostgreSQL backup script with OneDrive upload via rclone
-4d5cef4 Refactor app/main.py into modular router architecture
-7ac5dae Prevent server hangs: liveness watchdog, pool timeouts, statement timeout, backfill rate limit
-5f5d456 Add VIP buyer badges, chat viewer presence tracking, and join messages
-f3a3e17 Add multi-stream schedules, AM/PM times, overnight shift support
-98c0554 Add inventory management system with barcode generation and auto-pricing
-cc1ddeb Add card camera scanning and slab cert lookup features
 ```
 
 ---
@@ -296,5 +315,22 @@ TIKTOK_LIVE_API_KEY, TIKTOK_LIVE_USERNAME (for live chat)
 ```
 
 Tokens are stored in the DB after initial OAuth — not needed in .env after first auth.
+
+Essential for Degen Eye card scanner:
+```
+XIMILAR_API_TOKEN      # visual card recognition (Ximilar Collectibles)
+POKEMON_TCG_API_KEY    # PokemonTCG API (higher rate limits)
+```
+TCGTracking's public API is unauthenticated — variant/condition pricing works without a key.
+
+AI provider configuration (both parser and scanner use this):
+```
+AI_PROVIDER=openai     # or "nvidia"
+# If using NVIDIA Inference Hub:
+NVIDIA_API_KEY
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=aws/anthropic/bedrock-claude-opus-4-6     # heavy (vision, disambiguation)
+NVIDIA_FAST_MODEL=aws/anthropic/claude-haiku-4-5-v1    # fast (query parsing)
+```
 
 See `app/config.py` for the complete list of all settings.
