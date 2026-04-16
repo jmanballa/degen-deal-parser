@@ -722,7 +722,24 @@ var PKScanner = (function() {
                             if (prev && prev !== newName) {
                                 showToast('Updated: ' + newName);
                             }
-                            addToBatchFromCard(updated.best_match, queueEntry.id, updated.detected_variant);
+                            var existingIdx = _findBatchIdx(queueEntry.id);
+                            if (existingIdx >= 0) {
+                                var um = updated.best_match;
+                                var uv = um.available_variants || [];
+                                var udv = updated.detected_variant || '';
+                                var udp = _pickDisplayPrice(um, uv, udv);
+                                batch[existingIdx].card_name = um.name || um.card_name || '';
+                                batch[existingIdx].set_name = um.set_name || '';
+                                batch[existingIdx].card_number = um.number || um.card_number || '';
+                                batch[existingIdx].image_url = um.image_url || '';
+                                batch[existingIdx].auto_price = udp.value;
+                                batch[existingIdx]._available_variants = uv;
+                                if (udv) batch[existingIdx].variant = udv;
+                                batch[existingIdx].is_foil = (batch[existingIdx].variant || '').toLowerCase().indexOf('holo') >= 0;
+                                saveBatch();
+                            } else {
+                                addToBatchFromCard(updated.best_match, queueEntry.id, updated.detected_variant);
+                            }
                         }
                         updateQueueItemEl(queueEntry);
                         renderBatch();
