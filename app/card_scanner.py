@@ -16,14 +16,13 @@ import logging
 from typing import Any, Optional
 
 import httpx
-from openai import OpenAI
-
+from .ai_client import get_ai_client, get_model, has_ai_key
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-VISION_MODEL = "gpt-5-nano"
+VISION_MODEL = get_model(default="gpt-5-nano")
 
 SCRYFALL_NAMED_URL = "https://api.scryfall.com/cards/named"
 SCRYFALL_SEARCH_URL = "https://api.scryfall.com/cards/search"
@@ -56,21 +55,17 @@ Be precise about card_name. If you cannot read the card clearly, set confidence 
 Always return valid JSON only — no other text."""
 
 
-def _openai_client() -> OpenAI:
-    return OpenAI(api_key=settings.openai_api_key, timeout=30.0)
-
-
 async def identify_card_from_image(base64_image: str) -> dict[str, Any]:
     """
-    Send a base64-encoded card image to OpenAI Vision and return structured card info.
+    Send a base64-encoded card image to AI Vision and return structured card info.
 
     Returns a dict with: game, card_name, set_name, card_number, set_code,
     language, condition, is_foil, confidence, notes, error (if failed).
     """
-    if not settings.openai_api_key:
-        return {"error": "OpenAI API key not configured", "confidence": 0.0}
+    if not has_ai_key():
+        return {"error": "AI API key not configured", "confidence": 0.0}
 
-    client = _openai_client()
+    client = get_ai_client(timeout=30.0)
     try:
         response = client.chat.completions.create(
             model=VISION_MODEL,

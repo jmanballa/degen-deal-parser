@@ -22,8 +22,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 
 import httpx
-from openai import OpenAI
-
+from .ai_client import get_ai_client, get_model, has_ai_key
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -98,7 +97,7 @@ SCORING_WEIGHTS = {
 }
 
 DISAMBIGUATION_THRESHOLD = 15
-VISION_MODEL = "gpt-5-nano"
+VISION_MODEL = get_model(default="gpt-5-nano")
 
 XIMILAR_TCG_URL = "https://api.ximilar.com/collectibles/v2/tcg_id"
 GOOGLE_VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
@@ -294,15 +293,15 @@ Respond with JSON only. Do not include any explanation."""
 
 
 def _ai_extract_fields(raw_text: str, openai_key: str) -> Optional[ExtractedFields]:
-    """Use OpenAI to interpret raw OCR text into structured card fields.
+    """Use AI to interpret raw OCR text into structured card fields.
 
     Returns populated ExtractedFields on success, None on failure.
     """
-    if not openai_key or not raw_text.strip():
+    if not has_ai_key() or not raw_text.strip():
         return None
 
     try:
-        client = OpenAI(api_key=openai_key, timeout=10.0)
+        client = get_ai_client(timeout=10.0)
         response = client.chat.completions.create(
             model=VISION_MODEL,
             messages=[
@@ -1369,10 +1368,10 @@ async def disambiguate_with_vision(
     openai_key: str,
 ) -> Optional[int]:
     """
-    Use OpenAI Vision to pick the best match among ambiguous candidates.
+    Use AI Vision to pick the best match among ambiguous candidates.
     Returns the index of the best match, or None on failure.
     """
-    if not openai_key or not candidates:
+    if not has_ai_key() or not candidates:
         return None
 
     content_parts: list[dict] = [
@@ -1414,7 +1413,7 @@ async def disambiguate_with_vision(
     })
 
     try:
-        client = OpenAI(api_key=openai_key, timeout=30.0)
+        client = get_ai_client(timeout=30.0)
         response = client.chat.completions.create(
             model=VISION_MODEL,
             messages=[{"role": "user", "content": content_parts}],
@@ -2123,10 +2122,10 @@ async def _run_legacy_pipeline(image_b64: str, category_id: str = "3") -> dict[s
     if len(scored) >= 2 and (scored[0].score - scored[1].score) < DISAMBIGUATION_THRESHOLD:
         ambiguous_set = [s for s in scored if (scored[0].score - s.score) < DISAMBIGUATION_THRESHOLD][:3]
 
-        if settings.openai_api_key:
+        if has_ai_key():
             t_stage = time.monotonic()
             best_idx = await disambiguate_with_vision(
-                image_b64, ambiguous_set, settings.openai_api_key,
+                image_b64, ambiguous_set, "",
             )
             debug_info["stage_times_ms"]["disambiguate"] = _elapsed(t_stage)
 

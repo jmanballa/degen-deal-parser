@@ -4,15 +4,14 @@ import logging
 import re
 from typing import Any, Dict, List
 
-from openai import OpenAI
-
+from .ai_client import get_ai_client, get_model, is_nvidia
 from .config import get_settings
 from .corrections import get_exact_correction_match, get_learned_rule_match, get_relevant_correction_hints
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-MODEL = "gpt-5-nano"
+MODEL = get_model(default="gpt-5-nano")
 MODEL_PRICING_PER_MILLION = {
     "gpt-5-nano": {
         "input": 0.05,
@@ -20,10 +19,6 @@ MODEL_PRICING_PER_MILLION = {
         "output": 0.40,
     }
 }
-client_openai = OpenAI(
-    api_key=settings.openai_api_key,
-    timeout=60.0,
-)
 
 api_semaphore = asyncio.Semaphore(3)
 
@@ -1347,32 +1342,47 @@ def parse_deal_with_ai(
         correction_hints=correction_hints,
     )
 
-    content = [{"type": "input_text", "text": prompt}]
-
+    content: list[dict] = [{"type": "text", "text": prompt}]
     for url in image_urls:
         content.append({
-            "type": "input_image",
-            "image_url": url,
-            "detail": "auto"
+            "type": "image_url",
+            "image_url": {"url": url, "detail": "auto"},
         })
 
-    response = client_openai.responses.create(
-        model=MODEL,
-        input=[{
-            "role": "user",
-            "content": content
-        }],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "deal_parse",
-                "schema": schema,
-                "strict": True,
-            }
-        },
-    )
+    client = get_ai_client(timeout=60.0)
 
-    parsed = json.loads(response.output_text)
+    if is_nvidia():
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": content}],
+            response_format={"type": "json_object"},
+            max_tokens=2048,
+        )
+        raw_text = response.choices[0].message.content or "{}"
+    else:
+        response = client.responses.create(
+            model=MODEL,
+            input=[{
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt}
+                ] + [
+                    {"type": "input_image", "image_url": url, "detail": "auto"}
+                    for url in image_urls
+                ],
+            }],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "deal_parse",
+                    "schema": schema,
+                    "strict": True,
+                }
+            },
+        )
+        raw_text = response.output_text
+
+    parsed = json.loads(raw_text)
     usage_metrics = extract_usage_metrics(response, model=MODEL)
     return enforce_store_conventions(
         message_text=message_text,
