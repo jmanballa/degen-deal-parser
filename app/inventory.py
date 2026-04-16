@@ -634,7 +634,7 @@ async def inventory_batch_review_page(request: Request):
 # Pokemon card scanner (multi-stage pipeline)
 # ---------------------------------------------------------------------------
 
-@router.get("/inventory/scan/pokemon", response_class=HTMLResponse)
+@router.get("/degen_eye", response_class=HTMLResponse)
 async def inventory_scan_pokemon_page(request: Request):
     if denial := _require_viewer(request):
         return denial
@@ -645,7 +645,7 @@ async def inventory_scan_pokemon_page(request: Request):
     )
 
 
-@router.get("/inventory/scan/pokemon/categories")
+@router.get("/degen_eye/categories")
 async def inventory_scan_categories(request: Request):
     """Return TCGTracking categories with preferred ordering."""
     if denial := _require_viewer(request):
@@ -654,7 +654,7 @@ async def inventory_scan_categories(request: Request):
     return JSONResponse({"categories": categories})
 
 
-@router.post("/inventory/scan/pokemon/identify")
+@router.post("/degen_eye/identify")
 async def inventory_scan_pokemon_identify(request: Request):
     """
     Run the full card scanning pipeline on a base64 image.
@@ -688,7 +688,7 @@ async def inventory_scan_pokemon_identify(request: Request):
     return JSONResponse(result, status_code=status_code)
 
 
-@router.post("/inventory/scan/pokemon/text-search")
+@router.post("/degen_eye/text-search")
 async def inventory_scan_pokemon_text_search(request: Request):
     """Search for cards by text query (name, set, number)."""
     if denial := _require_viewer(request):
@@ -705,7 +705,7 @@ async def inventory_scan_pokemon_text_search(request: Request):
     return JSONResponse(result)
 
 
-@router.get("/inventory/scan/pokemon/history")
+@router.get("/degen_eye/history")
 async def inventory_scan_pokemon_history(request: Request):
     """Return recent scan results as JSON for debugging."""
     if denial := _require_viewer(request):
@@ -713,7 +713,7 @@ async def inventory_scan_pokemon_history(request: Request):
     return JSONResponse(get_scan_history())
 
 
-@router.get("/inventory/scan/pokemon/validate/{scan_id}")
+@router.get("/degen_eye/validate/{scan_id}")
 async def inventory_scan_pokemon_validate(request: Request, scan_id: str):
     """Poll for background OCR validation result."""
     if denial := _require_viewer(request):
@@ -724,7 +724,7 @@ async def inventory_scan_pokemon_validate(request: Request, scan_id: str):
     return JSONResponse(result)
 
 
-@router.get("/inventory/scan/pokemon/debug", response_class=HTMLResponse)
+@router.get("/degen_eye/debug", response_class=HTMLResponse)
 async def inventory_scan_pokemon_debug_page(request: Request):
     """Live debug page showing recent scan history — open on desktop while scanning on phone."""
     if denial := _require_viewer(request):
@@ -762,7 +762,7 @@ async def inventory_scan_pokemon_debug_page(request: Request):
 <div id="log"></div>
 <script>
 function loadHistory(){
-  fetch('/inventory/scan/pokemon/history').then(r=>r.json()).then(data=>{
+  fetch('/degen_eye/history').then(r=>r.json()).then(data=>{
     var el=document.getElementById('log');
     if(!data.length){el.innerHTML='<div class="empty">No scans yet. Start scanning on your phone.</div>';return;}
     el.innerHTML=data.map(function(e){

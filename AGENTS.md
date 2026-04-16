@@ -458,7 +458,7 @@ Models: `InventoryItem`, `PriceHistory` in `app/models.py`
 
 ## Degen Eye Card Scanner
 
-The Degen Eye scanner (`/inventory/scan/pokemon`, despite the URL it supports all major TCGs) is implemented in `app/pokemon_scanner.py`. It powers both camera-based and text-based card identification across multiple trading card games.
+The Degen Eye scanner (`/degen_eye`) is implemented in `app/pokemon_scanner.py`. It powers both camera-based and text-based card identification across multiple trading card games (Pokemon, Magic, Yu-Gi-Oh, One Piece, Lorcana, Dragon Ball, etc.). The Python module and the `inventory_scan_pokemon.html` template kept their Pokemon-era names for backward compatibility with git history; only the public URL was renamed.
 
 ### Pipeline
 
@@ -495,7 +495,7 @@ Mobile-first scanner with:
 - Category selector (`#category-select`) for switching TCGs — value is sent as `category_id` with every scan/search
 - Variant + condition selectors per batch item; price auto-updates from TCGTracking conditions data via `_resolveConditionPrice`
 - Edit sheet (tap a batch item to edit fields or replace via search)
-- Search sheet — text search modal with manual-add support (`POST /inventory/scan/pokemon/text-search`)
+- Search sheet — text search modal with manual-add support (`POST /degen_eye/text-search`)
 
 ### Important rules
 

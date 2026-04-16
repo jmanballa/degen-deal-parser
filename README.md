@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_hosted.ps1
 **Inventory:**
 - Card inventory management with barcode generation, camera scanning, slab cert lookup
 - Auto-pricing, Shopify integration, label printing
-- **Degen Eye multi-TCG scanner** (`/inventory/scan/pokemon`) — camera + text-based card search across Pokemon, Magic, Yu-Gi-Oh, One Piece, Lorcana, Dragon Ball, etc. Uses Ximilar visual recognition plus dedicated per-TCG card APIs (Scryfall, YGOPRODeck, OPTCG, Lorcast, TCGdex, PokemonTCG) with TCGTracking for variant + condition-level pricing
+- **Degen Eye multi-TCG scanner** (`/degen_eye`) — camera + text-based card search across Pokemon, Magic, Yu-Gi-Oh, One Piece, Lorcana, Dragon Ball, etc. Uses Ximilar visual recognition plus dedicated per-TCG card APIs (Scryfall, YGOPRODeck, OPTCG, Lorcast, TCGdex, PokemonTCG) with TCGTracking for variant + condition-level pricing
 
 ## Key Pages
 
@@ -83,7 +83,7 @@ NVIDIA_FAST_MODEL=aws/anthropic/claude-haiku-4-5-v1    # fast model (text query 
 NVIDIA_TIEBREAKER_MODEL=gcp/google/gemini-3.1-pro-preview  # ensemble tiebreaker, only called when Ximilar + vision disagree
 ```
 
-Card scanner (optional — only needed for Degen Eye `/inventory/scan/pokemon`):
+Card scanner (optional — only needed for Degen Eye `/degen_eye`):
 ```
 XIMILAR_API_TOKEN=<ximilar collectibles token>  # visual card recognition
 POKEMON_TCG_API_KEY=<pokemontcg.io key>         # higher rate limits for PokemonTCG API

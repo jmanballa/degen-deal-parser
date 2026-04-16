@@ -556,7 +556,7 @@ var PKScanner = (function() {
         var selDesktop = document.getElementById('category-select-desktop');
         var selectors = [selMobile, selDesktop].filter(Boolean);
 
-        fetch('/inventory/scan/pokemon/categories')
+        fetch('/degen_eye/categories')
             .then(function(r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
@@ -634,7 +634,7 @@ var PKScanner = (function() {
         var interval = 1500;
         function poll() {
             attempts++;
-            fetch('/inventory/scan/pokemon/validate/' + scanId)
+            fetch('/degen_eye/validate/' + scanId)
                 .then(function(r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
@@ -846,7 +846,7 @@ var PKScanner = (function() {
 
         try {
             var b64 = captureImage();
-            var resp = await fetch('/inventory/scan/pokemon/identify', {
+            var resp = await fetch('/degen_eye/identify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ image: b64, category_id: selectedCategoryId })
@@ -915,7 +915,7 @@ var PKScanner = (function() {
         updateQueueStatus();
 
         var entry = next;
-        fetch('/inventory/scan/pokemon/identify', {
+        fetch('/degen_eye/identify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ image: entry.b64, category_id: selectedCategoryId })
@@ -2080,7 +2080,7 @@ var PKScanner = (function() {
         _searchCandidates = [];
         _searchSelectedIdx = -1;
 
-        fetch('/inventory/scan/pokemon/text-search', {
+        fetch('/degen_eye/text-search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: query, category_id: selectedCategoryId })

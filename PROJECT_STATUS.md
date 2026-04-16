@@ -180,10 +180,10 @@ As of April 2026, `app/main.py` was refactored from ~12,000 lines into a modular
 - Shopify integration — push items to Shopify, auto-mark sold from incoming orders
 - Item status tracking (in_stock, listed, sold, returned, missing)
 
-### Degen Eye Multi-TCG Scanner (`/inventory/scan/pokemon`)
+### Degen Eye Multi-TCG Scanner (`/degen_eye`)
 - **Confidence-tiered image pipeline** — Ximilar Collectibles API first; if confidence >= 0.85, return immediately; otherwise merge with legacy OCR + AI vision disambiguation
 - **Auto-detects card game** from Ximilar tags (Pokemon, Magic, Yu-Gi-Oh, One Piece, Lorcana, Dragon Ball, etc.) for correct pricing category
-- **Manual card addition via text search** — `POST /inventory/scan/pokemon/text-search` parses free-text queries (AI + heuristic fallback) and returns ranked candidates with images and prices
+- **Manual card addition via text search** — `POST /degen_eye/text-search` parses free-text queries (AI + heuristic fallback) and returns ranked candidates with images and prices
 - **Multi-TCG text search routing** — queries route to dedicated card-name APIs by TCGTracking category:
   - Pokemon → TCGdex + PokemonTCG waterfall (with set-filtered supplementary lookup and image backfill)
   - Magic → Scryfall
