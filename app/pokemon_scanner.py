@@ -1562,6 +1562,41 @@ def _detect_variant_from_tags(tags: list[str]) -> str | None:
     return None
 
 
+_XIMILAR_TAG_TO_CATEGORY: dict[str, str] = {
+    "pokemon": "3",
+    "pocket monster": "3",
+    "one piece": "68",
+    "yu-gi-oh": "2",
+    "yugioh": "2",
+    "magic: the gathering": "1",
+    "magic the gathering": "1",
+    "mtg": "1",
+    "dragon ball super fusion": "80",
+    "dragon ball super": "27",
+    "dragon ball z": "23",
+    "dragon ball": "27",
+    "lorcana": "71",
+    "flesh and blood": "62",
+    "cardfight vanguard": "16",
+    "digimon": "57",
+    "weiss schwarz": "19",
+    "union arena": "82",
+}
+
+
+def _detect_category_from_ximilar(tags: list[str], set_name: str = "") -> str | None:
+    """Detect the correct TCGTracking category from Ximilar tags or set name."""
+    combined = " ".join(tags).lower()
+    if set_name:
+        combined += " " + set_name.lower()
+
+    for keyword, cat_id in _XIMILAR_TAG_TO_CATEGORY.items():
+        if keyword in combined:
+            return cat_id
+
+    return None
+
+
 async def _run_ximilar_pipeline(
     image_b64: str, api_token: str, category_id: str = "3",
 ) -> dict[str, Any]:
@@ -1703,6 +1738,17 @@ async def _run_ximilar_pipeline(
     for i, alt_data in enumerate(alternatives):
         alt_distance = distances[i + 1] if (i + 1) < len(distances) else 0.6
         scored_list.append(_ximilar_to_scored(alt_data, alt_distance))
+
+    # Auto-detect the correct TCGTracking category from Ximilar tags/set name
+    # so pricing works even if the user has the wrong category selected.
+    effective_cat = _detect_category_from_ximilar(tags, best.set_name)
+    if effective_cat and effective_cat != category_id:
+        logger.info(
+            "[pokemon_scanner] Auto-detected category %s from Ximilar (user selected %s)",
+            effective_cat, category_id,
+        )
+        category_id = effective_cat
+    debug_info["effective_category_id"] = category_id
 
     # Price + image enrichment for all candidates
     t_stage = time.monotonic()
