@@ -37,8 +37,25 @@
         canvas { display:none; }
 
         .guide-overlay { position:absolute; inset:0; pointer-events:none; display:flex; align-items:center; justify-content:center; }
-        .guide-rect { width:68%; aspect-ratio:5/7; border:2px dashed rgba(255,255,255,.4); border-radius:12px; position:relative; }
-        .guide-label { position:absolute; bottom:-24px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.45); font-weight:600; white-space:nowrap; }
+        .guide-rect {
+            width:68%; aspect-ratio:5/7; border:2px dashed rgba(255,255,255,.55); border-radius:12px; position:relative;
+            pointer-events:none;
+            /* Dark mask: a very large box-shadow darkens everything outside the rect, leaving only the card area lit. */
+            box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
+        }
+        .guide-label { position:absolute; bottom:-24px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.7); font-weight:600; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+
+        /* Tap-to-focus yellow square, mimics iOS Camera.app */
+        .focus-indicator {
+            position:absolute; width:72px; height:72px;
+            border:1.5px solid rgba(255,204,0,.95); border-radius:4px;
+            box-shadow:0 0 0 1px rgba(0,0,0,.25);
+            transform:translate(-50%,-50%) scale(1.6); opacity:0;
+            pointer-events:none; z-index:9;
+            transition:transform .18s ease-out, opacity .18s ease-out;
+        }
+        .focus-indicator.active { opacity:1; transform:translate(-50%,-50%) scale(1); }
+        .focus-indicator.fade { opacity:0; transition:opacity .5s ease-out .4s; }
 
         .cam-placeholder { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:rgba(255,255,255,.4); text-align:center; font-size:14px; font-weight:600; z-index:5; }
         .cam-ph-icon { font-size:42px; }
@@ -399,6 +416,7 @@
                 <button class="btn-cam-start" id="start-btn" onclick="PKScanner.startCamera()">Start Camera</button>
             </div>
             <div class="flash-overlay" id="flash-overlay"></div>
+            <div class="focus-indicator" id="focus-indicator"></div>
             <div class="cam-float-ctrls">
                 <button class="cam-ctrl" id="flip-btn" onclick="PKScanner.flipCamera()" title="Flip camera">&#x21BB;</button>
                 <button class="cam-ctrl" id="stop-btn" onclick="PKScanner.stopCamera()" title="Stop camera">&#x2715;</button>
@@ -659,12 +677,17 @@ var PKScanner = (function() {
     // ------------------------------------------------------------------
     async function startCamera() {
         try {
+            // Landscape constraints match the sensor's native orientation so
+            // Safari/Chrome don't rotate every frame. The <video> + CSS crop
+            // to fit the portrait viewport, identical to how Camera.app does it.
+            // 1280x720 ideal keeps preview smooth on mid-range phones; we go
+            // up to 1920x1080 when the device can supply it.
             stream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     facingMode: facingMode,
-                    width: { ideal: 1080, min: 720 },
-                    height: { ideal: 1920, min: 1280 },
-                    focusMode: { ideal: 'continuous' },
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                    frameRate: { ideal: 30, max: 30 },
                 }
             });
             var video = document.getElementById('video');
@@ -693,6 +716,79 @@ var PKScanner = (function() {
         facingMode = facingMode === 'environment' ? 'user' : 'environment';
         stopCamera();
         await startCamera();
+    }
+
+    // Tap-to-focus. Mimics iPhone Camera.app: tapping the preview drops a
+    // yellow square and (when the platform supports it) hints the AF subsystem
+    // to refocus on that point via MediaStreamTrack.applyConstraints. If the
+    // constraint isn't supported (iOS Safari today, older Android), the
+    // indicator still shows so the user gets the familiar affordance.
+    var _focusFadeTimer = null;
+    function _showFocusIndicator(clientX, clientY) {
+        var viewport = document.getElementById('cam-viewport');
+        var indicator = document.getElementById('focus-indicator');
+        if (!viewport || !indicator) return;
+        var rect = viewport.getBoundingClientRect();
+        var x = clientX - rect.left;
+        var y = clientY - rect.top;
+        indicator.classList.remove('active', 'fade');
+        // Restart animation by forcing reflow
+        void indicator.offsetWidth;
+        indicator.style.left = x + 'px';
+        indicator.style.top = y + 'px';
+        indicator.classList.add('active');
+        if (_focusFadeTimer) clearTimeout(_focusFadeTimer);
+        _focusFadeTimer = setTimeout(function() {
+            indicator.classList.add('fade');
+        }, 200);
+    }
+
+    async function _applyFocusPoint(normX, normY) {
+        if (!stream) return;
+        var track = stream.getVideoTracks()[0];
+        if (!track || typeof track.getCapabilities !== 'function') return;
+        var caps = {};
+        try { caps = track.getCapabilities() || {}; } catch (e) { return; }
+        var advanced = [];
+        if (caps.pointsOfInterest) {
+            advanced.push({ pointsOfInterest: [{ x: normX, y: normY }] });
+        }
+        if (caps.focusMode && caps.focusMode.indexOf('single-shot') >= 0) {
+            advanced.push({ focusMode: 'single-shot' });
+        } else if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) {
+            advanced.push({ focusMode: 'continuous' });
+        }
+        if (caps.exposureMode && caps.exposureMode.indexOf('continuous') >= 0) {
+            advanced.push({ exposureMode: 'continuous' });
+        }
+        if (!advanced.length) return;
+        try {
+            await track.applyConstraints({ advanced: advanced });
+        } catch (e) {
+            // Expected on iOS Safari today; the visual indicator still shows.
+        }
+    }
+
+    function setupTapToFocus() {
+        var video = document.getElementById('video');
+        if (!video || video._tapFocusBound) return;
+        video._tapFocusBound = true;
+
+        function handleTap(e) {
+            if (!stream) return;
+            // Ignore if the tap originated on a floating control (defensive;
+            // controls are above the video so pointer events don't reach here,
+            // but handle the edge case anyway).
+            if (e.target && e.target !== video) return;
+            var rect = video.getBoundingClientRect();
+            var clientX = e.clientX != null ? e.clientX : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : 0);
+            var clientY = e.clientY != null ? e.clientY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : 0);
+            _showFocusIndicator(clientX, clientY);
+            var normX = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+            var normY = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+            _applyFocusPoint(normX, normY);
+        }
+        video.addEventListener('click', handleTap);
     }
 
     // ------------------------------------------------------------------
@@ -2180,6 +2276,7 @@ var PKScanner = (function() {
 
     Drawer.init();
     loadCategories();
+    setupTapToFocus();
 
     if (isMobile()) {
         document.getElementById('rapid-fire').checked = true;
