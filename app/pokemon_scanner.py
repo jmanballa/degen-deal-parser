@@ -1885,6 +1885,9 @@ async def _run_vision_pipeline(image_b64: str, category_id: str = "3") -> dict[s
     debug_info["model"] = model_name
     try:
         client = get_ai_client().with_options(timeout=30.0)
+        # temperature is deliberately omitted — Claude Opus 4.7 deprecated the
+        # parameter and 400s when it's present. Defaults are already near-zero
+        # for identification workloads.
         response = client.chat.completions.create(
             model=model_name,
             messages=[{
@@ -1895,7 +1898,6 @@ async def _run_vision_pipeline(image_b64: str, category_id: str = "3") -> dict[s
                 ],
             }],
             max_tokens=400,
-            temperature=0.1,
         )
         raw = response.choices[0].message.content or ""
     except Exception as exc:
@@ -2127,6 +2129,9 @@ async def _run_tiebreaker(
 
     try:
         client = get_tiebreaker_client().with_options(timeout=30.0)
+        # See _run_vision_pipeline: temperature omitted for Claude Opus 4.7
+        # compatibility. Other tiebreaker targets (e.g., Gemini) accept
+        # temperature but there's no behavioral reason to set it.
         response = client.chat.completions.create(
             model=model_name,
             messages=[{
@@ -2137,7 +2142,6 @@ async def _run_tiebreaker(
                 ],
             }],
             max_tokens=400,
-            temperature=0.1,
         )
         raw = response.choices[0].message.content or ""
     except Exception as exc:
@@ -2381,7 +2385,6 @@ def _parse_search_query(query: str) -> ExtractedFields:
                     {"role": "user", "content": query},
                 ],
                 max_tokens=200,
-                temperature=0.0,
             )
             raw = response.choices[0].message.content or ""
             data = _loads_ai_json(raw)
