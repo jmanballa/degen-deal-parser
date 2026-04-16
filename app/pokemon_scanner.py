@@ -1182,7 +1182,8 @@ async def _enrich_price_fast(
     Strategy: search for set -> match product by number -> get TCGPlayer price.
     Falls back to PokemonTCG API for Pokemon categories only.
     """
-    if candidate.market_price is not None:
+    has_conditions = any(v.get("conditions") for v in (candidate.available_variants or []))
+    if candidate.market_price is not None and has_conditions:
         return
     if not candidate.name or not candidate.set_name:
         return
