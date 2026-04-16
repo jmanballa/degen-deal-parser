@@ -1943,15 +1943,20 @@ def _parse_search_query(query: str) -> ExtractedFields:
                 temperature=0.0,
             )
             data = json.loads(response.choices[0].message.content or "{}")
-            fields.card_name = data.get("card_name") or None
-            fields.set_name = data.get("set_name") or None
-            fields.collector_number = data.get("collector_number") or None
-            fields.extraction_method = "ai"
-            logger.info(
-                "[pokemon_scanner] Text search parsed: name=%s, set=%s, number=%s",
-                fields.card_name, fields.set_name, fields.collector_number,
-            )
-            return fields
+            ai_name = data.get("card_name") or None
+            ai_set = data.get("set_name") or None
+            ai_number = data.get("collector_number") or None
+            if ai_name or ai_number:
+                fields.card_name = ai_name
+                fields.set_name = ai_set
+                fields.collector_number = ai_number
+                fields.extraction_method = "ai"
+                logger.info(
+                    "[pokemon_scanner] Text search parsed: name=%s, set=%s, number=%s",
+                    fields.card_name, fields.set_name, fields.collector_number,
+                )
+                return fields
+            logger.warning("[pokemon_scanner] AI returned empty fields for query '%s', falling back to heuristic", query)
         except Exception as exc:
             logger.warning("[pokemon_scanner] AI query parse failed, using heuristic: %s", exc)
 
