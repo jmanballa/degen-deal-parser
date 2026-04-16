@@ -258,6 +258,14 @@ def parse_trade_hint(message_text: str) -> Dict[str, Any] | None:
     elif items_out == ["packs"] and not items_in:
         category = "packs"
 
+    # Require at least one concrete trade signal to avoid misfiring on
+    # casual text like "I'll be in and out all day" or "in stock, shipping
+    # out tomorrow" where `has_in and has_out` is incidentally True.
+    captured_anything = bool(items_in or items_out or amount is not None)
+    explicit_trade_word = has_trade_word
+    if not captured_anything and not explicit_trade_word:
+        return None
+
     trade_summary_parts = []
     if items_out:
         trade_summary_parts.append(f"out: {', '.join(items_out)}")
@@ -1451,6 +1459,22 @@ async def parse_message(content: str, attachment_urls: list[str], author_name: s
     if learned_rule_match:
         return learned_rule_match
 
+    # Determinism first: try rule-based parsing before the AI.
+    # Rules are reproducible, fast, and don't consume AI quota.
+    # We only fall through to AI when rules return None (nothing matched)
+    # or when rules matched at low confidence AND there are images (image
+    # context may improve the parse meaningfully).
+    rule_parsed = parse_by_rules(content or "", channel_name=channel_name)
+    if rule_parsed is not None:
+        rule_confidence = float(rule_parsed.get("confidence") or 0.0)
+        # If the text matched rules with high confidence, trust the rules.
+        # For lower-confidence rule matches with images, let the AI take a look.
+        trust_rules = rule_confidence >= 0.90 or not image_urls
+        if trust_rules:
+            if learned_rule_event:
+                rule_parsed["_learned_rule_event"] = learned_rule_event
+            return rule_parsed
+
     try:
         parsed = await parse_deal_with_ai_async(
             author_name=author_name,
@@ -1469,7 +1493,7 @@ async def parse_message(content: str, attachment_urls: list[str], author_name: s
             e,
             exc_info=True,
         )
-        fallback = parse_by_rules(content or "", channel_name=channel_name)
+        fallback = rule_parsed or parse_by_rules(content or "", channel_name=channel_name)
         if fallback:
             if learned_rule_event:
                 fallback["_learned_rule_event"] = learned_rule_event

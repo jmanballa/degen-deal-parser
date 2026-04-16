@@ -14,6 +14,7 @@ from sqlmodel import Session, select
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
 from ..backfill_requests import list_recent_backfill_requests
 from ..channels import get_available_channel_choices
+from ..corrections import save_review_correction, snapshot_message_parse
 from ..db import get_session
 
 router = APIRouter()
@@ -44,9 +45,11 @@ def approve_message(request: Request, message_id: int, session: Session = Depend
     if not row:
         raise HTTPException(status_code=404, detail="Message not found")
 
+    parsed_before = snapshot_message_parse(row)
     row.needs_review = False
     row.parse_status = PARSE_PARSED
     session.add(row)
+    save_review_correction(session, row, parsed_before=parsed_before)
     sync_transaction_from_message(session, row)
     session.commit()
     return {"ok": True, "message": f"Message {message_id} approved."}
@@ -73,11 +76,13 @@ def approve_message_form(
     reviewer_label = current_user_label(request)
     row = session.get(DiscordMessage, message_id)
     if row:
+        parsed_before = snapshot_message_parse(row)
         row.needs_review = False
         row.parse_status = PARSE_PARSED
         row.reviewed_by = reviewer_label
         row.reviewed_at = utcnow()
         session.add(row)
+        save_review_correction(session, row, parsed_before=parsed_before)
         sync_transaction_from_message(session, row)
         session.commit()
     selected_expense_category = filter_expense_category or expense_category
@@ -121,11 +126,13 @@ def bulk_approve_messages_form(
         row = session.get(DiscordMessage, message_id)
         if not row:
             continue
+        parsed_before = snapshot_message_parse(row)
         row.needs_review = False
         row.parse_status = PARSE_PARSED
         row.reviewed_by = reviewer_label
         row.reviewed_at = utcnow()
         session.add(row)
+        save_review_correction(session, row, parsed_before=parsed_before)
         sync_transaction_from_message(session, row)
         updated += 1
     session.commit()
