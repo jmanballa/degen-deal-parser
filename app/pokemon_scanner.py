@@ -1797,15 +1797,31 @@ def _merge_results(
         merged["disambiguation_method"] = "dual_engine_agree"
     elif same_name and not same_number:
         # Same card name but different set/number — likely a reprint.
-        # Trust Ximilar (visual match) over OCR number extraction.
         logger.info(
-            "[pokemon_scanner] Dual-engine PARTIAL: same name '%s', different number (x=#%s, l=#%s)",
-            xbest.get("name"), xbest.get("number"), lbest.get("number"),
+            "[pokemon_scanner] Dual-engine PARTIAL: same name '%s', different number (x=#%s, l=#%s) xScore=%.0f lScore=%.0f",
+            xbest.get("name"), xbest.get("number"), lbest.get("number"), x_score, l_score,
         )
         merged["disambiguation_method"] = "dual_engine_partial"
-        merged["debug"]["dual_engine_note"] = f"Same card name, different printings — trusting Ximilar visual match"
-        if merged.get("status") == "AMBIGUOUS" and x_score >= 50:
+
+        if l_score >= 90 and l_score > x_score + 30:
+            # OCR read the set/number with very high confidence — trust it
+            logger.info(
+                "[pokemon_scanner] Trusting legacy OCR for reprint disambiguation: %s #%s (%.0f) over Ximilar %s #%s (%.0f)",
+                lbest.get("name"), lbest.get("number"), l_score,
+                xbest.get("name"), xbest.get("number"), x_score,
+            )
+            import copy as _copy
+            merged["best_match"] = _copy.deepcopy(lbest)
+            merged["extracted_fields"] = legacy.get("extracted_fields") or merged.get("extracted_fields")
             merged["status"] = "MATCHED"
+            merged["debug"]["dual_engine_note"] = (
+                f"Same card name, different printings — legacy OCR strong ({l_score:.0f}) vs Ximilar ({x_score:.0f}), trusting OCR"
+            )
+        else:
+            # Default: trust Ximilar visual match for reprint disambiguation
+            merged["debug"]["dual_engine_note"] = f"Same card name, different printings — trusting Ximilar visual match"
+            if merged.get("status") == "AMBIGUOUS" and x_score >= 50:
+                merged["status"] = "MATCHED"
     else:
         logger.info(
             "[pokemon_scanner] Dual-engine DISAGREE: ximilar=%s #%s (%.0f) vs legacy=%s #%s (%.0f)",
