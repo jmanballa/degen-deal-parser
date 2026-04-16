@@ -1911,6 +1911,104 @@ async def _background_ocr_validate(
         _pending_validations[scan_id] = (time.monotonic(), {"validation_status": "error", "error": str(exc)})
 
 
+_TEXT_SEARCH_PARSE_PROMPT = """You are a TCG card search query parser. The user will give you a free-text search query for a trading card game card. Extract structured fields from it.
+
+Return JSON with:
+- "card_name": the card/character name (e.g. "Charizard", "Pikachu VMAX")
+- "set_name": the set name if mentioned (e.g. "Base Set", "Evolving Skies"), or null
+- "collector_number": the collector number if mentioned (e.g. "4/102", "25"), or null
+
+Only extract what is explicitly stated. Do not guess or infer missing fields."""
+
+
+def _parse_search_query(query: str) -> ExtractedFields:
+    """Parse a free-text card search query into structured fields.
+
+    Uses AI when available, falls back to simple heuristic parsing.
+    """
+    fields = ExtractedFields()
+
+    if has_ai_key():
+        try:
+            client = get_ai_client(timeout=8.0)
+            response = client.chat.completions.create(
+                model=VISION_MODEL,
+                messages=[
+                    {"role": "system", "content": _TEXT_SEARCH_PARSE_PROMPT},
+                    {"role": "user", "content": query},
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=200,
+                temperature=0.0,
+            )
+            data = json.loads(response.choices[0].message.content or "{}")
+            fields.card_name = data.get("card_name") or None
+            fields.set_name = data.get("set_name") or None
+            fields.collector_number = data.get("collector_number") or None
+            fields.extraction_method = "ai"
+            logger.info(
+                "[pokemon_scanner] Text search parsed: name=%s, set=%s, number=%s",
+                fields.card_name, fields.set_name, fields.collector_number,
+            )
+            return fields
+        except Exception as exc:
+            logger.warning("[pokemon_scanner] AI query parse failed, using heuristic: %s", exc)
+
+    # Heuristic fallback: look for number patterns, treat rest as card name
+    number_match = re.search(r"(\d{1,4})\s*/\s*(\d{1,4})", query)
+    if number_match:
+        fields.collector_number = number_match.group(0)
+        query = query[:number_match.start()] + query[number_match.end():]
+
+    fields.card_name = query.strip() or None
+    fields.extraction_method = "heuristic"
+    return fields
+
+
+async def text_search_cards(query: str, category_id: str = "3") -> dict[str, Any]:
+    """Search for cards by text query. Returns same shape as scan pipeline."""
+    t_start = time.monotonic()
+
+    if not query or not query.strip():
+        return asdict(ScanResult(status="ERROR", error="Empty search query"))
+
+    fields = _parse_search_query(query.strip())
+    if not fields.card_name and not fields.collector_number:
+        return asdict(ScanResult(status="NO_MATCH", error="Could not parse search query"))
+
+    settings = get_settings()
+    ptcg_key = settings.pokemontcg_api_key or ""
+
+    candidates = await lookup_candidates(fields, api_key=ptcg_key)
+    if not candidates:
+        return asdict(ScanResult(
+            status="NO_MATCH",
+            error=f"No cards found for '{query}'",
+            processing_time_ms=round((time.monotonic() - t_start) * 1000, 1),
+        ))
+
+    scored = score_candidates(candidates, fields)
+
+    top_n = scored[:8]
+    await asyncio.gather(
+        *[_enrich_price_fast(c, ptcg_key=ptcg_key, category_id=category_id) for c in top_n],
+    )
+
+    best = top_n[0] if top_n else None
+    status = "MATCHED" if best and best.confidence in ("HIGH", "MEDIUM") else "AMBIGUOUS"
+
+    result = ScanResult(
+        status=status,
+        best_match=asdict(best) if best else None,
+        candidates=[asdict(c) for c in top_n],
+        extracted_fields=asdict(fields),
+        processing_time_ms=round((time.monotonic() - t_start) * 1000, 1),
+    )
+    result_dict = asdict(result)
+    result_dict["debug"] = {"engine": "text_search", "query": query}
+    return result_dict
+
+
 async def run_pipeline(image_b64: str, category_id: str = "3") -> dict[str, Any]:
     """
     Confidence-tiered card scanning pipeline.

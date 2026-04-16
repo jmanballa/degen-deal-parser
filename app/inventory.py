@@ -23,7 +23,7 @@ _templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 from .auth import has_role
 from .card_scanner import identify_card_from_image, lookup_card_image_and_price
 from .cert_lookup import lookup_cert
-from .pokemon_scanner import run_pipeline as run_pokemon_pipeline, get_scan_history, fetch_tcg_categories, get_validation_result
+from .pokemon_scanner import run_pipeline as run_pokemon_pipeline, get_scan_history, fetch_tcg_categories, get_validation_result, text_search_cards
 from .config import get_settings
 from .db import get_session
 from .inventory_barcode import (
@@ -686,6 +686,23 @@ async def inventory_scan_pokemon_identify(request: Request):
         status_code = 422
 
     return JSONResponse(result, status_code=status_code)
+
+
+@router.post("/inventory/scan/pokemon/text-search")
+async def inventory_scan_pokemon_text_search(request: Request):
+    """Search for cards by text query (name, set, number)."""
+    if denial := _require_viewer(request):
+        return denial
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    query = (body.get("query") or "").strip()
+    if not query:
+        return JSONResponse({"error": "Missing query field"}, status_code=400)
+    category_id = (body.get("category_id") or "3").strip()
+    result = await text_search_cards(query, category_id=category_id)
+    return JSONResponse(result)
 
 
 @router.get("/inventory/scan/pokemon/history")

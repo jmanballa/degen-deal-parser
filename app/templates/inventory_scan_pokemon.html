@@ -323,6 +323,53 @@
 
             .toast-container { bottom:80px; }
         }
+
+        /* ===== EDIT / SEARCH SHEETS ===== */
+        .edit-overlay { position:fixed; inset:0; z-index:80; display:none; }
+        .edit-overlay.open { display:flex; flex-direction:column; }
+        .edit-overlay .overlay-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); }
+        .edit-overlay .overlay-panel {
+            position:relative; z-index:1; background:var(--card-strong); margin-top:auto;
+            border-radius:20px 20px 0 0; max-height:88vh; overflow-y:auto;
+            box-shadow:0 -10px 40px rgba(0,0,0,.3); animation:sheet-up .3s ease both;
+        }
+        @keyframes sheet-up { from { transform:translateY(100%); } to { transform:translateY(0); } }
+        .overlay-handle { padding:10px 0 2px; text-align:center; }
+        .overlay-header { display:flex; align-items:center; gap:10px; padding:6px 20px 12px; border-bottom:1px solid var(--line); }
+        .overlay-header h3 { flex:1; font-size:15px; font-weight:700; margin:0; }
+        .overlay-close { background:none; border:none; font-size:22px; cursor:pointer; color:var(--muted); padding:4px 8px; }
+        .overlay-body { padding:16px 20px 24px; }
+        .edit-field { margin-bottom:12px; }
+        .edit-field label { display:block; font-size:11px; font-weight:600; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
+        .edit-field input, .edit-field select {
+            width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px;
+            font-size:13px; font-family:inherit; background:#fff; box-sizing:border-box;
+        }
+        .edit-card-header { display:flex; gap:12px; margin-bottom:16px; }
+        .edit-card-thumb { width:64px; height:90px; border-radius:8px; object-fit:cover; background:#f0e8dc; border:1px solid var(--line); flex-shrink:0; }
+        .edit-card-info { flex:1; min-width:0; }
+        .edit-card-info .card-title { font-size:15px; font-weight:800; }
+        .edit-card-info .card-meta { font-size:12px; color:var(--muted); margin-top:2px; }
+        .overlay-actions { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
+        .overlay-actions .btn-primary, .overlay-actions .btn-outline { flex:1; min-width:0; }
+        .search-input-row { display:flex; gap:8px; margin-bottom:14px; }
+        .search-input-row input { flex:1; }
+        .search-input-row button { flex-shrink:0; padding:8px 16px; }
+        .search-results-area { min-height:80px; }
+        .search-spinner { text-align:center; padding:30px 0; color:var(--muted); font-size:13px; }
+        .search-empty { text-align:center; padding:30px 0; color:var(--muted); font-size:13px; }
+        .search-candidate-detail { margin-top:14px; padding:12px; background:#fff; border:1px solid var(--line); border-radius:12px; }
+        .search-candidate-detail .detail-name { font-size:14px; font-weight:700; }
+        .search-candidate-detail .detail-meta { font-size:12px; color:var(--muted); margin-top:2px; }
+        .search-candidate-detail .detail-price { font-size:16px; font-weight:900; color:var(--green); margin-top:6px; }
+        .manual-add-btn { background:none; border:1px solid rgba(255,255,255,.15); border-radius:8px; color:#fff; font-size:18px; padding:2px 10px; cursor:pointer; line-height:1; }
+        .manual-add-btn:hover { background:rgba(255,255,255,.08); }
+        @media (min-width:768px) {
+            .edit-overlay .overlay-panel { margin:auto; border-radius:24px; max-width:460px; width:100%; max-height:80vh; }
+            .overlay-handle { display:none; }
+            .manual-add-btn { color:var(--text); border-color:var(--line); }
+            .manual-add-btn:hover { background:var(--card); }
+        }
     </style>
     <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
 </head>
@@ -386,6 +433,7 @@
                 <span class="drawer-count" id="batch-count">0 cards</span>
                 <span class="drawer-total" id="batch-total"></span>
             </div>
+            <button class="manual-add-btn" onclick="PKScanner.openSearchSheet('add')" title="Add card manually">+</button>
             <label class="rapid-label">
                 <input type="checkbox" id="rapid-fire"><span>Rapid Fire</span>
             </label>
@@ -396,6 +444,32 @@
         <div class="drawer-footer">
             <button class="btn-secondary" id="clear-btn" onclick="PKScanner.clearBatch()" disabled>Clear</button>
             <button class="btn-primary-lg" id="done-btn" onclick="PKScanner.goReview()" disabled>Review Batch &rarr;</button>
+        </div>
+    </div>
+
+    <!-- Edit sheet overlay -->
+    <div class="edit-overlay" id="edit-overlay">
+        <div class="overlay-backdrop" onclick="PKScanner.closeEditSheet()"></div>
+        <div class="overlay-panel">
+            <div class="overlay-handle"><div class="handle-bar"></div></div>
+            <div class="overlay-header">
+                <h3 id="edit-overlay-title">Edit Card</h3>
+                <button class="overlay-close" onclick="PKScanner.closeEditSheet()">&times;</button>
+            </div>
+            <div class="overlay-body" id="edit-overlay-body"></div>
+        </div>
+    </div>
+
+    <!-- Search sheet overlay -->
+    <div class="edit-overlay" id="search-overlay">
+        <div class="overlay-backdrop" onclick="PKScanner.closeSearchSheet()"></div>
+        <div class="overlay-panel">
+            <div class="overlay-handle"><div class="handle-bar"></div></div>
+            <div class="overlay-header">
+                <h3 id="search-overlay-title">Search Card</h3>
+                <button class="overlay-close" onclick="PKScanner.closeSearchSheet()">&times;</button>
+            </div>
+            <div class="overlay-body" id="search-overlay-body"></div>
         </div>
     </div>
 
@@ -854,6 +928,7 @@ var PKScanner = (function() {
                 el.remove();
             });
             _attachBatchVariantHandler(el, batchIdx);
+            _attachBatchTapHandler(el, batchIdx);
         } else if (entry.status === 'review') {
             var m = entry.result.best_match;
             var sid = entry.id;
@@ -1495,6 +1570,21 @@ var PKScanner = (function() {
         });
     }
 
+    function _attachBatchTapHandler(el, batchIdx) {
+        var info = el.querySelector('.batch-info');
+        var thumb = el.querySelector('.batch-thumb') || el.querySelector('.batch-thumb-placeholder');
+        var targets = [info, thumb].filter(Boolean);
+        for (var t = 0; t < targets.length; t++) {
+            targets[t].style.cursor = 'pointer';
+            targets[t].addEventListener('click', (function(bi) {
+                return function(e) {
+                    if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+                    openEditSheet(bi);
+                };
+            })(batchIdx));
+        }
+    }
+
     function renderBatch() {
         var list = document.getElementById('batch-list');
         var existingBatchEls = list.querySelectorAll('.batch-item:not([data-scan-id])');
@@ -1540,6 +1630,7 @@ var PKScanner = (function() {
                     removeBatchItem(parseInt(e.target.dataset.idx));
                 });
                 _attachBatchVariantHandler(el, idx);
+                _attachBatchTapHandler(el, idx);
 
                 list.appendChild(el);
             })(i, batch[i]);
@@ -1697,6 +1788,281 @@ var PKScanner = (function() {
     }
 
     // ------------------------------------------------------------------
+    // Edit sheet
+    // ------------------------------------------------------------------
+    var _editingIdx = -1;
+
+    function openEditSheet(batchIdx) {
+        var item = batch[batchIdx];
+        if (!item) return;
+        _editingIdx = batchIdx;
+
+        var body = document.getElementById('edit-overlay-body');
+        var thumb = item.image_url ? '<img class="edit-card-thumb" src="' + escHtml(item.image_url) + '" alt="" onerror="this.style.display=\'none\'">' : '';
+        var variants = item._available_variants || [];
+
+        var condOpts = CONDITIONS.map(function(c) {
+            return '<option value="' + c + '"' + (item.condition === c ? ' selected' : '') + '>' + c + '</option>';
+        }).join('');
+
+        var variantOpts = '';
+        if (variants.length) {
+            variantOpts = '<div class="edit-field"><label>Variant</label><select id="edit-variant">';
+            for (var vi = 0; vi < variants.length; vi++) {
+                var v = variants[vi];
+                var sel = item.variant && v.name === item.variant ? ' selected' : '';
+                variantOpts += '<option value="' + escHtml(v.name) + '"' + sel + '>' + escHtml(v.name) + '</option>';
+            }
+            variantOpts += '</select></div>';
+        }
+
+        body.innerHTML =
+            '<div class="edit-card-header">' +
+                thumb +
+                '<div class="edit-card-info">' +
+                    '<div class="card-title">' + escHtml(item.card_name) + '</div>' +
+                    '<div class="card-meta">' + escHtml(item.set_name || '') + (item.card_number ? ' #' + escHtml(item.card_number) : '') + '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="edit-field"><label>Card Name</label><input id="edit-card-name" value="' + escHtml(item.card_name) + '"></div>' +
+            '<div class="edit-field"><label>Set Name</label><input id="edit-set-name" value="' + escHtml(item.set_name || '') + '"></div>' +
+            '<div class="edit-field"><label>Card Number</label><input id="edit-card-number" value="' + escHtml(item.card_number || '') + '"></div>' +
+            '<div class="edit-field"><label>Price</label><input id="edit-price" type="number" step="0.01" value="' + (item.auto_price || '') + '"></div>' +
+            variantOpts +
+            '<div class="edit-field"><label>Condition</label><select id="edit-condition">' + condOpts + '</select></div>' +
+            '<div class="overlay-actions">' +
+                '<button class="btn-outline" onclick="PKScanner.openSearchSheet(\'replace\',' + batchIdx + ')">Search Different Card</button>' +
+                '<button class="btn-primary" onclick="PKScanner.saveEditSheet()">Save</button>' +
+            '</div>';
+
+        document.getElementById('edit-overlay').classList.add('open');
+    }
+
+    function saveEditSheet() {
+        if (_editingIdx < 0 || !batch[_editingIdx]) return;
+        var item = batch[_editingIdx];
+        item.card_name = (document.getElementById('edit-card-name').value || '').trim();
+        item.set_name = (document.getElementById('edit-set-name').value || '').trim();
+        item.card_number = (document.getElementById('edit-card-number').value || '').trim();
+        var priceVal = document.getElementById('edit-price').value;
+        item.auto_price = priceVal ? parseFloat(priceVal) : null;
+        var varSel = document.getElementById('edit-variant');
+        if (varSel) {
+            item.variant = varSel.value;
+            item.is_foil = varSel.value.toLowerCase().indexOf('holo') >= 0;
+        }
+        item.condition = document.getElementById('edit-condition').value;
+        saveBatch();
+        closeEditSheet();
+        renderBatch();
+    }
+
+    function closeEditSheet() {
+        _editingIdx = -1;
+        document.getElementById('edit-overlay').classList.remove('open');
+    }
+
+    // ------------------------------------------------------------------
+    // Search sheet
+    // ------------------------------------------------------------------
+    var _searchMode = 'add';
+    var _searchReplaceIdx = -1;
+    var _searchCandidates = [];
+    var _searchSelectedIdx = -1;
+
+    function openSearchSheet(mode, batchIdx) {
+        _searchMode = mode || 'add';
+        _searchReplaceIdx = (batchIdx !== undefined) ? batchIdx : -1;
+        _searchCandidates = [];
+        _searchSelectedIdx = -1;
+
+        var title = mode === 'replace' ? 'Search Different Card' : 'Add Card';
+        document.getElementById('search-overlay-title').textContent = title;
+
+        var body = document.getElementById('search-overlay-body');
+        body.innerHTML =
+            '<div class="search-input-row">' +
+                '<input id="search-query" type="text" placeholder="Card name, set, number..." autofocus>' +
+                '<button class="btn-primary" onclick="PKScanner.executeSearch()">Search</button>' +
+            '</div>' +
+            '<div id="search-results" class="search-results-area">' +
+                '<div class="search-empty">Type a card name to search</div>' +
+            '</div>';
+
+        document.getElementById('search-overlay').classList.add('open');
+        closeEditSheet();
+        setTimeout(function() {
+            var inp = document.getElementById('search-query');
+            if (inp) inp.focus();
+        }, 100);
+
+        var inp = document.getElementById('search-query');
+        if (inp) {
+            inp.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); PKScanner.executeSearch(); }
+            });
+        }
+    }
+
+    function executeSearch() {
+        var query = (document.getElementById('search-query').value || '').trim();
+        if (!query) return;
+
+        var results = document.getElementById('search-results');
+        results.innerHTML = '<div class="search-spinner">Searching...</div>';
+        _searchCandidates = [];
+        _searchSelectedIdx = -1;
+
+        fetch('/inventory/scan/pokemon/text-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query, category_id: selectedCategoryId })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _searchCandidates = data.candidates || [];
+            if (!_searchCandidates.length) {
+                results.innerHTML = '<div class="search-empty">No cards found for &ldquo;' + escHtml(query) + '&rdquo;</div>';
+                return;
+            }
+            var html = '<div class="candidates-grid">';
+            for (var i = 0; i < _searchCandidates.length; i++) {
+                var c = _searchCandidates[i];
+                var ci = c.image_url_small || c.image_url || '';
+                html += '<div class="candidate-card" data-sidx="' + i + '" onclick="PKScanner.selectSearchCandidate(' + i + ')">';
+                if (ci) html += '<img src="' + escHtml(ci) + '" alt="" onerror="this.style.display=\'none\'">';
+                else html += '<div class="candidate-placeholder">&#127183;</div>';
+                html += '<div class="c-name">' + escHtml(c.name) + '</div>';
+                html += '<div class="c-set">' + escHtml(c.set_name) + '</div>';
+                html += '<div class="c-set">#' + escHtml(c.number) + '</div>';
+                if (c.market_price) html += '<div class="c-price">$' + Number(c.market_price).toFixed(2) + '</div>';
+                else html += '<div class="c-price c-price-none">No price</div>';
+                html += '</div>';
+            }
+            html += '</div>';
+            html += '<div id="search-detail"></div>';
+            results.innerHTML = html;
+
+            if (data.best_match) {
+                for (var bi = 0; bi < _searchCandidates.length; bi++) {
+                    if (_searchCandidates[bi].name === data.best_match.name && _searchCandidates[bi].number === data.best_match.number) {
+                        selectSearchCandidate(bi);
+                        break;
+                    }
+                }
+            }
+        })
+        .catch(function(err) {
+            results.innerHTML = '<div class="search-empty">Search failed: ' + escHtml(err.message) + '</div>';
+        });
+    }
+
+    function selectSearchCandidate(idx) {
+        _searchSelectedIdx = idx;
+        var cards = document.querySelectorAll('#search-results .candidate-card');
+        for (var i = 0; i < cards.length; i++) {
+            cards[i].classList.toggle('selected', parseInt(cards[i].getAttribute('data-sidx')) === idx);
+        }
+
+        var c = _searchCandidates[idx];
+        if (!c) return;
+
+        var variants = c.available_variants || [];
+        var dp = _pickDisplayPrice(c, variants, null);
+        var priceHtml = dp.value ? '$' + dp.value.toFixed(2) + (dp.isTcgLow ? ' (TCG Low)' : '') : 'No price';
+
+        var variantHtml = '';
+        if (variants.length) {
+            variantHtml = '<div style="margin-top:8px;"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant:</label>';
+            variantHtml += '<select id="search-variant" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+            for (var vi = 0; vi < variants.length; vi++) {
+                var v = variants[vi];
+                var vl = v.price != null ? ' \u2014 $' + Number(v.price).toFixed(2) : (v.low_price != null ? ' \u2014 $' + Number(v.low_price).toFixed(2) + ' (TCG Low)' : '');
+                variantHtml += '<option value="' + escHtml(v.name) + '">' + escHtml(v.name) + vl + '</option>';
+            }
+            variantHtml += '</select></div>';
+        }
+
+        var condHtml = '<div style="margin-top:8px;"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Condition:</label>';
+        condHtml += '<select id="search-condition" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+        for (var ci = 0; ci < CONDITIONS.length; ci++) {
+            condHtml += '<option value="' + CONDITIONS[ci] + '"' + (CONDITIONS[ci] === 'NM' ? ' selected' : '') + '>' + CONDITIONS[ci] + '</option>';
+        }
+        condHtml += '</select></div>';
+
+        var btnLabel = _searchMode === 'replace' ? 'Replace Card' : 'Add to Batch';
+
+        var detail = document.getElementById('search-detail');
+        if (detail) {
+            detail.innerHTML =
+                '<div class="search-candidate-detail">' +
+                    '<div class="detail-name">' + escHtml(c.name) + '</div>' +
+                    '<div class="detail-meta">' + escHtml(c.set_name) + ' #' + escHtml(c.number) + (c.rarity ? ' \u00b7 ' + escHtml(c.rarity) : '') + '</div>' +
+                    '<div class="detail-price">' + priceHtml + '</div>' +
+                    variantHtml +
+                    condHtml +
+                    '<div class="overlay-actions" style="margin-top:12px;">' +
+                        '<button class="btn-primary" onclick="PKScanner.confirmSearchSelection()">' + btnLabel + '</button>' +
+                    '</div>' +
+                '</div>';
+        }
+    }
+
+    function confirmSearchSelection() {
+        if (_searchSelectedIdx < 0 || !_searchCandidates[_searchSelectedIdx]) return;
+        var c = _searchCandidates[_searchSelectedIdx];
+        var variants = c.available_variants || [];
+
+        var varSel = document.getElementById('search-variant');
+        var condSel = document.getElementById('search-condition');
+        var variant = varSel ? varSel.value : (variants.length ? variants[0].name : '');
+        var condition = condSel ? condSel.value : 'NM';
+
+        var varObj = null;
+        for (var vi = 0; vi < variants.length; vi++) {
+            if (variants[vi].name === variant) { varObj = variants[vi]; break; }
+        }
+        var resolved = varObj ? _resolveConditionPrice(varObj, condition) : _pickDisplayPrice(c, variants, null);
+        var isFoil = variant && variant.toLowerCase().indexOf('holo') >= 0;
+
+        var notes = c.rarity ? ('Rarity: ' + c.rarity) : '';
+        if (variant) notes = (notes ? notes + ' | ' : '') + 'Variant: ' + variant;
+        if (resolved.isTcgLow) notes = (notes ? notes + ' | ' : '') + 'Price: TCG Low';
+
+        var item = {
+            card_name: c.name || '',
+            game: 'Pokemon',
+            condition: condition,
+            set_name: c.set_name || '',
+            card_number: c.number || '',
+            image_url: c.image_url || '',
+            auto_price: resolved.value,
+            is_foil: isFoil,
+            variant: variant,
+            notes: notes,
+            _available_variants: variants,
+        };
+
+        if (_searchMode === 'replace' && _searchReplaceIdx >= 0 && batch[_searchReplaceIdx]) {
+            batch[_searchReplaceIdx] = item;
+        } else {
+            batch.push(item);
+        }
+        saveBatch();
+        closeSearchSheet();
+        renderBatch();
+        showToast(_searchMode === 'replace' ? 'Card replaced' : 'Card added: ' + c.name, 2000);
+    }
+
+    function closeSearchSheet() {
+        _searchMode = 'add';
+        _searchReplaceIdx = -1;
+        _searchCandidates = [];
+        _searchSelectedIdx = -1;
+        document.getElementById('search-overlay').classList.remove('open');
+    }
+
+    // ------------------------------------------------------------------
     // Init
     // ------------------------------------------------------------------
     renderBatch();
@@ -1726,6 +2092,14 @@ var PKScanner = (function() {
         toggleDebug: toggleDebug,
         reviewQueueItem: reviewQueueItem,
         removeQueueItem: removeQueueItem,
+        openEditSheet: openEditSheet,
+        saveEditSheet: saveEditSheet,
+        closeEditSheet: closeEditSheet,
+        openSearchSheet: openSearchSheet,
+        executeSearch: executeSearch,
+        selectSearchCandidate: selectSearchCandidate,
+        confirmSearchSelection: confirmSearchSelection,
+        closeSearchSheet: closeSearchSheet,
     };
 })();
 </script>
