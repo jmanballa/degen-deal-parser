@@ -1227,6 +1227,29 @@ async def process_row(row_id: int):
             learned_rule_event = result.pop("_learned_rule_event", None)
             usage = result.pop("_openai_usage", None) or {}
             model_used = result.pop("_openai_model", None)
+            parse_disagreement = result.pop("_parse_disagreement", None)
+            parse_agreement = result.pop("_parse_agreement", False)
+            if parse_disagreement:
+                worker_log(
+                    action="parse_disagreement",
+                    row=primary_row,
+                    level="info",
+                    success=True,
+                    session=session,
+                    grouped_message_ids=grouped_row_ids,
+                    disagreement_fields=parse_disagreement.get("fields"),
+                    rule_parse=parse_disagreement.get("rule"),
+                    ai_parse=parse_disagreement.get("ai"),
+                )
+            elif parse_agreement:
+                worker_log(
+                    action="parse_agreement",
+                    row=primary_row,
+                    level="info",
+                    success=True,
+                    session=session,
+                    grouped_message_ids=grouped_row_ids,
+                )
             if learned_rule_event:
                 learned_rule_status = learned_rule_event.get("status") or "unknown"
                 learned_rule_reason = learned_rule_event.get("reason")
@@ -1271,6 +1294,9 @@ async def process_row(row_id: int):
             primary_row.money_in = financials.money_in
             primary_row.money_out = financials.money_out
             primary_row.expense_category = financials.expense_category
+            primary_row.parse_disagreement_json = (
+                json.dumps(parse_disagreement, sort_keys=True) if parse_disagreement else None
+            )
             if result.get("ignore_message"):
                 clear_parsed_fields(primary_row)
                 set_row_status(primary_row, PARSE_IGNORED, clear_error=True)

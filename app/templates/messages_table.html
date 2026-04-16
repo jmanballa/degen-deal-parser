@@ -615,7 +615,10 @@
                                         {% endif %}
                                         {% if row["is_deleted"] %}<div class="subtle" style="color:#b6312f; font-weight:700;">Ignored because deleted in Discord</div>{% endif %}
                                     </td>
-                                    <td class="status-col"><span class="status-pill status-{{ row['status'] }}">{{ (row["status"] or "")|replace("_", " ") }}</span></td>
+                                    <td class="status-col">
+                                        <span class="status-pill status-{{ row['status'] }}">{{ (row["status"] or "")|replace("_", " ") }}</span>
+                                        {% if row["parse_disagreement"] %}<span class="status-pill" style="background:#fef3c7;color:#92400e;" title="Rule and AI parsers disagreed on: {{ ', '.join(row['parse_disagreement'].get('fields', [])) }}">rule/ai split</span>{% endif %}
+                                    </td>
                                     <td class="kind-col review-cell">
                                         {% if is_review_page %}
                                         <select name="entry_kind" form="inline-edit-{{ row['id'] }}" class="review-select">

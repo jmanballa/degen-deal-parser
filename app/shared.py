@@ -244,6 +244,16 @@ def count_rows(session: Session, stmt) -> int:
     return int(session.exec(count_stmt).one())
 
 
+def _safe_json_load(value: str | None):
+    """Safely decode an optional JSON string. Returns None if empty or invalid."""
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
 def normalize_report_source(value: Optional[str]) -> str:
     if value is not None and not isinstance(value, str):
         value = getattr(value, "default", None)
@@ -2901,6 +2911,8 @@ def message_list_item(row: DiscordMessage) -> dict:
         "stitched_primary": row.stitched_primary,
         "stitched_message_ids": stitched_ids,
         "stitched_count": len(stitched_ids),
+        "parse_disagreement": _safe_json_load(row.parse_disagreement_json),
+        "ai_resolver_reasoning": _safe_json_load(row.ai_resolver_reasoning_json),
     }
 
 
@@ -3095,6 +3107,8 @@ def message_detail_item(row: DiscordMessage) -> dict:
         "money_in": row.money_in,
         "money_out": row.money_out,
         "expense_category": row.expense_category,
+        "parse_disagreement": _safe_json_load(row.parse_disagreement_json),
+        "ai_resolver_reasoning": _safe_json_load(row.ai_resolver_reasoning_json),
     }
 
 

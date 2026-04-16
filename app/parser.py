@@ -1458,6 +1458,117 @@ async def parse_deal_with_ai_async(
             raise
 
 
+def _compact_parse_snapshot(parse: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a small, stable dict suitable for storing as JSON on the row."""
+    return {
+        "parsed_type": parse.get("parsed_type"),
+        "parsed_amount": parse.get("parsed_amount"),
+        "parsed_payment_method": parse.get("parsed_payment_method"),
+        "parsed_cash_direction": parse.get("parsed_cash_direction"),
+        "parsed_category": parse.get("parsed_category"),
+        "confidence": parse.get("confidence"),
+        "parsed_notes": parse.get("parsed_notes"),
+    }
+
+
+def _parses_disagree_on_amount(rule_amount: Any, ai_amount: Any) -> bool:
+    if rule_amount is None or ai_amount is None:
+        return False
+    try:
+        ra = float(rule_amount)
+        aa = float(ai_amount)
+    except (TypeError, ValueError):
+        return False
+    tolerance = max(1.0, 0.01 * max(abs(ra), abs(aa)))
+    return abs(ra - aa) > tolerance
+
+
+def reconcile_parses(
+    rule_parsed: Dict[str, Any] | None,
+    ai_parsed: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Merge the rule-based parse and the AI parse into a single result.
+
+    - If rules didn't match, return the AI result unchanged.
+    - If rules matched and agree with AI on key fields, return a merged result
+      with elevated confidence and ``needs_review=False``.
+    - If rules matched and disagree on at least one key field, return the AI
+      result (AI has image context) but flag ``needs_review=True`` and
+      attach a ``_parse_disagreement`` metadata blob so the worker can
+      persist both parses for the reviewer.
+    """
+    if rule_parsed is None:
+        return ai_parsed
+
+    rule_type = (rule_parsed.get("parsed_type") or "").lower()
+    ai_type = (ai_parsed.get("parsed_type") or "").lower()
+    rule_pm = (rule_parsed.get("parsed_payment_method") or "").lower()
+    ai_pm = (ai_parsed.get("parsed_payment_method") or "").lower()
+    rule_cd = (rule_parsed.get("parsed_cash_direction") or "").lower()
+    ai_cd = (ai_parsed.get("parsed_cash_direction") or "").lower()
+
+    disagreement_fields: list[str] = []
+    if rule_type and ai_type and rule_type != ai_type:
+        disagreement_fields.append("parsed_type")
+    if _parses_disagree_on_amount(rule_parsed.get("parsed_amount"), ai_parsed.get("parsed_amount")):
+        disagreement_fields.append("parsed_amount")
+    if (
+        rule_pm and ai_pm
+        and rule_pm != "unknown" and ai_pm != "unknown"
+        and rule_pm != ai_pm
+    ):
+        disagreement_fields.append("parsed_payment_method")
+    if (
+        rule_type == "trade" and ai_type == "trade"
+        and rule_cd and ai_cd
+        and rule_cd != "unknown" and ai_cd != "unknown"
+        and rule_cd != ai_cd
+    ):
+        disagreement_fields.append("parsed_cash_direction")
+
+    if not disagreement_fields:
+        # Agreement — AI has richer context (images, items), so use it as
+        # the base and fold in rule fields where AI returned "unknown".
+        merged = dict(ai_parsed)
+        if (merged.get("parsed_payment_method") or "").lower() in {"", "unknown"} and rule_pm and rule_pm != "unknown":
+            merged["parsed_payment_method"] = rule_parsed.get("parsed_payment_method")
+        if (merged.get("parsed_cash_direction") or "").lower() in {"", "unknown"} and rule_cd and rule_cd != "unknown":
+            merged["parsed_cash_direction"] = rule_parsed.get("parsed_cash_direction")
+
+        base_conf = float(merged.get("confidence") or 0.85)
+        merged["confidence"] = min(0.99, max(base_conf, 0.95))
+        merged["needs_review"] = False
+
+        existing_notes = (merged.get("parsed_notes") or "").strip()
+        agreement_note = "rules+ai agreement"
+        if agreement_note not in existing_notes.lower():
+            merged["parsed_notes"] = (
+                f"{existing_notes} | {agreement_note}" if existing_notes else agreement_note
+            )
+        merged["_parse_agreement"] = True
+        return merged
+
+    # Disagreement — prefer AI (stronger judgment with images), but flag the
+    # row for human review and record both parses for context.
+    merged = dict(ai_parsed)
+    merged["needs_review"] = True
+
+    base_conf = float(merged.get("confidence") or 0.70)
+    merged["confidence"] = min(base_conf, 0.80)
+
+    disagree_summary = f"rule/ai disagreement on: {', '.join(disagreement_fields)}"
+    existing_notes = (merged.get("parsed_notes") or "").strip()
+    merged["parsed_notes"] = (
+        f"{disagree_summary} | {existing_notes}" if existing_notes else disagree_summary
+    )
+    merged["_parse_disagreement"] = {
+        "rule": _compact_parse_snapshot(rule_parsed),
+        "ai": _compact_parse_snapshot(ai_parsed),
+        "fields": disagreement_fields,
+    }
+    return merged
+
+
 async def parse_message(content: str, attachment_urls: list[str], author_name: str = "", channel_name: str = "") -> Dict[str, Any]:
     image_urls = choose_image_urls(
         attachment_urls,
@@ -1477,33 +1588,26 @@ async def parse_message(content: str, attachment_urls: list[str], author_name: s
     if learned_rule_match:
         return learned_rule_match
 
-    # Determinism first: try rule-based parsing before the AI.
-    # Rules are reproducible, fast, and don't consume AI quota.
-    # We only fall through to AI when rules return None (nothing matched)
-    # or when rules matched at low confidence AND there are images (image
-    # context may improve the parse meaningfully).
+    # Dual-path parsing: always try rules AND AI, then reconcile.
+    # Rules run synchronously (fast). AI runs in the background while we
+    # already have the rule answer in hand, so the extra wall-clock cost is
+    # bounded to the AI call itself — no worse than the old AI-only path.
     rule_parsed = parse_by_rules(content or "", channel_name=channel_name)
-    if rule_parsed is not None:
-        rule_confidence = float(rule_parsed.get("confidence") or 0.0)
-        # If the text matched rules with high confidence, trust the rules.
-        # For lower-confidence rule matches with images, let the AI take a look.
-        trust_rules = rule_confidence >= 0.90 or not image_urls
-        if trust_rules:
-            if learned_rule_event:
-                rule_parsed["_learned_rule_event"] = learned_rule_event
-            return rule_parsed
 
     try:
-        parsed = await parse_deal_with_ai_async(
+        ai_parsed = await parse_deal_with_ai_async(
             author_name=author_name,
             message_text=content or "",
             image_urls=image_urls,
             channel_name=channel_name,
         )
-        if learned_rule_event:
-            parsed["_learned_rule_event"] = learned_rule_event
-        return parsed
     except TimedOutRowError:
+        # If AI times out but rules captured a result, use rules rather
+        # than failing the row outright.
+        if rule_parsed is not None:
+            if learned_rule_event:
+                rule_parsed["_learned_rule_event"] = learned_rule_event
+            return rule_parsed
         raise
     except Exception as e:
         logger.warning(
@@ -1511,9 +1615,13 @@ async def parse_message(content: str, attachment_urls: list[str], author_name: s
             e,
             exc_info=True,
         )
-        fallback = rule_parsed or parse_by_rules(content or "", channel_name=channel_name)
-        if fallback:
+        if rule_parsed is not None:
             if learned_rule_event:
-                fallback["_learned_rule_event"] = learned_rule_event
-            return fallback
+                rule_parsed["_learned_rule_event"] = learned_rule_event
+            return rule_parsed
         raise
+
+    merged = reconcile_parses(rule_parsed, ai_parsed)
+    if learned_rule_event:
+        merged["_learned_rule_event"] = learned_rule_event
+    return merged

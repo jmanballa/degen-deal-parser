@@ -164,6 +164,17 @@ class DiscordMessage(SQLModel, table=True):
     money_out: Optional[float] = None
     expense_category: Optional[str] = Field(default=None, index=True)
 
+    # Populated when the rules-based parse and the AI parse disagree on a
+    # key field (deal_type, amount, payment_method, cash_direction). Stores
+    # JSON of the form {"rule": {...}, "ai": {...}, "fields": [...]}.
+    parse_disagreement_json: Optional[str] = Field(default=None)
+
+    # Populated by the AI review resolver agent. Stores JSON of the form
+    # {"resolution": "auto_resolved" | "needs_human",
+    #  "confidence": 0..1,
+    #  "reasoning": "...", "proposed_parse": {...}, "resolved_at": "..."}.
+    ai_resolver_reasoning_json: Optional[str] = Field(default=None)
+
 
 class AttachmentAsset(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

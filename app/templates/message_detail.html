@@ -131,6 +131,39 @@
                     </div>
                 </div>
 
+                {% if message["parse_disagreement"] %}
+                <div class="card">
+                    <h2>Rule vs AI disagreement</h2>
+                    <div class="small" style="margin-bottom:12px;">
+                        The deterministic rule parser and the AI parser disagreed on:
+                        <strong>{{ ", ".join(message["parse_disagreement"].get("fields", [])) }}</strong>.
+                        This row was flagged for review so the system can learn from your correction.
+                    </div>
+                    <div class="detail-grid">
+                        <div class="detail-card">
+                            <div class="label">Rule parser said</div>
+                            <div>
+                                type=<strong>{{ message["parse_disagreement"]["rule"].get("parsed_type") or "—" }}</strong><br>
+                                amount={{ message["parse_disagreement"]["rule"].get("parsed_amount") if message["parse_disagreement"]["rule"].get("parsed_amount") is not none else "—" }}<br>
+                                payment={{ message["parse_disagreement"]["rule"].get("parsed_payment_method") or "—" }}<br>
+                                cash_direction={{ message["parse_disagreement"]["rule"].get("parsed_cash_direction") or "—" }}<br>
+                                confidence={{ message["parse_disagreement"]["rule"].get("confidence") if message["parse_disagreement"]["rule"].get("confidence") is not none else "—" }}
+                            </div>
+                        </div>
+                        <div class="detail-card">
+                            <div class="label">AI parser said</div>
+                            <div>
+                                type=<strong>{{ message["parse_disagreement"]["ai"].get("parsed_type") or "—" }}</strong><br>
+                                amount={{ message["parse_disagreement"]["ai"].get("parsed_amount") if message["parse_disagreement"]["ai"].get("parsed_amount") is not none else "—" }}<br>
+                                payment={{ message["parse_disagreement"]["ai"].get("parsed_payment_method") or "—" }}<br>
+                                cash_direction={{ message["parse_disagreement"]["ai"].get("parsed_cash_direction") or "—" }}<br>
+                                confidence={{ message["parse_disagreement"]["ai"].get("confidence") if message["parse_disagreement"]["ai"].get("confidence") is not none else "—" }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 {% if correction_patterns %}
                 <div class="card">
                     <h2>Correction Memory</h2>

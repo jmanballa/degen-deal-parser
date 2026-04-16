@@ -98,6 +98,8 @@ SQLITE_ADDITIVE_MIGRATIONS = {
         "reviewed_by": "TEXT",
         "reviewed_at": "TIMESTAMP",
         "active_reparse_run_id": "TEXT",
+        "parse_disagreement_json": "TEXT",
+        "ai_resolver_reasoning_json": "TEXT",
     },
     "watchedchannel": {
         "backfill_enabled": "BOOLEAN DEFAULT 1",
@@ -284,6 +286,8 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
         "reviewed_by": "TEXT",
         "reviewed_at": "TIMESTAMP",
         "active_reparse_run_id": "TEXT",
+        "parse_disagreement_json": "TEXT",
+        "ai_resolver_reasoning_json": "TEXT",
     },
     "watchedchannel": {
         "backfill_enabled": "BOOLEAN DEFAULT TRUE",
