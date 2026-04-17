@@ -16,10 +16,13 @@ logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]
 
-# Bedrock-hosted Anthropic models reject any single image source over
-# 5 MiB (5,242,880 bytes). We aim for 4.5 MB so base64 expansion and
-# MIME framing still leave a safety margin when the payload is serialized.
-VISION_IMAGE_MAX_BYTES = 4_500_000
+# Bedrock-hosted Anthropic models reject any single image source whose
+# BASE64-encoded payload exceeds 5 MiB (5,242,880 bytes). Base64 expands
+# bytes by 4/3, so raw image bytes must stay under 3,932,160 for the
+# encoded form to fit. We target 3.6 MB of raw bytes so the base64
+# output is ~4.8 MB, comfortably under the cap and leaving room for the
+# "data:<mime>;base64," MIME framing prefix.
+VISION_IMAGE_MAX_BYTES = 3_600_000
 
 
 def sniff_image_mime_type(data: bytes) -> str | None:
