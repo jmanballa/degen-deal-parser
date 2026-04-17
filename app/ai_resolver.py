@@ -27,7 +27,6 @@ stitch, and never modifies rows that have already been human-reviewed.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 from dataclasses import dataclass
@@ -44,6 +43,10 @@ from .corrections import (
     snapshot_message_parse,
 )
 from .db import managed_session
+from .display_media import (
+    encode_attachment_asset_as_vision_data_url,
+    stable_attachment_url_key,
+)
 from .models import (
     PARSE_PARSED,
     PARSE_REVIEW_REQUIRED,
@@ -144,17 +147,6 @@ def _row_image_urls(row: DiscordMessage) -> list[str]:
     return [url for url in attachments if isinstance(url, str) and is_image_url(url)]
 
 
-def _stable_url_key(url: str) -> str:
-    """Strip volatile query-string signing so cached Discord URLs still match.
-
-    Discord CDN URLs contain ephemeral ``?ex=...&is=...&hm=...`` signatures
-    that Discord rotates periodically. The part before ``?`` (host + path +
-    attachment id + filename) stays stable, so we key the cache lookup by
-    that.
-    """
-    return (url or "").split("?", 1)[0].strip()
-
-
 def _encode_cached_image(
     session: Session, message_id: int, url: str
 ) -> str | None:
@@ -164,13 +156,14 @@ def _encode_cached_image(
     and returns HTTP 400 "URL content sources are not yet supported for
     this model" when we pass a raw Discord URL. Instead we look up the
     attachment bytes in AttachmentAsset (populated at ingest time) and
-    send them inline as a base64 data URL.
+    send them inline as a base64 data URL, shrinking any oversized
+    images to fit Bedrock's 5 MiB per-image cap.
 
-    Match is done on the stable portion of the URL (see _stable_url_key)
-    so rows whose live Discord URL has been re-signed since caching still
-    find their asset.
+    Match is done on the stable portion of the URL (see
+    ``stable_attachment_url_key``) so rows whose live Discord URL has
+    been re-signed since caching still find their asset.
     """
-    target_key = _stable_url_key(url)
+    target_key = stable_attachment_url_key(url)
     if not target_key:
         return None
 
@@ -182,24 +175,13 @@ def _encode_cached_image(
 
     asset: AttachmentAsset | None = None
     for candidate in candidates:
-        if _stable_url_key(candidate.source_url) == target_key:
+        if stable_attachment_url_key(candidate.source_url) == target_key:
             asset = candidate
             break
 
-    if asset is None or not asset.data:
+    if asset is None:
         return None
-    content_type = (asset.content_type or "").strip() or "image/jpeg"
-    try:
-        encoded = base64.b64encode(asset.data).decode("ascii")
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning(
-            "ai_resolver: failed to base64-encode cached image (msg=%s, url=%s): %s",
-            message_id,
-            url,
-            exc,
-        )
-        return None
-    return f"data:{content_type};base64,{encoded}"
+    return encode_attachment_asset_as_vision_data_url(asset)
 
 
 def _collect_context_images(

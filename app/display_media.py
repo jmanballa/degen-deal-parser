@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
+import io
 import json
+import logging
 from typing import Iterable
 
 from sqlalchemy import select
@@ -8,8 +11,129 @@ from sqlmodel import Session
 
 from .models import AttachmentAsset, DiscordMessage
 
+logger = logging.getLogger(__name__)
+
 
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]
+
+# Bedrock-hosted Anthropic models reject any single image source over
+# 5 MiB (5,242,880 bytes). We aim for 4.5 MB so base64 expansion and
+# MIME framing still leave a safety margin when the payload is serialized.
+VISION_IMAGE_MAX_BYTES = 4_500_000
+
+
+def stable_attachment_url_key(url: str) -> str:
+    """Strip volatile query-string signing so cached Discord URLs still match.
+
+    Discord CDN URLs contain ephemeral ``?ex=...&is=...&hm=...`` signatures
+    that Discord rotates periodically. The part before ``?`` (host + path +
+    attachment id + filename) stays stable, so we key any cache lookup by
+    that to survive URL re-signing.
+    """
+    return (url or "").split("?", 1)[0].strip()
+
+
+def shrink_image_to_limit(
+    data: bytes,
+    content_type: str,
+    max_bytes: int = VISION_IMAGE_MAX_BYTES,
+) -> tuple[bytes, str] | None:
+    """Re-encode an oversized image so it fits under ``max_bytes``.
+
+    Tries decreasing JPEG quality first (preserves detail, cheap), then
+    downscales the image in steps. Returns ``(bytes, content_type)`` on
+    success, or ``None`` if the image could not be compressed (or Pillow
+    isn't available). The caller can then skip the image rather than
+    fail the whole model call.
+
+    Images already under ``max_bytes`` are returned as-is so small PNGs
+    don't get needlessly re-encoded as JPEG.
+    """
+    if not data:
+        return None
+    if len(data) <= max_bytes:
+        return data, content_type
+
+    try:
+        from PIL import Image
+    except ImportError:
+        logger.warning(
+            "display_media: image is %d bytes (> %d) and Pillow is not "
+            "installed; cannot downscale",
+            len(data),
+            max_bytes,
+        )
+        return None
+
+    try:
+        img = Image.open(io.BytesIO(data))
+        # JPEG encoder cannot handle RGBA / palette modes
+        if img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGB")
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        for quality in (85, 75, 65, 55):
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+            if buf.tell() <= max_bytes:
+                return buf.getvalue(), "image/jpeg"
+
+        for scale in (0.75, 0.60, 0.45, 0.30):
+            width, height = img.size
+            resized = img.resize(
+                (max(1, int(width * scale)), max(1, int(height * scale))),
+                Image.LANCZOS,
+            )
+            buf = io.BytesIO()
+            resized.save(buf, format="JPEG", quality=70, optimize=True)
+            if buf.tell() <= max_bytes:
+                return buf.getvalue(), "image/jpeg"
+
+        logger.warning(
+            "display_media: could not shrink image below %d bytes "
+            "even after aggressive resize; skipping",
+            max_bytes,
+        )
+        return None
+    except Exception as exc:
+        logger.warning("display_media: image compression failed: %s", exc)
+        return None
+
+
+def encode_bytes_as_vision_data_url(
+    data: bytes,
+    content_type: str,
+    max_bytes: int = VISION_IMAGE_MAX_BYTES,
+) -> str | None:
+    """Return a ``data:<mime>;base64,<payload>`` URL suitable for vision APIs.
+
+    Automatically shrinks the input so the payload fits under ``max_bytes``
+    before encoding. Returns ``None`` if the image is missing, cannot be
+    compressed, or encoding fails.
+    """
+    shrunk = shrink_image_to_limit(data, content_type, max_bytes=max_bytes)
+    if shrunk is None:
+        return None
+    image_bytes, resolved_content_type = shrunk
+    try:
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("display_media: base64 encode failed: %s", exc)
+        return None
+    mime = (resolved_content_type or "").strip() or "image/jpeg"
+    return f"data:{mime};base64,{encoded}"
+
+
+def encode_attachment_asset_as_vision_data_url(
+    asset: AttachmentAsset,
+    max_bytes: int = VISION_IMAGE_MAX_BYTES,
+) -> str | None:
+    """Convenience wrapper: take an AttachmentAsset and return a vision data URL."""
+    if not asset or not asset.data:
+        return None
+    content_type = (asset.content_type or "").strip() or "image/jpeg"
+    return encode_bytes_as_vision_data_url(asset.data, content_type, max_bytes=max_bytes)
 
 
 def parse_attachment_urls_json(value: str | None) -> list[str]:

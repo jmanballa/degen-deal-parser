@@ -18,7 +18,11 @@ from .config import get_settings
 from .corrections import auto_promote_eligible_patterns
 from .db import dispose_engine, is_sqlite_lock_error, managed_session
 from .discord_ingest import get_discord_client, recover_attachment_assets_for_message, sync_attachment_assets
-from .display_media import extract_image_urls, parse_attachment_urls_json
+from .display_media import (
+    encode_bytes_as_vision_data_url,
+    extract_image_urls,
+    parse_attachment_urls_json,
+)
 from .financials import compute_financials
 from .models import (
     AttachmentAsset,
@@ -645,11 +649,18 @@ def _attachment_asset_content_type(asset: AttachmentAsset) -> str:
 
 
 def _attachment_asset_data_url(asset: AttachmentAsset) -> str | None:
+    """Return a vision-API-ready data URL for a cached attachment.
+
+    Delegates to the shared helper in ``display_media`` which shrinks
+    oversized images before base64-encoding. Bedrock-hosted Claude
+    rejects any single image source over 5 MiB, so a raw large JPEG
+    would fail the whole chat.completions call; the shrinker re-encodes
+    at lower quality / resolution until it fits.
+    """
     if not asset.data:
         return None
     content_type = _attachment_asset_content_type(asset)
-    encoded = base64.b64encode(asset.data).decode("ascii")
-    return f"data:{content_type};base64,{encoded}"
+    return encode_bytes_as_vision_data_url(asset.data, content_type)
 
 
 def _cached_parser_image_inputs(session: Session, group_rows: list[DiscordMessage]) -> list[str]:
