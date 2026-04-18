@@ -1,0 +1,45 @@
+{% set _mbn_path = request.url.path %}
+{% set _mbn_dashboard = _mbn_path == "/dashboard" %}
+{% set _mbn_streamer = _mbn_path.startswith("/tiktok/streamer") %}
+{% set _mbn_eye = _mbn_path.startswith("/degen_eye") %}
+{% set _mbn_deals = _mbn_path.startswith("/deals") %}
+{% set _mbn_review = _mbn_path.startswith("/review") %}
+<nav class="mobile-bottom-nav" aria-label="Primary">
+    <a href="/dashboard" class="mbn-item{% if _mbn_dashboard %} is-active{% endif %}" aria-label="Dashboard">
+        <svg class="mbn-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="9"></rect>
+            <rect x="14" y="3" width="7" height="5"></rect>
+            <rect x="14" y="12" width="7" height="9"></rect>
+            <rect x="3" y="16" width="7" height="5"></rect>
+        </svg>
+        <span class="mbn-label">Dashboard</span>
+    </a>
+    <a href="/tiktok/streamer" class="mbn-item{% if _mbn_streamer %} is-active{% endif %}" aria-label="Streamer">
+        <svg class="mbn-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="m22 8-6 4 6 4V8Z"></path>
+            <rect x="2" y="6" width="14" height="12" rx="2" ry="2"></rect>
+        </svg>
+        <span class="mbn-label">Streamer</span>
+    </a>
+    <a href="/degen_eye" class="mbn-item mbn-item-center{% if _mbn_eye %} is-active{% endif %}" aria-label="Degen Eye" data-center="true">
+        <svg class="mbn-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        <span class="mbn-label">Eye</span>
+    </a>
+    <a href="/deals" class="mbn-item{% if _mbn_deals %} is-active{% endif %}" aria-label="Deals">
+        <svg class="mbn-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"></path>
+            <circle cx="7" cy="7" r="1.5"></circle>
+        </svg>
+        <span class="mbn-label">Deals</span>
+    </a>
+    <a href="/review" class="mbn-item{% if _mbn_review %} is-active{% endif %}" aria-label="Review">
+        <svg class="mbn-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M11 3a2 2 0 0 0-2 2v1H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3V5a2 2 0 0 0-2-2h-2Z"></path>
+            <path d="m9 14 2 2 4-4"></path>
+        </svg>
+        <span class="mbn-label">Review</span>
+    </a>
+</nav>
