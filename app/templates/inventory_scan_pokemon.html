@@ -1866,6 +1866,10 @@ var PKScanner = (function() {
                 html += '</div>';
             }
             html += '</div></div>';
+            if (data.status === 'AMBIGUOUS' && !candidates.length) {
+                html += '<div style="text-align:center;padding:16px 0;color:var(--muted);font-size:13px;font-weight:600;">Could not identify &mdash; try rescanning with better lighting.</div>';
+                html += '<div style="text-align:center;margin-top:8px;"><button class="btn-outline" onclick="PKScanner.retake()">Try Again</button></div>';
+            }
         }
 
         if (data.status === 'NO_MATCH' || data.status === 'ERROR') {
@@ -1956,6 +1960,7 @@ var PKScanner = (function() {
         if (card) card.classList.add('selected');
 
         _updateResultDisplay(picked);
+        _updateOfferDisplay();
     }
 
     function _updateResultDisplay(card) {
@@ -2170,6 +2175,10 @@ var PKScanner = (function() {
             _available_variants: card.available_variants || [],
         };
         if (scanId !== undefined) item._fromScanId = scanId;
+        if (batch.length >= 50) {
+            showToast('Session full (50 cards max). Clear the batch before adding more.', 4000);
+            return;
+        }
         batch.push(item);
         saveBatch();
     }
