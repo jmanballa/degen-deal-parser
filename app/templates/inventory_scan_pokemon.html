@@ -196,6 +196,10 @@
         .batch-info { flex:1; min-width:0; }
         .batch-name { font-size:13px; font-weight:700; color:#ede8e2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .batch-meta { font-size:11px; color:rgba(255,255,255,.4); font-weight:500; margin-top:2px; }
+        .batch-offer-row { font-size:12px; color:rgba(255,255,255,.6); font-weight:600; margin-top:3px; line-height:1.2; }
+        .batch-offer-label { font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:rgba(255,255,255,.4); font-weight:700; }
+        .batch-offer-amount { color:#f0c75e; font-weight:800; font-size:13px; margin-left:2px; }
+        .batch-offer-none { font-size:11px; color:rgba(255,255,255,.3); font-style:italic; font-weight:500; }
         .batch-cond { font-size:12px; font-weight:700; padding:3px 8px; border-radius:8px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.08); cursor:pointer; font-family:inherit; color:#ede8e2; flex-shrink:0; }
         .batch-del { appearance:none; border:none; background:none; cursor:pointer; font-size:16px; color:rgba(255,255,255,.3); padding:4px; flex-shrink:0; border-radius:6px; line-height:1; }
         .batch-del:hover { color:var(--accent); background:rgba(213,83,56,.15); }
@@ -360,6 +364,10 @@
             .batch-thumb-placeholder { background:#f0e8dc; border-color:var(--line); color:var(--muted); }
             .batch-name { color:var(--text); }
             .batch-meta { color:var(--muted); }
+            .batch-offer-row { color:var(--text); }
+            .batch-offer-label { color:var(--muted); }
+            .batch-offer-amount { color:var(--accent-strong); }
+            .batch-offer-none { color:var(--muted); }
             .batch-cond { background:#fff; border-color:var(--line); color:var(--text); }
             .batch-del { color:var(--muted); }
             .batch-del:hover { color:var(--accent); background:var(--red-bg); }
@@ -903,6 +911,39 @@ var PKScanner = (function() {
             '<div class="result-offer-formula">' + offer.pct + '% of $' + mkt.toFixed(2) + ' (market), rounded to $0.25</div>';
     }
 
+    function _updateBatchOffers() {
+        // Recompute the Cash/Trade offer amount on every batch-item row in place,
+        // without re-rendering the whole list. Triggered on mode toggle and pct change.
+        var rows = document.querySelectorAll('.batch-offer-row');
+        var label = buyMode === 'trade' ? 'Trade' : 'Cash';
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            var idx = parseInt(row.getAttribute('data-batch-idx'), 10);
+            if (isNaN(idx) || !batch[idx]) continue;
+            var price = batch[idx].auto_price;
+            var offer = _computeOffer(price);
+            if (!offer) {
+                row.innerHTML = '<span class="batch-offer-none">no offer</span>';
+            } else {
+                row.innerHTML =
+                    '<span class="batch-offer-label">' + label + ':</span> ' +
+                    '<span class="batch-offer-amount">$' + offer.rounded.toFixed(2) + '</span>';
+            }
+        }
+        // Also update the open edit-sheet offer row, if any.
+        var editRow = document.getElementById('edit-sheet-offer');
+        if (editRow) {
+            var priceInput = document.getElementById('edit-price');
+            var p = priceInput ? parseFloat(priceInput.value) : NaN;
+            var eOffer = isFinite(p) ? _computeOffer(p) : null;
+            if (eOffer) {
+                editRow.textContent = label + ' offer: $' + eOffer.rounded.toFixed(2) + ' (' + eOffer.pct + '% of $' + p.toFixed(2) + ')';
+            } else {
+                editRow.textContent = label + ' offer: —';
+            }
+        }
+    }
+
     function _syncBuyCalcUI() {
         var input = document.getElementById('buy-pct-input');
         var label = document.getElementById('buy-calc-label');
@@ -925,6 +966,7 @@ var PKScanner = (function() {
                 try { localStorage.setItem('degen_eye_buy_mode', buyMode); } catch (_) {}
                 _syncBuyCalcUI();
                 _updateOfferDisplay();
+                _updateBatchOffers();
             });
         }
         var input = document.getElementById('buy-pct-input');
@@ -940,6 +982,7 @@ var PKScanner = (function() {
                     try { localStorage.setItem('degen_eye_buy_cash_pct', String(v)); } catch (_) {}
                 }
                 _updateOfferDisplay();
+                _updateBatchOffers();
             }
             input.addEventListener('change', commit);
             input.addEventListener('blur', commit);
@@ -949,6 +992,7 @@ var PKScanner = (function() {
                 if (v > 0 && v <= 200) {
                     if (buyMode === 'trade') buyTradePct = v; else buyCashPct = v;
                     _updateOfferDisplay();
+                    _updateBatchOffers();
                 }
             });
         }
@@ -1681,6 +1725,11 @@ var PKScanner = (function() {
                 dp = _pickDisplayPrice(m, batchVariants, detectedV);
             }
             var price = dp.value ? ('$' + dp.value.toFixed(2) + (dp.isTcgLow ? ' (L)' : '')) : '';
+            var offerObj = dp.value ? _computeOffer(dp.value) : null;
+            var offerLabel = buyMode === 'trade' ? 'Trade' : 'Cash';
+            var offerHtml = offerObj
+                ? '<span class="batch-offer-label">' + offerLabel + ':</span> <span class="batch-offer-amount">$' + offerObj.rounded.toFixed(2) + '</span>'
+                : '<span class="batch-offer-none">no offer</span>';
             var thumb = imgSrc
                 ? '<img class="batch-thumb" src="' + escHtml(imgSrc) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
                 : '<div class="batch-thumb-placeholder">&#127183;</div>';
@@ -1694,6 +1743,7 @@ var PKScanner = (function() {
                 '<div class="batch-info">' +
                     '<div class="batch-name">' + escHtml(m.name) + '</div>' +
                     '<div class="batch-meta">' + escHtml(m.set_name || '') + (m.number ? ' #' + escHtml(m.number) : '') + ' &middot; <span class="batch-price-label">' + price + '</span></div>' +
+                    '<div class="batch-offer-row" data-batch-idx="' + batchIdx + '">' + offerHtml + '</div>' +
                     (variantHtml ? '<div style="margin-top:2px;">' + variantHtml + '</div>' : '') +
                 '</div>' +
                 '<select class="batch-cond" data-batch-idx="' + batchIdx + '">' + condOptions + '</select>' +
@@ -2241,6 +2291,18 @@ var PKScanner = (function() {
                 if (priceLabel) {
                     priceLabel.textContent = resolved.value ? ('$' + resolved.value.toFixed(2) + (resolved.isTcgLow ? ' (L)' : '')) : '';
                 }
+                var offerRow = containerEl.querySelector('.batch-offer-row');
+                if (offerRow) {
+                    var offerLabel = buyMode === 'trade' ? 'Trade' : 'Cash';
+                    var offerObj = _computeOffer(resolved.value);
+                    if (offerObj) {
+                        offerRow.innerHTML =
+                            '<span class="batch-offer-label">' + offerLabel + ':</span> ' +
+                            '<span class="batch-offer-amount">$' + offerObj.rounded.toFixed(2) + '</span>';
+                    } else {
+                        offerRow.innerHTML = '<span class="batch-offer-none">no offer</span>';
+                    }
+                }
             }
         }
         saveBatch();
@@ -2364,6 +2426,18 @@ var PKScanner = (function() {
             if (priceLabel) {
                 priceLabel.textContent = resolved.value ? ('$' + resolved.value.toFixed(2) + (resolved.isTcgLow ? ' (L)' : '')) : '';
             }
+            var vOfferRow = el.querySelector('.batch-offer-row');
+            if (vOfferRow) {
+                var vOfferLabel = buyMode === 'trade' ? 'Trade' : 'Cash';
+                var vOfferObj = _computeOffer(resolved.value);
+                if (vOfferObj) {
+                    vOfferRow.innerHTML =
+                        '<span class="batch-offer-label">' + vOfferLabel + ':</span> ' +
+                        '<span class="batch-offer-amount">$' + vOfferObj.rounded.toFixed(2) + '</span>';
+                } else {
+                    vOfferRow.innerHTML = '<span class="batch-offer-none">no offer</span>';
+                }
+            }
         });
     }
 
@@ -2409,12 +2483,18 @@ var PKScanner = (function() {
                 var price = item.auto_price ? ('$' + Number(item.auto_price).toFixed(2) + (isLowPrice ? ' (L)' : '')) : '';
                 var variants = item._available_variants || [];
                 var variantHtml = _buildBatchVariantHtml(variants, item.variant, idx);
+                var bOfferObj = item.auto_price ? _computeOffer(Number(item.auto_price)) : null;
+                var bOfferLabel = buyMode === 'trade' ? 'Trade' : 'Cash';
+                var bOfferHtml = bOfferObj
+                    ? '<span class="batch-offer-label">' + bOfferLabel + ':</span> <span class="batch-offer-amount">$' + bOfferObj.rounded.toFixed(2) + '</span>'
+                    : '<span class="batch-offer-none">no offer</span>';
 
                 el.innerHTML =
                     thumb +
                     '<div class="batch-info">' +
                         '<div class="batch-name">' + escHtml(item.card_name) + '</div>' +
                         '<div class="batch-meta">' + escHtml(item.set_name || '') + (item.card_number ? ' #' + escHtml(item.card_number) : '') + ' &middot; <span class="batch-price-label">' + price + '</span></div>' +
+                        '<div class="batch-offer-row" data-batch-idx="' + idx + '">' + bOfferHtml + '</div>' +
                         (variantHtml ? '<div style="margin-top:2px;">' + variantHtml + '</div>' : '') +
                     '</div>' +
                     '<select class="batch-cond" data-idx="' + idx + '">' + condOptions + '</select>' +
@@ -2613,6 +2693,14 @@ var PKScanner = (function() {
             variantOpts += '</select></div>';
         }
 
+        var _editInitialOffer = (function() {
+            var p = parseFloat(item.auto_price);
+            if (!(p > 0 && isFinite(p))) return '&mdash;';
+            var o = _computeOffer(p);
+            var lab = buyMode === 'trade' ? 'Trade' : 'Cash';
+            return lab + ' offer: $' + o.rounded.toFixed(2) + ' (' + o.pct + '% of $' + p.toFixed(2) + ')';
+        })();
+
         body.innerHTML =
             '<div class="edit-card-header">' +
                 thumb +
@@ -2625,6 +2713,7 @@ var PKScanner = (function() {
             '<div class="edit-field"><label>Set Name</label><input id="edit-set-name" value="' + escHtml(item.set_name || '') + '"></div>' +
             '<div class="edit-field"><label>Card Number</label><input id="edit-card-number" value="' + escHtml(item.card_number || '') + '"></div>' +
             '<div class="edit-field"><label>Price</label><input id="edit-price" type="number" step="0.01" value="' + (item.auto_price || '') + '"></div>' +
+            '<div id="edit-sheet-offer" style="font-size:12px;color:var(--muted);font-weight:600;margin-top:-6px;margin-bottom:6px;">' + _editInitialOffer + '</div>' +
             variantOpts +
             '<div class="edit-field"><label>Condition</label><select id="edit-condition">' + condOpts + '</select></div>' +
             '<a class="tcgplayer-link" href="' + escHtml(tcgplayerUrlFor({ tcgplayer_url: item.tcgplayer_url, name: item.card_name, set_name: item.set_name })) + '" target="_blank" rel="noopener" style="margin-top:6px;">View on TCGplayer &rarr;</a>' +
@@ -2634,6 +2723,12 @@ var PKScanner = (function() {
             '</div>';
 
         document.getElementById('edit-overlay').classList.add('open');
+
+        // Live-update the offer line as Jeffrey edits the price
+        var _editPriceInput = document.getElementById('edit-price');
+        if (_editPriceInput) {
+            _editPriceInput.addEventListener('input', function() { _updateBatchOffers(); });
+        }
     }
 
     function saveEditSheet() {
