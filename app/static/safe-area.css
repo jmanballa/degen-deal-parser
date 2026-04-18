@@ -1,21 +1,97 @@
-/* Safe-area insets for iOS PWA standalone mode. */
-/* Loaded early so it overrides body defaults. */
+/* Mobile PWA chrome: safe-area insets + bottom nav.
+   Self-contained so any template that links this gets both. */
 
 @supports (padding: env(safe-area-inset-top)) {
-  html {
-    /* no change at the root — let body carry it */
-  }
-
   body {
     padding-top: env(safe-area-inset-top) !important;
-    padding-bottom: env(safe-area-inset-bottom) !important;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
 
   /* If there's a fixed bottom nav, it owns the bottom safe area.
-     The body gets bottom padding for content-length, not for safe-area. */
+     The body gets padding for nav height only, not double the inset. */
   body:has(.mobile-bottom-nav) {
     padding-bottom: 0 !important;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* Mobile bottom nav — shown only on narrow viewports. */
+
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767.98px) {
+  .mobile-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    align-items: stretch;
+    background: #0a0a0a;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 200;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+  }
+
+  .mobile-bottom-nav .mbn-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 56px;
+    padding: 6px 4px;
+    color: rgba(255, 255, 255, 0.55);
+    text-decoration: none;
+    font-size: 10px;
+    line-height: 1;
+    transition: color 150ms;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-bottom-nav .mbn-item:active {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .mobile-bottom-nav .mbn-item.is-active {
+    color: #C8102E;
+  }
+
+  .mobile-bottom-nav .mbn-item.is-active .mbn-label {
+    color: #ffffff;
+  }
+
+  .mobile-bottom-nav .mbn-icon {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .mobile-bottom-nav .mbn-label {
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .mobile-bottom-nav .mbn-item[data-center="true"] .mbn-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .mobile-bottom-nav .mbn-item[data-center="true"].is-active .mbn-icon {
+    filter: drop-shadow(0 0 6px rgba(200, 16, 46, 0.45));
+  }
+
+  /* Leave room for the nav so content isn't hidden under it. */
+  body:has(.mobile-bottom-nav) {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
   }
 }
