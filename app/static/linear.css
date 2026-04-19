@@ -38,9 +38,14 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; color-scheme: dark; }
 
+html, body, input, button, select, textarea, table {
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-feature-settings: 'cv02','cv03','cv04','cv11';
+}
+
 body {
     margin: 0;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
     font-feature-settings: 'cv02','cv03','cv04','cv11';
     -webkit-font-smoothing: antialiased;
     background: #08090a !important;
