@@ -29,9 +29,15 @@ alone so they don't get bounced back into the queue mid-processing.
 from __future__ import annotations
 
 import argparse
+import io
 import re
 import sys
 from datetime import timedelta
+
+# Force UTF-8 stdout on Windows so channel names with unicode box chars
+# (e.g. U+2551) don't blow up on cp1252.
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 from sqlmodel import select
 
