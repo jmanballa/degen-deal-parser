@@ -3,9 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,525 +15,946 @@
     <link rel="stylesheet" href="/static/safe-area.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
-    <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
-        * { box-sizing:border-box; }
-        html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 85% 8%, rgba(213,83,56,.12), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); overflow-x:hidden; }
-        a { color:inherit; text-decoration:none; }
-        .page { max-width:1450px; width:100%; margin:0 auto; padding: 28px 28px 60px; }
-        .workspace-nav, .nav-links, .hero-actions, .workspace-card-footer { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-        .workspace-nav { justify-content:space-between; margin-bottom:14px; padding:12px 16px; border:1px solid rgba(159,49,29,.12); border-radius:20px; background:linear-gradient(180deg, rgba(255,253,248,.94), rgba(255,247,238,.82)); box-shadow:0 14px 28px rgba(77,46,20,.08); position:sticky; top:12px; z-index:5; backdrop-filter:blur(10px); }
-        .nav-links { justify-content:flex-end; }
-        .hero, .card { background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
-        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:28px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.55), transparent 24%), radial-gradient(circle at 80% 20%, rgba(213,83,56,.12), transparent 20%), linear-gradient(135deg, rgba(255,249,239,.98), rgba(255,238,223,.95)); }
-        .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
-        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; box-shadow:inset 0 0 0 1px rgba(159,49,29,.08); }
-        .pill { background:#f5eadc; color:var(--muted); }
-        h1, .section-title, .workspace-card h3 { font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif; }
-        h1 { margin:10px 0 8px; font-size:clamp(34px,4vw,54px); line-height:.93; letter-spacing:-.045em; color:#ffffff; font-weight:800; }
-        p, .small { color:#a7b0ba; line-height:1.5; }
-        .top-actions, .quick-links, .stack, .mix-list { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-        .hero-actions { margin-top:12px; }
-        .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; min-height:44px; font:inherit; font-weight:800; cursor:pointer; }
-        .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); box-shadow:inset 0 1px 0 rgba(255,255,255,.8); }
-        .card { padding:18px; margin-bottom:18px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .workspace-card-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
-        .workspace-card { background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,246,234,.96)); border:1px solid rgba(159,49,29,.10); border-radius:22px; padding:18px; box-shadow:0 14px 28px rgba(77,46,20,.08); min-height:180px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .workspace-card h3 { margin:10px 0 8px; font-size:20px; letter-spacing:-.03em; color:#ffffff; }
-        .workspace-card p { margin:0 0 12px; }
-        .workspace-kicker { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background:#fff; border:1px solid rgba(159,49,29,.12); color:var(--accent-strong); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .workspace-card-footer { justify-content:space-between; margin-top:auto; }
-        .workspace-card-footer .small { max-width:160px; }
-        .summary-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px; align-items:start; }
-        .metric { background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,248,238,.75)); border:1px solid var(--line); border-radius:18px; padding:14px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .metric-label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
-        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; color:#ffffff; font-variant-numeric: tabular-nums; }
-        .metric-footnote { color:#a7b0ba; font-size:12px; margin-top:6px; }
-        .metrics-stack { display:grid; gap:12px; }
-        .metric-group { display:grid; gap:12px; }
-        .metric-group.supporting { grid-template-columns:repeat(4,minmax(0,1fr)); }
-        .metric-card-lead .metric-value { font-size:36px; }
-        .layout { display:grid; grid-template-columns:1.15fr .85fr; gap:18px; }
-        .double-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-        .orders-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; }
-        .review-item { padding:12px 0; border-top:1px solid #eee3d3; }
-        .review-item:first-child { border-top:none; padding-top:0; }
-        .review-item.compact { padding:8px 0; }
-        .review-item.compact .small { font-size:11px; }
-        .meta-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-        .alert { margin-bottom:18px; padding:16px 18px; border-radius:20px; border:1px solid rgba(124,30,13,.28); background:linear-gradient(135deg, #a9361f, #d55338 60%, #ef8b59); color:#fff8f0; font-weight:800; display:flex; justify-content:space-between; gap:16px; align-items:center; box-shadow:0 18px 30px rgba(143,45,25,.24); }
-        .alert a { color:#fff; font-weight:800; white-space:nowrap; }
-        .section-title { margin:0 0 10px; font-size:24px; letter-spacing:-.04em; color:#ffffff; }
-        .section-subtitle { margin:0 0 16px; color:#a7b0ba; }
-        .action-list { display:grid; gap:12px; }
-        .action-row, .channel-row { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; padding:12px 0; border-top:1px solid #eee3d3; }
-        .action-row:first-child, .channel-row:first-child { border-top:none; padding-top:0; }
-        .channel-metrics { text-align:right; color:#a7b0ba; font-size:13px; }
-        .mix-pill { display:inline-flex; align-items:center; padding:7px 10px; border-radius:999px; background:#fff; border:1px solid var(--line); color:var(--muted); font-size:12px; font-weight:700; }
-        .section-footer { margin-top:12px; }
-        .section-link { color:var(--accent-strong); font-weight:800; }
-        .list { display:grid; gap:12px; }
-        .list-row, .search-form-card { background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,246,234,.96)); border:1px solid rgba(159,49,29,.10); border-radius:18px; padding:14px; box-shadow:0 12px 24px rgba(77,46,20,.06); }
-        .row-top, .row-bottom { display:flex; gap:10px; justify-content:space-between; align-items:flex-start; }
-        .row-bottom { margin-top:8px; flex-wrap:wrap; }
-        .amount { font-weight:800; white-space:nowrap; }
-        .message { margin-top:8px; color:var(--text); line-height:1.5; }
-        .search-form { display:grid; gap:10px; grid-template-columns:repeat(3,minmax(0,1fr)); }
-        .search-form input { width:100%; min-width:0; padding:12px 14px; min-height:44px; border:1px solid var(--line); border-radius:14px; font:inherit; }
-        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
-        .hero, .card, .metric, .workspace-card, .action-card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
-        .workspace-card:nth-child(2), .metric:nth-child(2) { animation-delay:.04s; }
-        .workspace-card:nth-child(3), .metric:nth-child(3) { animation-delay:.08s; }
-        .workspace-card:nth-child(4), .metric:nth-child(4) { animation-delay:.12s; }
-        @media (max-width:1180px){ .workspace-card-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-        @media (max-width:1000px){ .hero, .layout, .summary-grid, .double-grid, .orders-grid, .metric-group.supporting, .search-form { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } .workspace-nav { position:static; } .alert { align-items:flex-start; } }
-        @media (max-width:720px){ .workspace-card-grid { grid-template-columns:1fr; } .hero-actions, .stack, .top-actions, .quick-links { width:100%; } .hero-actions .button, .stack .button, .search-form .button { width:100%; justify-content:center; } .row-top, .row-bottom { display:grid; grid-template-columns:1fr; } .amount { white-space:normal; } }
-    </style>
     <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+    <style>
+        /* ── Dashboard Linear redesign ───────────────────────────────────── */
+        :root {
+            --db-s1:    #111214;
+            --db-s2:    #17181c;
+            --db-br:    rgba(255,255,255,.07);
+            --db-br2:   rgba(255,255,255,.13);
+            --db-text:  #e4e4e7;
+            --db-muted: #8b8f98;
+            --db-dim:   #52566d;
+            --db-red:   #ef4444;
+            --db-adim:  rgba(239,68,68,.15);
+            --db-live:  #22c55e;
+            --db-ldim:  rgba(34,197,94,.14);
+        }
+
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            margin: 0;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
+            font-feature-settings: 'cv02','cv03','cv04','cv11';
+            -webkit-font-smoothing: antialiased;
+            background: #08090a !important;
+            color: var(--db-text) !important;
+            overflow-x: hidden;
+        }
+
+        a { color: inherit; text-decoration: none; }
+
+        .page {
+            max-width: 1380px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 32px 88px !important;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ── Hero 4-card grid ────────────────────────────────────────────── */
+        .db-hero {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin: 16px 0 24px;
+        }
+
+        /* ── Card base ───────────────────────────────────────────────────── */
+        .db-card {
+            background: var(--db-s1) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 10px !important;
+            padding: 18px 20px !important;
+            transition: border-color 150ms ease-out;
+            box-shadow: 0 1px 2px rgba(0,0,0,.3) !important;
+            position: relative;
+            overflow: hidden;
+        }
+        .db-card:hover { border-color: var(--db-br2) !important; }
+        .db-card::before,
+        .db-card::after { display: none !important; }
+
+        /* ── Card header ─────────────────────────────────────────────────── */
+        .db-ch {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            gap: 8px;
+        }
+        .db-ch h3 {
+            margin: 0 !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            text-transform: uppercase !important;
+            letter-spacing: .06em !important;
+            color: var(--db-muted) !important;
+            font-family: "Inter", -apple-system, sans-serif !important;
+            line-height: 1.2 !important;
+        }
+        .db-ch-meta {
+            font-size: 11px;
+            color: var(--db-dim) !important;
+            white-space: nowrap;
+        }
+
+        /* ── Big stat number ─────────────────────────────────────────────── */
+        .db-big {
+            font-size: 34px;
+            font-weight: 700;
+            color: var(--db-text) !important;
+            letter-spacing: -.025em;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Breakdown rows ──────────────────────────────────────────────── */
+        .db-bk { margin-top: 14px; }
+        .db-bk-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            padding: 6px 0;
+            border-top: 1px solid var(--db-br);
+        }
+        .db-bk-row:first-child { border-top: none; padding-top: 0; }
+        .db-bk-lbl { color: var(--db-muted) !important; }
+        .db-bk-val { color: var(--db-text) !important; font-variant-numeric: tabular-nums; font-weight: 500; }
+        .db-bk-cnt { color: var(--db-dim) !important; font-size: 11px; margin-left: 5px; }
+
+        /* ── Attention list ──────────────────────────────────────────────── */
+        .db-attn { list-style: none; margin: 0; padding: 0; }
+        .db-attn-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 7px 0;
+            border-top: 1px solid var(--db-br);
+            font-size: 13px;
+            color: var(--db-text) !important;
+            text-decoration: none;
+            min-height: 36px;
+        }
+        .db-attn-row:first-child { border-top: none; padding-top: 0; }
+        .db-attn-lbl { color: var(--db-text) !important; font-weight: 500; font-size: 13px; }
+        .db-badge {
+            color: var(--db-dim) !important;
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+            background: var(--db-s2) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 5px;
+            padding: 2px 8px;
+            white-space: nowrap;
+            font-weight: 600;
+        }
+        .db-badge-warn {
+            color: #fca5a5 !important;
+            border-color: rgba(239,68,68,.28) !important;
+            background: var(--db-adim) !important;
+        }
+
+        /* ── Status pills ────────────────────────────────────────────────── */
+        .db-live-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--db-live) !important;
+            background: var(--db-ldim);
+            border: 1px solid rgba(34,197,94,.22);
+            border-radius: 5px;
+            padding: 3px 8px;
+        }
+        .db-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--db-live);
+            flex-shrink: 0;
+            animation: db-pulse 2s ease-in-out infinite;
+        }
+        @keyframes db-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .35; }
+        }
+        .db-off-pill { font-size: 11px; color: var(--db-dim) !important; }
+
+        /* ── Stream detail list ──────────────────────────────────────────── */
+        .db-sdl { margin: 0; padding: 0; }
+        .db-sdl div {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 6px 0;
+            border-top: 1px solid var(--db-br);
+        }
+        .db-sdl div:first-child { border-top: none; padding-top: 0; }
+        .db-sdl dt { color: var(--db-muted) !important; }
+        .db-sdl dd { color: var(--db-text) !important; font-weight: 500; margin: 0; font-variant-numeric: tabular-nums; }
+        .db-stream-ttl { font-size: 15px; font-weight: 600; color: var(--db-text) !important; margin: 0 0 12px; }
+        .db-offline-msg { color: var(--db-dim) !important; font-size: 13px; margin: 0; }
+
+        /* ── Alert banner ────────────────────────────────────────────────── */
+        .db-alert {
+            background: rgba(239,68,68,.09) !important;
+            border: 1px solid rgba(239,68,68,.22) !important;
+            border-radius: 10px;
+            padding: 11px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #fca5a5 !important;
+            margin-bottom: 14px;
+        }
+        .db-alert a { color: #fca5a5 !important; text-decoration: underline; white-space: nowrap; }
+
+        /* ── More section ────────────────────────────────────────────────── */
+        .db-more { margin-top: 8px; }
+        .db-more-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .db-more-lbl {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: var(--db-dim) !important;
+            margin: 0;
+        }
+        .db-more-line { flex: 1; height: 1px; background: var(--db-br); }
+        .db-grid2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        /* ── Collapsible panel ───────────────────────────────────────────── */
+        details.db-panel {
+            background: var(--db-s1) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 10px !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,.3) !important;
+            overflow: hidden;
+        }
+        details.db-panel::before,
+        details.db-panel::after { display: none !important; }
+        details.db-panel > summary {
+            cursor: pointer;
+            padding: 13px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--db-text) !important;
+            list-style: none;
+            user-select: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 150ms;
+            font-family: "Inter", -apple-system, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 48px;
+        }
+        details.db-panel > summary::-webkit-details-marker { display: none; }
+        details.db-panel > summary::after {
+            content: "›";
+            color: var(--db-dim);
+            font-size: 16px;
+            line-height: 1;
+            display: inline-block;
+            transition: transform 150ms ease-out;
+            transform: rotate(90deg);
+            flex-shrink: 0;
+        }
+        details.db-panel[open] > summary { border-bottom-color: var(--db-br); }
+        details.db-panel[open] > summary::after { transform: rotate(-90deg); }
+        .db-pbody { padding: 16px 18px 18px; }
+
+        /* ── Workspace quick links ───────────────────────────────────────── */
+        .db-wsg {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+        .db-wsc {
+            background: var(--db-s2) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 8px;
+            padding: 13px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            text-decoration: none;
+            transition: border-color 150ms;
+            min-height: 48px;
+        }
+        .db-wsc:hover { border-color: var(--db-br2) !important; }
+        .db-wsk {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: var(--db-dim) !important;
+        }
+        .db-wst { font-size: 13px; font-weight: 600; color: var(--db-text) !important; margin: 0; }
+        .db-wsm { font-size: 12px; color: var(--db-muted) !important; margin: 0; }
+
+        /* ── Generic list rows ───────────────────────────────────────────── */
+        .db-list { display: grid; gap: 6px; }
+        .db-li {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--db-s2) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: border-color 150ms;
+            min-height: 48px;
+        }
+        .db-li:hover { border-color: var(--db-br2) !important; }
+        .db-li-l { min-width: 0; }
+        .db-li-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--db-text) !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .db-li-sub { font-size: 11px; color: var(--db-muted) !important; margin-top: 2px; }
+        .db-li-r { text-align: right; flex-shrink: 0; }
+        .db-li-amt { font-size: 13px; font-weight: 600; color: var(--db-text) !important; font-variant-numeric: tabular-nums; }
+        .db-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,.07) !important;
+            color: var(--db-muted) !important;
+            display: inline-block;
+            margin-top: 3px;
+            font-weight: 500;
+        }
+        .db-empty { font-size: 13px; color: var(--db-dim) !important; padding: 6px 0; }
+
+        /* ── Pills ───────────────────────────────────────────────────────── */
+        .db-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+        .db-pill {
+            font-size: 11px;
+            font-weight: 500;
+            background: rgba(255,255,255,.06) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 5px;
+            padding: 3px 8px;
+            color: var(--db-muted) !important;
+        }
+
+        /* ── Channel rows ────────────────────────────────────────────────── */
+        .db-ch-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+            border-top: 1px solid var(--db-br);
+            font-size: 13px;
+        }
+        .db-ch-row:first-child { border-top: none; padding-top: 0; }
+        .db-ch-nm { font-weight: 500; color: var(--db-text) !important; }
+        .db-ch-cnt { font-size: 11px; color: var(--db-dim) !important; margin-top: 1px; }
+        .db-ch-net { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--db-text) !important; }
+        .db-ch-io { font-size: 11px; color: var(--db-dim) !important; }
+
+        /* ── Reviewed items ──────────────────────────────────────────────── */
+        .db-rev { padding: 8px 0; border-top: 1px solid var(--db-br); }
+        .db-rev:first-child { border-top: none; padding-top: 0; }
+        .db-rev-nm { font-size: 13px; font-weight: 500; color: var(--db-text) !important; }
+        .db-rev-meta { font-size: 11px; color: var(--db-muted) !important; margin-top: 2px; }
+        .db-rev-msg { font-size: 11px; color: var(--db-dim) !important; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* ── Search ──────────────────────────────────────────────────────── */
+        .db-srch { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+        .db-srch input {
+            flex: 1;
+            min-width: 110px;
+            padding: 9px 12px;
+            background: var(--db-s2) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--db-text) !important;
+            min-height: 44px;
+            font-family: "Inter", -apple-system, sans-serif;
+        }
+        .db-srch input:focus { border-color: var(--db-br2) !important; outline: none; }
+        .db-srch-btn {
+            padding: 9px 16px;
+            min-height: 44px;
+            min-width: 48px;
+            background: var(--db-s2) !important;
+            border: 1px solid var(--db-br) !important;
+            border-radius: 8px !important;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--db-text) !important;
+            cursor: pointer;
+            font-family: "Inter", -apple-system, sans-serif;
+        }
+        .db-srch-btn:hover { border-color: var(--db-br2) !important; }
+
+        /* ── Sub-label inside panel body ─────────────────────────────────── */
+        .db-sublbl {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: var(--db-dim) !important;
+            margin: 0 0 8px;
+        }
+
+        /* ── Responsive ──────────────────────────────────────────────────── */
+        @media (max-width: 1099px) {
+            .db-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 767px) {
+            .page { padding: 14px 14px 88px !important; }
+            .db-hero { grid-template-columns: 1fr; gap: 8px; margin: 12px 0 16px; }
+            .db-big { font-size: 28px; }
+            .db-grid2 { grid-template-columns: 1fr; }
+            .db-wsg { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 480px) {
+            .db-wsg { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
 <body>
     {% set user_role = current_user.role if current_user else "viewer" %}
     {% set is_admin = user_role == "admin" %}
     {% set is_reviewer = user_role in ("reviewer", "admin") %}
+
     <div class="page">
         {% include "_workspace_nav.html" %}
-        <section class="hero">
-            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
-            <div>
-                <div class="eyebrow">{% if is_admin %}Internal Operations{% elif is_reviewer %}Review Operations{% else %}Stream Team{% endif %}</div>
-                <h1>{{ title }}</h1>
-                {% if is_reviewer %}
-                <p>Welcome back{% if current_user %}, {{ current_user.display_name or current_user.username }}{% endif %}. This is your daily briefing for deal flow, review pressure, and system activity so you can decide what needs attention first.</p>
-                {% else %}
-                <p>Welcome back{% if current_user %}, {{ current_user.display_name or current_user.username }}{% endif %}. Your live stream tools, order tracking, and deal feed are all here.</p>
-                {% endif %}
-                <div class="hero-actions">
-                    {% if not is_reviewer %}
-                    <a class="button primary-button" href="/tiktok/streamer">Streamer Dashboard</a>
-                    <a class="button secondary-button" href="/stream-manager">Stream Manager</a>
-                    {% endif %}
-                    {% if is_reviewer %}<a class="button primary-button" href="/review">Review Now</a>{% endif %}
-                    <a class="button secondary-button" href="/deals">Browse Deals</a>
-                    <a class="button secondary-button" href="/shopify/orders">Shopify Orders</a>
-                    <a class="button secondary-button" href="/tiktok/orders">TikTok Shop Orders</a>
-                    <a class="button secondary-button" href="/reports">Open Reports</a>
-                    {% if is_admin %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
-                </div>
-            </div>
-        </section>
 
         {% if is_reviewer and parser_progress["local_runtime"]["needs_attention"] %}
-        <div class="alert">
-            <div><strong>&#9888; System updates look delayed &mdash; new Discord messages may not be arriving yet</strong></div>
+        <div class="db-alert">
+            <div>&#9888; System updates look delayed &mdash; new Discord messages may not be arriving yet</div>
             <a href="/status">Check Status &rarr;</a>
         </div>
         {% endif %}
 
-        <div class="workspace-card-grid">
-            {% if not is_reviewer %}
-            <div class="workspace-card">
-                <span class="workspace-kicker">Go live</span>
-                <h3>Streamer Dashboard</h3>
-                <p>Open the live order feed, chat overlay, and real-time sales ticker for your stream.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">Live orders and chat</span>
-                    <a class="button primary-button" href="/tiktok/streamer">Open Streamer</a>
-                </div>
-            </div>
-            <div class="workspace-card">
-                <span class="workspace-kicker">Schedule</span>
-                <h3>Stream Manager</h3>
-                <p>Set up streamer profiles, manage the weekly schedule, and configure stream windows.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">Scheduling and setup</span>
-                    <a class="button secondary-button" href="/stream-manager">Open Manager</a>
-                </div>
-            </div>
-            {% endif %}
-            {% if is_reviewer %}
-            <div class="workspace-card">
-                <span class="workspace-kicker">Primary workflow</span>
-                <h3>Review Queue</h3>
-                <p>Start here for the normal human review flow. Approve good records, correct weak ones, and leave the bulk admin table for advanced cleanup.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">{{ review_summary["needs_review"] }} waiting for review</span>
-                    <a class="button primary-button" href="/review">Open Review</a>
-                </div>
-            </div>
-            {% endif %}
-            <div class="workspace-card">
-                <span class="workspace-kicker">Card scanner</span>
-                <h3>Degen Eye</h3>
-                <p>Scan trading cards with your camera to identify them and look up market prices instantly.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">Supports all major TCGs</span>
-                    <a class="button primary-button" href="/degen_eye">Open Scanner</a>
-                </div>
-            </div>
-            <div class="workspace-card">
-                <span class="workspace-kicker">Browse ledger</span>
-                <h3>Deals</h3>
-                <p>Use the cleaner read-only ledger view when you want to inspect activity without stepping into admin controls.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">{{ dashboard_snapshot["today"]["rows"] }} confirmed deals today</span>
-                    <a class="button secondary-button" href="/deals">Open Deals</a>
-                </div>
-            </div>
-            <div class="workspace-card">
-                <span class="workspace-kicker">Financial view</span>
-                <h3>Reports</h3>
-                <p>See cash movement, categories, and channel mix before digging into detailed records or reconciliation work.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">{{ dashboard_snapshot["today"]["revenue"]["total_display"] }} revenue today</span>
-                    <a class="button secondary-button" href="/reports">Open Reports</a>
-                </div>
-            </div>
-            {% if is_reviewer %}
-            <div class="workspace-card">
-                <span class="workspace-kicker">Operations</span>
-                <h3>{% if is_admin %}Admin + Status{% else %}System Status{% endif %}</h3>
-                <p>{% if is_admin %}Keep system health, bookkeeping, and operational controls available without overwhelming the rest of the product.{% else %}Check system activity and recent operations without dropping into the full admin console.{% endif %}</p>
-                <div class="workspace-card-footer">
-                    <span class="small">{{ parser_progress["queued"] + parser_progress["processing"] }} rows in flight</span>
-                    <div class="stack">
-                        <a class="button secondary-button" href="/status">Status</a>
-                        {% if is_admin %}<a class="button secondary-button" href="/admin">Admin</a>{% endif %}
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-            {% if is_admin %}
-            <div class="workspace-card">
-                <span class="workspace-kicker">Go live</span>
-                <h3>Streamer Dashboard</h3>
-                <p>Open the live order feed, chat overlay, and real-time sales ticker for your stream.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">Live orders and chat</span>
-                    <a class="button secondary-button" href="/tiktok/streamer">Open Streamer</a>
-                </div>
-            </div>
-            <div class="workspace-card">
-                <span class="workspace-kicker">Schedule</span>
-                <h3>Stream Manager</h3>
-                <p>Set up streamer profiles, manage the weekly schedule, and configure stream windows.</p>
-                <div class="workspace-card-footer">
-                    <span class="small">Scheduling and setup</span>
-                    <a class="button secondary-button" href="/stream-manager">Open Manager</a>
-                </div>
-            </div>
-            {% endif %}
-        </div>
+        <!-- ══ HERO: 4 primary stat cards ════════════════════════════════ -->
+        <div class="db-hero">
 
-        <div class="summary-grid">
-            <div class="metric metric-card-lead">
-                <div class="metric-label">Today's Revenue</div>
-                <div class="metric-value">{{ dashboard_snapshot["today"]["revenue"]["total_display"] }}</div>
-                <div class="metric-footnote">Discord: {{ dashboard_snapshot["today"]["revenue"]["discord_total_display"] }} (sales {{ dashboard_snapshot["today"]["revenue"]["discord_sales_display"] }} + trade in {{ dashboard_snapshot["today"]["revenue"]["discord_trade_in_display"] }})</div>
-                {% if dashboard_snapshot["today"]["shopify"]["order_count"] > 0 %}
-                <div class="metric-footnote">Shopify: {{ dashboard_snapshot["today"]["revenue"]["shopify_total_display"] }}{% if dashboard_snapshot["today"]["shopify"]["includes_tax_count"] > 0 %} (includes tax){% endif %}</div>
-                {% else %}
-                <div class="metric-footnote">Shopify: No Shopify orders today</div>
-                {% endif %}
-                {% if dashboard_snapshot["today"]["tiktok"]["order_count"] > 0 %}
-                <div class="metric-footnote">TikTok Shop paid-order revenue: {{ dashboard_snapshot["today"]["tiktok"]["net_display"] }} net from {{ dashboard_snapshot["today"]["tiktok"]["paid_order_count_display"] }} revenue-counted order{{ "" if dashboard_snapshot["today"]["tiktok"]["paid_order_count"] == 1 else "s" }}</div>
-                {% else %}
-                <div class="metric-footnote">TikTok Shop: No paid TikTok orders today</div>
-                {% endif %}
-            </div>
-            <div class="metric metric-card-lead">
-                <div class="metric-label">Today's Purchases</div>
-                <div class="metric-value">{{ dashboard_snapshot["today"]["purchases"]["total_display"] }}</div>
-                <div class="metric-footnote">Buys: {{ dashboard_snapshot["today"]["purchases"]["buys_display"] }}</div>
-                <div class="metric-footnote">Trade out: {{ dashboard_snapshot["today"]["purchases"]["trade_out_display"] }}</div>
-                <div class="metric-footnote">Expenses: {{ dashboard_snapshot["today"]["purchases"]["expenses_display"] }}</div>
-                {% if dashboard_snapshot["today"]["purchases"]["has_shopify_refunds"] %}
-                <div class="metric-footnote">Shopify refunds: {{ dashboard_snapshot["today"]["purchases"]["shopify_refunds_display"] }}</div>
-                {% endif %}
-            </div>
-            <div class="metrics-stack" style="grid-column:1 / -1;">
-                <div class="metric-group supporting">
-                    {% if is_reviewer %}
-                    <div class="metric">
-                        <div class="metric-label">Review Required</div>
-                        <div class="metric-value">{{ review_summary["needs_review"] }}</div>
-                        <div class="metric-footnote">{{ dashboard_snapshot["today"]["reviewed_today_count"] }} reviewed today</div>
+            <!-- 1 · Revenue today -->
+            <article class="db-card">
+                <div class="db-ch">
+                    <h3>Revenue today</h3>
+                    <span class="db-ch-meta">{{ dashboard_snapshot["today_label"] }}</span>
+                </div>
+                <div class="db-big">{{ dashboard_snapshot["today"]["revenue"]["total_display"] }}</div>
+                <div class="db-bk">
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">Discord</span>
+                        <span class="db-bk-val">{{ dashboard_snapshot["today"]["revenue"]["discord_total_display"] }}<span class="db-bk-cnt">· {{ dashboard_snapshot["today"]["rows"] }} deals</span></span>
                     </div>
-                    <div class="metric">
-                        <div class="metric-label">Open Items</div>
-                        <div class="metric-value">{{ parser_progress["queued"] + parser_progress["processing"] }}</div>
-                        <div class="metric-footnote">{{ parser_progress["processing"] }} in progress now</div>
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">TikTok Shop</span>
+                        <span class="db-bk-val">{{ dashboard_snapshot["today"]["revenue"]["tiktok_total_display"] }}<span class="db-bk-cnt">· {{ dashboard_snapshot["today"]["tiktok"]["paid_order_count"] }} orders</span></span>
+                    </div>
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">Shopify</span>
+                        <span class="db-bk-val">{{ dashboard_snapshot["today"]["revenue"]["shopify_total_display"] }}<span class="db-bk-cnt">· {{ dashboard_snapshot["today"]["shopify"]["order_count"] }} orders</span></span>
+                    </div>
+                </div>
+            </article>
+
+            <!-- 2 · Purchases today -->
+            <article class="db-card">
+                <div class="db-ch">
+                    <h3>Purchases today</h3>
+                    <span class="db-ch-meta">{{ dashboard_snapshot["today"]["buy_count"] + dashboard_snapshot["today"]["trade_count"] + dashboard_snapshot["today"]["expense_count"] }} items</span>
+                </div>
+                <div class="db-big">{{ dashboard_snapshot["today"]["purchases"]["total_display"] }}</div>
+                <div class="db-bk">
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">Buys</span>
+                        <span class="db-bk-val">{{ dashboard_snapshot["today"]["purchases"]["buys_display"] }}</span>
+                    </div>
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">Trade out</span>
+                        <span class="db-bk-val">{{ dashboard_snapshot["today"]["purchases"]["trade_out_display"] }}</span>
+                    </div>
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">Expenses</span>
+                        <span class="db-bk-val">{{ dashboard_snapshot["today"]["purchases"]["expenses_display"] }}</span>
+                    </div>
+                    {% if dashboard_snapshot["today"]["purchases"]["has_shopify_refunds"] %}
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">Shopify refunds</span>
+                        <span class="db-bk-val">{{ dashboard_snapshot["today"]["purchases"]["shopify_refunds_display"] }}</span>
                     </div>
                     {% endif %}
-                    <div class="metric">
-                        <div class="metric-label">{{ dashboard_snapshot["today"]["shopify"]["order_count"] }} Shopify orders today</div>
-                        <div class="metric-value">{{ dashboard_snapshot["today"]["shopify"]["gross_display"] }}</div>
-                        <div class="metric-footnote">Gross</div>
-                        <div class="metric-footnote">Tax {{ dashboard_snapshot["today"]["shopify"]["tax_display"] }}</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">{{ dashboard_snapshot["today"]["tiktok"]["order_count"] }} TikTok Shop rows today</div>
-                        <div class="metric-value">{{ dashboard_snapshot["today"]["tiktok"]["gross_display"] }}</div>
-                        <div class="metric-footnote">{{ dashboard_snapshot["today"]["tiktok"]["paid_order_count_display"] }} revenue-counted order{{ "" if dashboard_snapshot["today"]["tiktok"]["paid_order_count"] == 1 else "s" }} generating {{ dashboard_snapshot["today"]["tiktok"]["net_display"] }} net</div>
-                        <div class="metric-footnote">Tax {{ dashboard_snapshot["today"]["tiktok"]["tax_display"] }}</div>
-                    </div>
                 </div>
-            </div>
-        </div>
+            </article>
 
-        <div class="{% if is_reviewer %}layout{% endif %}">
-            {% if is_reviewer %}
-            <div class="card">
-                <h2 class="section-title">What Needs Attention</h2>
-                <p class="section-subtitle">Start here before you drop into the big tables.</p>
-                <div class="action-list">
-                    <div class="action-row">
-                        <div>
-                            <strong>Needs review</strong>
-                            <div class="small">{{ review_summary["needs_review"] }} rows still require human review in the primary review queue.</div>
-                        </div>
-                        <a class="button primary-button" href="/review">Review Now</a>
-                    </div>
-                    <div class="action-row">
-                        <div>
-                            <strong>System activity</strong>
-                            <div class="small">{{ parser_progress["local_runtime"]["label"] }}{% if parser_progress["local_runtime"]["host_name"] %} on {{ parser_progress["local_runtime"]["host_name"] }}{% endif %} with Discord {{ parser_progress["local_runtime"]["details"].get("discord_status", "unknown") }}.</div>
-                        </div>
-                        <a class="button secondary-button" href="/status">Open Status</a>
-                    </div>
-                    <div class="action-row">
-                        <div>
-                            <strong>Today's intake</strong>
-                            <div class="small">{{ dashboard_snapshot["today"]["recent_ingested_count"] }} messages received today and {{ dashboard_snapshot["today"]["rows"] }} confirmed deal rows.</div>
-                        </div>
-                        <a class="button secondary-button" href="/table">Open Records</a>
-                    </div>
-                    <div class="action-row">
-                        <div>
-                            <strong>Reports and bookkeeping</strong>
-                            <div class="small">Check cash movement, reconciliation, and partner-facing rollups.</div>
-                        </div>
-                        <div class="stack">
-                            <a class="button secondary-button" href="/reports">Reports</a>
-                            {% if is_admin %}<a class="button secondary-button" href="/bookkeeping">Bookkeeping</a>{% endif %}
-                        </div>
-                    </div>
+            <!-- 3 · Needs attention -->
+            <article class="db-card">
+                <div class="db-ch">
+                    <h3>Needs attention</h3>
+                    {% if is_reviewer %}
+                    <span class="db-ch-meta">{{ review_summary["needs_review"] }} in queue</span>
+                    {% endif %}
                 </div>
-            </div>
-            {% endif %}
+                <ul class="db-attn">
+                    {% if is_reviewer %}
+                    <li><a class="db-attn-row" href="/review">
+                        <span class="db-attn-lbl">Review queue</span>
+                        <span class="db-badge{% if review_summary["needs_review"] > 0 %} db-badge-warn{% endif %}">{{ review_summary["needs_review"] }}</span>
+                    </a></li>
+                    {% endif %}
+                    <li><a class="db-attn-row" href="/table">
+                        <span class="db-attn-lbl">Queue backlog</span>
+                        <span class="db-badge">{{ parser_progress["queued"] + parser_progress["processing"] }}</span>
+                    </a></li>
+                    <li><a class="db-attn-row" href="/deals">
+                        <span class="db-attn-lbl">Deals today</span>
+                        <span class="db-badge">{{ dashboard_snapshot["today"]["rows"] }}</span>
+                    </a></li>
+                    <li><a class="db-attn-row" href="/status">
+                        <span class="db-attn-lbl">System</span>
+                        <span class="db-badge">{{ parser_progress["local_runtime"]["label"] }}</span>
+                    </a></li>
+                    {% if is_reviewer %}
+                    <li><a class="db-attn-row" href="/review">
+                        <span class="db-attn-lbl">Reviewed today</span>
+                        <span class="db-badge">{{ dashboard_snapshot["today"]["reviewed_today_count"] }}</span>
+                    </a></li>
+                    {% endif %}
+                </ul>
+            </article>
 
-            <div class="card">
-                <h2 class="section-title">Today at a Glance</h2>
-                <p class="section-subtitle">A quick read on today's deal mix.</p>
-                <div class="review-item">
-                    <div class="metric-label">Deal Breakdown</div>
-                    <div class="mix-list">
-                        <span class="mix-pill">{{ dashboard_snapshot["today"]["sales_count"] }} sales</span>
-                        <span class="mix-pill">{{ dashboard_snapshot["today"]["buy_count"] }} buys</span>
-                        <span class="mix-pill">{{ dashboard_snapshot["today"]["trade_count"] }} trades</span>
-                        <span class="mix-pill">{{ dashboard_snapshot["today"]["expense_count"] }} expenses</span>
-                    </div>
-                </div>
-                <div class="review-item">
-                    <div class="metric-label">Trade Cash</div>
-                    <div>{{ dashboard_snapshot["today"]["trade_in_display"] }} in / {{ dashboard_snapshot["today"]["trade_out_display"] }} out</div>
-                </div>
-                <div class="review-item">
-                    <div class="metric-label">Payment Mix</div>
-                    <div class="mix-list">
-                        {% for row in dashboard_snapshot["payment_mix"] %}
-                        <span class="mix-pill">{{ row["label"] }} {{ row["value"] }}</span>
-                        {% else %}
-                        <span class="small">No payment mix yet today.</span>
-                        {% endfor %}
-                    </div>
-                </div>
-                <div class="review-item">
-                    <div class="metric-label">Category Mix</div>
-                    <div class="mix-list">
-                        {% for row in dashboard_snapshot["category_mix"] %}
-                        <span class="mix-pill">{{ row["label"] }} {{ row["value"] }}</span>
-                        {% else %}
-                        <span class="small">No category signal yet today.</span>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {% if dashboard_snapshot["top_channels"]|length >= 2 %}
-        <div class="double-grid">
-            <div class="card">
-                <h2 class="section-title">Top Active Channels</h2>
-                <p class="section-subtitle">Where today's deal volume is coming from.</p>
-                {% for row in dashboard_snapshot["top_channels"] %}
-                <div class="channel-row">
-                    <div>
-                        <strong>{{ row["channel_name"] }}</strong>
-                        <div class="small">{{ row["deal_count"] }} confirmed deal{{ "" if row["deal_count"] == 1 else "s" }}</div>
-                    </div>
-                    <div class="channel-metrics">
-                        <div>{{ row["net_display"] }}</div>
-                        <div>{{ row["money_in_display"] }} in / {{ row["money_out_display"] }} out</div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <div class="orders-grid">
-            <div class="card">
-                <h2 class="section-title">Recent Deals</h2>
-                <p class="section-subtitle">The latest confirmed Discord deals.</p>
-                <div class="list">
-                    {% for row in recent_deals %}
-                    <a class="list-row" href="/deals/{{ row['id'] }}">
-                        <div class="row-top">
-                            <div>
-                                <strong>{{ row["channel"] or row["channel_id"] }}</strong>
-                                <div class="small">{{ row["time"] }}</div>
-                            </div>
-                            {% if row["amount_display"] %}<div class="amount">{{ row["amount_display"] }}</div>{% endif %}
-                        </div>
-                        <div class="row-bottom">
-                            <span class="pill">{{ row["entry_kind"] or "unknown" }}</span>
-                            {% if row["payment_display"] %}<span class="pill">{{ row["payment_display"] }}</span>{% endif %}
-                        </div>
-                        <div class="message">{{ row["message"] or "(image-only message)" }}</div>
-                    </a>
+            <!-- 4 · Stream status -->
+            <article class="db-card">
+                <div class="db-ch">
+                    <h3>Stream</h3>
+                    {% if stream_status["active"] %}
+                    <span class="db-live-pill"><span class="db-dot"></span>Live</span>
                     {% else %}
-                    <div class="list-row">
-                        <div class="small">No recent Discord deals yet.</div>
-                    </div>
-                    {% endfor %}
+                    <span class="db-off-pill">Offline</span>
+                    {% endif %}
                 </div>
-            </div>
-
-            <div class="card">
-                <h2 class="section-title">Shopify Orders</h2>
-                <p class="section-subtitle">Recent paid online orders.</p>
-                {% if not shopify_connected %}
-                <div class="list-row">
-                    <div class="small">{{ shopify_message }}</div>
-                </div>
-                {% elif shopify_orders %}
-                <div class="list">
-                    {% for order in shopify_orders %}
-                    <a class="list-row" href="#">
-                        <div class="row-top">
-                            <div>
-                                <strong>#{{ order["order_number"] }}</strong>
-                                <div class="small">{{ order["created_at"] }}</div>
-                            </div>
-                            <div class="amount">${{ "%.2f"|format(order["total_price"]) }}</div>
+                {% if stream_status["active"] %}
+                    {% if stream_status["title"] %}
+                    <div class="db-stream-ttl">{{ stream_status["title"] }}</div>
+                    {% endif %}
+                    <dl class="db-sdl">
+                        {% if stream_status["started_mins"] is not none %}
+                        <div>
+                            <dt>Started</dt>
+                            <dd>{% set sm = stream_status["started_mins"] %}{% if sm < 60 %}{{ sm }}m ago{% else %}{{ sm // 60 }}h {% if sm % 60 %}{{ sm % 60 }}m {% endif %}ago{% endif %}</dd>
                         </div>
-                        <div class="row-bottom">
-                            <div>{{ order["customer_name"] }}</div>
-                            <span class="pill">{{ order["fulfillment_label"] }}</span>
+                        {% endif %}
+                        {% if stream_status["last_order_mins"] is not none %}
+                        <div>
+                            <dt>Last TikTok order</dt>
+                            <dd>{% set lm = stream_status["last_order_mins"] %}{% if lm < 60 %}{{ lm }}m ago{% else %}{{ lm // 60 }}h {% if lm % 60 %}{{ lm % 60 }}m {% endif %}ago{% endif %}</dd>
                         </div>
-                    </a>
-                    {% endfor %}
-                </div>
+                        {% endif %}
+                        <div>
+                            <dt>TikTok orders today</dt>
+                            <dd>{{ dashboard_snapshot["today"]["tiktok"]["paid_order_count"] }}</dd>
+                        </div>
+                    </dl>
                 {% else %}
-                <div class="list-row">
-                    <div class="small">No Shopify orders yet - orders will appear here automatically.</div>
-                </div>
+                    {% if stream_status["ended_mins"] is not none %}
+                    <p class="db-offline-msg">Last stream ended {% set em = stream_status["ended_mins"] %}{% if em < 60 %}{{ em }}m ago{% else %}{{ em // 60 }}h {% if em % 60 %}{{ em % 60 }}m {% endif %}ago{% endif %}</p>
+                    {% else %}
+                    <p class="db-offline-msg">No active stream</p>
+                    {% endif %}
+                    {% if dashboard_snapshot["today"]["tiktok"]["paid_order_count"] > 0 %}
+                    <dl class="db-sdl" style="margin-top:12px;">
+                        <div>
+                            <dt>TikTok orders today</dt>
+                            <dd>{{ dashboard_snapshot["today"]["tiktok"]["paid_order_count"] }}</dd>
+                        </div>
+                        <div>
+                            <dt>Net revenue</dt>
+                            <dd>{{ dashboard_snapshot["today"]["tiktok"]["net_display"] }}</dd>
+                        </div>
+                    </dl>
+                    {% endif %}
                 {% endif %}
+            </article>
+
+        </div><!-- .db-hero -->
+
+        <!-- ══ MORE: everything else, collapsible ════════════════════════ -->
+        <div class="db-more">
+            <div class="db-more-head">
+                <p class="db-more-lbl">More</p>
+                <div class="db-more-line"></div>
             </div>
 
-            <div class="card">
-                <h2 class="section-title">Recent TikTok Orders</h2>
-                <p class="section-subtitle">{{ dashboard_snapshot["today"]["tiktok"]["order_count"] }} TikTok rows today &middot; {{ dashboard_snapshot["today"]["tiktok"]["net_display"] }} net from revenue-counted orders.</p>
-                {% if tiktok_orders %}
-                <div class="small" style="margin:-4px 0 12px;">Showing a sample of {{ tiktok_recent_order_count }} recent revenue-counted order{{ "" if tiktok_recent_order_count == 1 else "s" }} from today's TikTok rows.</div>
-                {% endif %}
-                {% if tiktok_orders %}
-                <div class="list">
-                    {% for order in tiktok_orders %}
-                    <a class="list-row" href="/tiktok/orders?search={{ order['order_number'] }}">
-                        <div class="row-top">
-                            <div>
-                                <strong>#{{ order["order_number"] }}</strong>
-                                <div class="small">{{ order["created_at"] }}</div>
-                            </div>
-                            <div class="amount">${{ "%.2f"|format(order["total_price"]) }}</div>
-                        </div>
-                        <div class="row-bottom">
-                            <div>{{ order["customer_name"] }}</div>
-                            <span class="pill">{{ order["fulfillment_label"] }}</span>
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% elif tiktok_connected %}
-                <div class="list-row">
-                    <div class="small">No recent revenue-counted TikTok orders yet - the sampled list will appear here automatically.</div>
-                </div>
-                {% else %}
-                <div class="list-row">
-                    <div class="small">{{ tiktok_message }}</div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
+            <div class="db-grid2">
 
-        {% if is_admin and recent_promotions %}
-        <div class="card">
-            <h2 class="section-title">Auto-Promoted Patterns</h2>
-            <p class="section-subtitle">Correction patterns promoted automatically in the last 7 days.</p>
-            <div class="list">
-                {% for row in recent_promotions %}
-                <div class="list-row">
-                    <div>
-                        <div class="small mono">{{ row["normalized_text"] }}</div>
-                        <div class="small muted">{{ row["promoted_at"] | pacific_datetime(include_zone=False) if row["promoted_at"] else "" }}</div>
+                <!-- Quick access -->
+                <details class="db-panel">
+                    <summary>Quick access</summary>
+                    <div class="db-pbody">
+                        <div class="db-wsg">
+                            {% if not is_reviewer %}
+                            <a class="db-wsc" href="/tiktok/streamer">
+                                <span class="db-wsk">Go live</span>
+                                <span class="db-wst">Streamer</span>
+                                <span class="db-wsm">Live orders &amp; chat</span>
+                            </a>
+                            <a class="db-wsc" href="/stream-manager">
+                                <span class="db-wsk">Schedule</span>
+                                <span class="db-wst">Stream Manager</span>
+                                <span class="db-wsm">Scheduling &amp; setup</span>
+                            </a>
+                            {% endif %}
+                            {% if is_reviewer %}
+                            <a class="db-wsc" href="/review">
+                                <span class="db-wsk">Primary workflow</span>
+                                <span class="db-wst">Review Queue</span>
+                                <span class="db-wsm">{{ review_summary["needs_review"] }} waiting</span>
+                            </a>
+                            {% endif %}
+                            <a class="db-wsc" href="/degen_eye">
+                                <span class="db-wsk">Card scanner</span>
+                                <span class="db-wst">Degen Eye</span>
+                                <span class="db-wsm">All major TCGs</span>
+                            </a>
+                            <a class="db-wsc" href="/deals">
+                                <span class="db-wsk">Browse ledger</span>
+                                <span class="db-wst">Deals</span>
+                                <span class="db-wsm">{{ dashboard_snapshot["today"]["rows"] }} confirmed today</span>
+                            </a>
+                            <a class="db-wsc" href="/reports">
+                                <span class="db-wsk">Financial view</span>
+                                <span class="db-wst">Reports</span>
+                                <span class="db-wsm">{{ dashboard_snapshot["today"]["revenue"]["total_display"] }} today</span>
+                            </a>
+                            <a class="db-wsc" href="/shopify/orders">
+                                <span class="db-wsk">Online shop</span>
+                                <span class="db-wst">Shopify Orders</span>
+                                <span class="db-wsm">{{ dashboard_snapshot["today"]["shopify"]["order_count"] }} today</span>
+                            </a>
+                            <a class="db-wsc" href="/tiktok/orders">
+                                <span class="db-wsk">TikTok Shop</span>
+                                <span class="db-wst">TikTok Orders</span>
+                                <span class="db-wsm">{{ dashboard_snapshot["today"]["tiktok"]["paid_order_count"] }} today</span>
+                            </a>
+                            {% if is_reviewer %}
+                            <a class="db-wsc" href="/status">
+                                <span class="db-wsk">Operations</span>
+                                <span class="db-wst">System Status</span>
+                                <span class="db-wsm">{{ parser_progress["queued"] + parser_progress["processing"] }} in flight</span>
+                            </a>
+                            {% if is_admin %}
+                            <a class="db-wsc" href="/admin">
+                                <span class="db-wsk">Operators</span>
+                                <span class="db-wst">Admin</span>
+                                <span class="db-wsm">Advanced controls</span>
+                            </a>
+                            <a class="db-wsc" href="/bookkeeping">
+                                <span class="db-wsk">Finance</span>
+                                <span class="db-wst">Bookkeeping</span>
+                                <span class="db-wsm">Reconciliation</span>
+                            </a>
+                            <a class="db-wsc" href="/tiktok/streamer">
+                                <span class="db-wsk">Go live</span>
+                                <span class="db-wst">Streamer Dashboard</span>
+                                <span class="db-wsm">Live orders &amp; chat</span>
+                            </a>
+                            <a class="db-wsc" href="/stream-manager">
+                                <span class="db-wsk">Schedule</span>
+                                <span class="db-wst">Stream Manager</span>
+                                <span class="db-wsm">Scheduling &amp; setup</span>
+                            </a>
+                            {% endif %}
+                            {% endif %}
+                        </div>
                     </div>
-                    <span class="pill">promoted</span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
+                </details>
 
-        <div class="card">
-            <h2 class="section-title">Quick Search</h2>
-            <p class="section-subtitle">Jump straight into the deal list by date.</p>
-            <form class="search-form" method="get" action="/deals">
-                <input type="date" name="after" aria-label="After date">
-                <input type="date" name="before" aria-label="Before date">
-                <button class="button secondary-button" type="submit">Search Deals</button>
-            </form>
-        </div>
+                <!-- Today at a glance -->
+                <details class="db-panel">
+                    <summary>Today at a glance</summary>
+                    <div class="db-pbody">
+                        <p class="db-sublbl">Deal breakdown</p>
+                        <div class="db-pills">
+                            <span class="db-pill">{{ dashboard_snapshot["today"]["sales_count"] }} sales</span>
+                            <span class="db-pill">{{ dashboard_snapshot["today"]["buy_count"] }} buys</span>
+                            <span class="db-pill">{{ dashboard_snapshot["today"]["trade_count"] }} trades</span>
+                            <span class="db-pill">{{ dashboard_snapshot["today"]["expense_count"] }} expenses</span>
+                        </div>
+                        <p class="db-sublbl" style="margin-top:14px;">Trade cash</p>
+                        <div style="font-size:13px;color:var(--db-text);">
+                            {{ dashboard_snapshot["today"]["trade_in_display"] }} in &nbsp;/&nbsp; {{ dashboard_snapshot["today"]["trade_out_display"] }} out
+                        </div>
+                        <p class="db-sublbl" style="margin-top:14px;">Payment mix</p>
+                        <div class="db-pills">
+                            {% for row in dashboard_snapshot["payment_mix"] %}
+                            <span class="db-pill">{{ row["label"] }} {{ row["value"] }}</span>
+                            {% else %}
+                            <span style="font-size:12px;color:var(--db-dim);">No data yet.</span>
+                            {% endfor %}
+                        </div>
+                        <p class="db-sublbl" style="margin-top:14px;">Category mix</p>
+                        <div class="db-pills">
+                            {% for row in dashboard_snapshot["category_mix"] %}
+                            <span class="db-pill">{{ row["label"] }} {{ row["value"] }}</span>
+                            {% else %}
+                            <span style="font-size:12px;color:var(--db-dim);">No data yet.</span>
+                            {% endfor %}
+                        </div>
+                        {% if is_reviewer %}
+                        <p class="db-sublbl" style="margin-top:14px;">Review</p>
+                        <div class="db-bk" style="margin-top:0;">
+                            <div class="db-bk-row" style="padding-top:0;border-top:none;">
+                                <span class="db-bk-lbl">Needs review</span>
+                                <span class="db-bk-val">{{ review_summary["needs_review"] }}</span>
+                            </div>
+                            <div class="db-bk-row">
+                                <span class="db-bk-lbl">Reviewed today</span>
+                                <span class="db-bk-val">{{ dashboard_snapshot["today"]["reviewed_today_count"] }}</span>
+                            </div>
+                            <div class="db-bk-row">
+                                <span class="db-bk-lbl">In-flight rows</span>
+                                <span class="db-bk-val">{{ parser_progress["queued"] + parser_progress["processing"] }}</span>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </details>
 
-        {% if is_reviewer %}
-        <div class="card">
-            <h2 class="section-title">Recent Reviewed Deals</h2>
-            <p class="section-subtitle">The most recently confirmed rows.</p>
-            {% for row in recent_reviewed %}
-            <div class="review-item compact">
-                <div class="meta-row">
-                    <strong>{{ row["channel"] or row["channel_id"] }}</strong>
-                    <span class="small">{{ row["time"] }}</span>
-                    <span class="pill">{{ row["entry_kind"] or "unknown" }}</span>
-                    {% if row["amount_display"] %}<span class="pill">{{ row["amount_display"] }}</span>{% endif %}
-                </div>
-                <div class="small">{{ row["author"] or "" }}{% if row["reviewed_by"] %} | reviewed by {{ row["reviewed_by"] }}{% endif %}{% if row["reviewed_at"] %} on {{ row["reviewed_at"] }}{% endif %}</div>
-                <div class="small">{{ row["message"] or "(image-only message)" }}</div>
-            </div>
-            {% else %}
-            <div class="small">No reviewed deals yet.</div>
-            {% endfor %}
-            <div class="section-footer">
-                <a class="section-link" href="/review">View all &rarr;</a>
-            </div>
-        </div>
-        {% endif %}
-    </div>
+                {% if dashboard_snapshot["top_channels"]|length >= 2 %}
+                <!-- Top channels -->
+                <details class="db-panel">
+                    <summary>Top active channels</summary>
+                    <div class="db-pbody">
+                        {% for row in dashboard_snapshot["top_channels"] %}
+                        <div class="db-ch-row">
+                            <div>
+                                <div class="db-ch-nm">{{ row["channel_name"] }}</div>
+                                <div class="db-ch-cnt">{{ row["deal_count"] }} deal{{ "" if row["deal_count"] == 1 else "s" }}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="db-ch-net">{{ row["net_display"] }}</div>
+                                <div class="db-ch-io">{{ row["money_in_display"] }} in / {{ row["money_out_display"] }} out</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endif %}
+
+                <!-- Recent Discord deals -->
+                <details class="db-panel">
+                    <summary>Recent Discord deals</summary>
+                    <div class="db-pbody">
+                        <div class="db-list">
+                            {% for row in recent_deals %}
+                            <a class="db-li" href="/deals/{{ row['id'] }}">
+                                <div class="db-li-l">
+                                    <div class="db-li-title">{{ row["channel"] or row["channel_id"] }}</div>
+                                    <div class="db-li-sub">{{ row["time"] }} &middot; {{ row["entry_kind"] or "unknown" }}{% if row["payment_display"] %} &middot; {{ row["payment_display"] }}{% endif %}</div>
+                                    <div class="db-li-sub" style="margin-top:2px;">{{ (row["message"] or "(image-only)")[:80] }}</div>
+                                </div>
+                                <div class="db-li-r">
+                                    {% if row["amount_display"] %}<div class="db-li-amt">{{ row["amount_display"] }}</div>{% endif %}
+                                </div>
+                            </a>
+                            {% else %}
+                            <div class="db-empty">No recent Discord deals yet.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Shopify orders -->
+                <details class="db-panel">
+                    <summary>Shopify orders</summary>
+                    <div class="db-pbody">
+                        {% if not shopify_connected %}
+                        <div class="db-empty">{{ shopify_message }}</div>
+                        {% elif shopify_orders %}
+                        <div class="db-list">
+                            {% for order in shopify_orders %}
+                            <div class="db-li">
+                                <div class="db-li-l">
+                                    <div class="db-li-title">#{{ order["order_number"] }} &mdash; {{ order["customer_name"] }}</div>
+                                    <div class="db-li-sub">{{ order["created_at"] }}</div>
+                                    <span class="db-tag">{{ order["fulfillment_label"] }}</span>
+                                </div>
+                                <div class="db-li-r">
+                                    <div class="db-li-amt">${{ "%.2f"|format(order["total_price"]) }}</div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="db-empty">No Shopify orders yet.</div>
+                        {% endif %}
+                    </div>
+                </details>
+
+                <!-- TikTok orders -->
+                <details class="db-panel">
+                    <summary>Recent TikTok orders</summary>
+                    <div class="db-pbody">
+                        <div style="font-size:12px;color:var(--db-dim);margin-bottom:10px;">
+                            {{ dashboard_snapshot["today"]["tiktok"]["order_count"] }} rows today &middot; {{ dashboard_snapshot["today"]["tiktok"]["net_display"] }} net from revenue-counted orders
+                        </div>
+                        {% if tiktok_orders %}
+                        <div class="db-list">
+                            {% for order in tiktok_orders %}
+                            <a class="db-li" href="/tiktok/orders?search={{ order['order_number'] }}">
+                                <div class="db-li-l">
+                                    <div class="db-li-title">#{{ order["order_number"] }} &mdash; {{ order["customer_name"] }}</div>
+                                    <div class="db-li-sub">{{ order["created_at"] }}</div>
+                                    <span class="db-tag">{{ order["fulfillment_label"] }}</span>
+                                </div>
+                                <div class="db-li-r">
+                                    <div class="db-li-amt">${{ "%.2f"|format(order["total_price"]) }}</div>
+                                </div>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% elif tiktok_connected %}
+                        <div class="db-empty">No revenue-counted TikTok orders yet today.</div>
+                        {% else %}
+                        <div class="db-empty">{{ tiktok_message }}</div>
+                        {% endif %}
+                    </div>
+                </details>
+
+                {% if is_admin and recent_promotions %}
+                <!-- Auto-promoted patterns (admin only) -->
+                <details class="db-panel">
+                    <summary>Auto-promoted patterns</summary>
+                    <div class="db-pbody">
+                        <div class="db-list">
+                            {% for row in recent_promotions %}
+                            <div class="db-li" style="display:block;">
+                                <div class="db-li-title" style="font-family:monospace;font-size:12px;">{{ row["normalized_text"] }}</div>
+                                <div class="db-li-sub">{{ row["promoted_at"] | pacific_datetime(include_zone=False) if row["promoted_at"] else "" }}</div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </details>
+                {% endif %}
+
+                <!-- Quick search -->
+                <details class="db-panel">
+                    <summary>Quick search</summary>
+                    <div class="db-pbody">
+                        <form class="db-srch" method="get" action="/deals">
+                            <input type="date" name="after" aria-label="After date">
+                            <input type="date" name="before" aria-label="Before date">
+                            <button class="db-srch-btn" type="submit">Search deals</button>
+                        </form>
+                    </div>
+                </details>
+
+                {% if is_reviewer %}
+                <!-- Recent reviewed deals -->
+                <details class="db-panel">
+                    <summary>Recent reviewed deals</summary>
+                    <div class="db-pbody">
+                        {% for row in recent_reviewed %}
+                        <div class="db-rev">
+                            <div class="db-rev-nm">{{ row["channel"] or row["channel_id"] }}</div>
+                            <div class="db-rev-meta">
+                                {{ row["time"] }} &middot; {{ row["entry_kind"] or "unknown" }}
+                                {% if row["amount_display"] %} &middot; {{ row["amount_display"] }}{% endif %}
+                                {% if row["reviewed_by"] %} &middot; reviewed by {{ row["reviewed_by"] }}{% endif %}
+                            </div>
+                            <div class="db-rev-msg">{{ row["message"] or "(image-only message)" }}</div>
+                        </div>
+                        {% else %}
+                        <div class="db-empty">No reviewed deals yet.</div>
+                        {% endfor %}
+                        <div style="margin-top:10px;">
+                            <a href="/review" style="font-size:12px;font-weight:600;color:var(--db-red);">View all &rarr;</a>
+                        </div>
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if is_reviewer %}
+                <!-- System detail (What Needs Attention expanded) -->
+                <details class="db-panel">
+                    <summary>System activity</summary>
+                    <div class="db-pbody">
+                        <div class="db-bk" style="margin-top:0;">
+                            <div class="db-bk-row" style="padding-top:0;border-top:none;">
+                                <span class="db-bk-lbl">Runtime</span>
+                                <span class="db-bk-val">{{ parser_progress["local_runtime"]["label"] }}{% if parser_progress["local_runtime"]["host_name"] %} on {{ parser_progress["local_runtime"]["host_name"] }}{% endif %}</span>
+                            </div>
+                            <div class="db-bk-row">
+                                <span class="db-bk-lbl">Discord</span>
+                                <span class="db-bk-val">{{ parser_progress["local_runtime"]["details"].get("discord_status", "unknown") }}</span>
+                            </div>
+                            <div class="db-bk-row">
+                                <span class="db-bk-lbl">Queued rows</span>
+                                <span class="db-bk-val">{{ parser_progress["queued"] }}</span>
+                            </div>
+                            <div class="db-bk-row">
+                                <span class="db-bk-lbl">Processing now</span>
+                                <span class="db-bk-val">{{ parser_progress["processing"] }}</span>
+                            </div>
+                            <div class="db-bk-row">
+                                <span class="db-bk-lbl">Messages today</span>
+                                <span class="db-bk-val">{{ dashboard_snapshot["today"]["recent_ingested_count"] }}</span>
+                            </div>
+                        </div>
+                        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                            <a href="/status" style="font-size:12px;font-weight:600;color:var(--db-red);">Status page &rarr;</a>
+                            {% if is_admin %}
+                            <a href="/admin" style="font-size:12px;font-weight:600;color:var(--db-muted);">Admin &rarr;</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </details>
+                {% endif %}
+
+            </div><!-- .db-grid2 -->
+        </div><!-- .db-more -->
+    </div><!-- .page -->
+
     {% include '_mobile_bottom_nav.html' %}
+
+    <script>
+        (function () {
+            if (window.innerWidth >= 768) {
+                document.querySelectorAll('details.db-panel').forEach(function (el) {
+                    el.setAttribute('open', '');
+                });
+            }
+        })();
+    </script>
 </body>
 </html>
