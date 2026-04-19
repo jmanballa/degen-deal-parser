@@ -2245,6 +2245,8 @@ async def _run_vision_pipeline(
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(raw_bytes))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
         max_dim = max(img.size)
         if max_dim > 1024:
             scale = 1024 / max_dim
@@ -2594,6 +2596,8 @@ async def _run_tiebreaker(
         raw_bytes = base64.b64decode(image_b64)
         from PIL import Image
         img = Image.open(io.BytesIO(raw_bytes))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
         max_dim = max(img.size)
         if max_dim > 1024:
             scale = 1024 / max_dim
