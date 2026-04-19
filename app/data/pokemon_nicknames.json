@@ -1,0 +1,125 @@
+{
+  "_comment": "Community nicknames for chase Pokemon cards. Map nickname -> canonical search fields (card_name, set_name, collector_number). Matches are checked case-insensitive after collapsing whitespace. Keep this list tight — one entry per commonly-spoken name at card shows.",
+  "nicknames": [
+    {
+      "aliases": ["moonbreon", "moon breon", "moonbreon alt", "umbreon vmax alt", "umbreon alt art"],
+      "card_name": "Umbreon VMAX",
+      "set_name": "Evolving Skies",
+      "collector_number": "215/203"
+    },
+    {
+      "aliases": ["rainbow rayquaza", "rayquaza vmax alt", "rayquaza alt art"],
+      "card_name": "Rayquaza VMAX",
+      "set_name": "Evolving Skies",
+      "collector_number": "218/203"
+    },
+    {
+      "aliases": ["giratina alt", "giratina v alt", "giratina v alt art", "giratina alt art"],
+      "card_name": "Giratina V",
+      "set_name": "Lost Origin",
+      "collector_number": "186/196"
+    },
+    {
+      "aliases": ["palkia alt", "palkia origin alt", "origin palkia alt", "palkia v alt art"],
+      "card_name": "Origin Forme Palkia V",
+      "set_name": "Astral Radiance",
+      "collector_number": "167/189"
+    },
+    {
+      "aliases": ["dialga alt", "dialga origin alt", "origin dialga alt", "dialga v alt art"],
+      "card_name": "Origin Forme Dialga V",
+      "set_name": "Astral Radiance",
+      "collector_number": "174/189"
+    },
+    {
+      "aliases": ["charizard upc gold", "charizard upc", "upc charizard"],
+      "card_name": "Charizard VMAX",
+      "set_name": "Ultra Premium Collection",
+      "collector_number": null
+    },
+    {
+      "aliases": ["shining charizard", "neo shining charizard"],
+      "card_name": "Shining Charizard",
+      "set_name": "Neo Destiny",
+      "collector_number": "107/105"
+    },
+    {
+      "aliases": ["rainbow charizard", "charizard vmax rainbow", "charizard rainbow"],
+      "card_name": "Charizard VMAX",
+      "set_name": "Darkness Ablaze",
+      "collector_number": "74/73"
+    },
+    {
+      "aliases": ["pikachu illustrator"],
+      "card_name": "Pikachu Illustrator",
+      "set_name": "Promo",
+      "collector_number": null
+    },
+    {
+      "aliases": ["base charizard", "base set charizard 4"],
+      "card_name": "Charizard",
+      "set_name": "Base Set",
+      "collector_number": "4/102"
+    },
+    {
+      "aliases": ["shadowless charizard"],
+      "card_name": "Charizard",
+      "set_name": "Base Set Shadowless",
+      "collector_number": "4/102"
+    },
+    {
+      "aliases": ["first edition charizard", "1st edition charizard"],
+      "card_name": "Charizard",
+      "set_name": "Base Set",
+      "collector_number": "4/102"
+    },
+    {
+      "aliases": ["lugia v alt", "lugia alt art"],
+      "card_name": "Lugia V",
+      "set_name": "Silver Tempest",
+      "collector_number": "186/195"
+    },
+    {
+      "aliases": ["mewtwo v alt", "mewtwo alt art"],
+      "card_name": "Mewtwo V",
+      "set_name": "Pokemon Go",
+      "collector_number": "078/078"
+    },
+    {
+      "aliases": ["alakazam v alt", "alakazam alt art"],
+      "card_name": "Alakazam V",
+      "set_name": "Pokemon Go",
+      "collector_number": "065/078"
+    },
+    {
+      "aliases": ["arceus v alt", "arceus alt art"],
+      "card_name": "Arceus V",
+      "set_name": "Brilliant Stars",
+      "collector_number": "TG20/TG30"
+    },
+    {
+      "aliases": ["leafeon vmax alt", "leafeon alt art"],
+      "card_name": "Leafeon VMAX",
+      "set_name": "Evolving Skies",
+      "collector_number": "205/203"
+    },
+    {
+      "aliases": ["glaceon vmax alt", "glaceon alt art"],
+      "card_name": "Glaceon VMAX",
+      "set_name": "Evolving Skies",
+      "collector_number": "209/203"
+    },
+    {
+      "aliases": ["sylveon vmax alt", "sylveon alt art"],
+      "card_name": "Sylveon VMAX",
+      "set_name": "Evolving Skies",
+      "collector_number": "212/203"
+    },
+    {
+      "aliases": ["espeon vmax alt", "espeon alt art"],
+      "card_name": "Espeon VMAX",
+      "set_name": "Evolving Skies",
+      "collector_number": "215/203"
+    }
+  ]
+}
