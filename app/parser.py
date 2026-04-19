@@ -315,7 +315,7 @@ def parse_trade_hint(message_text: str) -> Dict[str, Any] | None:
 
 
 def extract_payment_amount_method(text: str) -> tuple[float | None, str | None]:
-    lower = _normalize_amount_text(normalize_message_part(text).lower())
+    lower = normalize_message_part(text).lower()
     if not lower:
         return None, None
 
@@ -376,29 +376,13 @@ def normalize_payment_method(payment_method: str) -> str:
     return "card" if payment_method in {"tap", "cc", "dc"} else payment_method
 
 
-def _normalize_amount_text(text: str) -> str:
-    # Strip thousand-separator commas: $1,250 → $1250, $11,050 → $11050
-    normalized = re.sub(r"(\d),(\d{3})\b", r"\1\2", text)
-    # Second pass handles $1,250,000 → $1250000
-    normalized = re.sub(r"(\d),(\d{3})\b", r"\1\2", normalized)
-
-    # Expand k/M suffix: 1.5k → 1500, 10k → 10000, 1M → 1000000
-    def _expand(m: re.Match) -> str:
-        num = float(m.group(1))
-        multiplier = 1000 if m.group(2).lower() == "k" else 1_000_000
-        result = num * multiplier
-        return str(int(result)) if result == int(result) else f"{result:.2f}"
-
-    return re.sub(r"(\d+(?:\.\d+)?)([km])\b", _expand, normalized, flags=re.I)
-
-
 def is_payment_method_only_message_text(text: str) -> bool:
     lower = normalize_message_part(text).lower()
     return bool(re.fullmatch(r"(zelle|venmo|paypal|cash|card|tap|cc|dc)", lower, re.I))
 
 
 def extract_payment_segments(text: str) -> list[tuple[float, str]]:
-    lower = _normalize_amount_text(normalize_message_part(text).lower())
+    lower = normalize_message_part(text).lower()
     if not lower:
         return []
 
@@ -439,7 +423,7 @@ def has_grade_context_before(text: str, number_start: int) -> bool:
 
 
 def extract_unlabeled_amount(text: str) -> float | None:
-    lower = _normalize_amount_text(normalize_message_part(text).lower())
+    lower = normalize_message_part(text).lower()
     if not lower:
         return None
 
