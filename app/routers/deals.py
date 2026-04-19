@@ -6,8 +6,10 @@ Extracted from app/main.py -- /deals, /deals/{message_id}, /login, /logout.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Optional
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +18,8 @@ from sqlmodel import Session
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
 from ..corrections import get_correction_pattern_counts
 from ..db import get_session
+
+_DEALS_DEFAULT_TZ = ZoneInfo("America/Los_Angeles")
 
 router = APIRouter()
 
@@ -33,6 +37,12 @@ def deals_page(
 ):
     if denial := require_role_response(request, "viewer"):
         return denial
+
+    # Default `after` to today in PT (midnight-to-now) only when no date params
+    # are present in the URL. Once the user touches the filter — including
+    # clearing it to an empty string — we respect their choice.
+    if "after" not in request.query_params and "before" not in request.query_params:
+        after = datetime.now(_DEALS_DEFAULT_TZ).strftime("%Y-%m-%d")
 
     rows, total_rows = get_partner_deal_rows(
         session,

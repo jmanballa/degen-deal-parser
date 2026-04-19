@@ -5,7 +5,11 @@ Extracted from app/main.py -- /messages/*, /table, /review-table, /review, /revi
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
+
+_REVIEW_DEFAULT_TZ = ZoneInfo("America/Los_Angeles")
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -653,6 +657,8 @@ def reviewer_queue_page(
 ):
     if denial := require_role_response(request, "reviewer"):
         return denial
+    if "after" not in request.query_params and "before" not in request.query_params:
+        after = datetime.now(_REVIEW_DEFAULT_TZ).strftime("%Y-%m-%d")
     rows, total_rows = get_message_rows(
         session,
         status="review_queue",
