@@ -14,6 +14,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, select
 
 from ..shared import *  # noqa: F401,F403 — shared helpers, constants, state
+from ..shared import _is_currently_live as _stream_currently_live, _get_live_session_snapshot as _stream_snap
 from ..db import get_session
 
 router = APIRouter()
@@ -124,6 +125,7 @@ def dashboard_page(
         float(dashboard_snapshot["today"]["revenue"]["total"] or 0.0)
     )
     tiktok_orders: list[dict] = []
+    _last_tiktok_paid_dt = None
     recent_tiktok_rows = session.exec(
         select(TikTokOrder)
         .where(TikTokOrder.created_at >= today_start)
@@ -134,6 +136,8 @@ def dashboard_page(
     for order in recent_tiktok_rows:
         if classify_tiktok_reporting_status(order) != "paid":
             continue
+        if _last_tiktok_paid_dt is None:
+            _last_tiktok_paid_dt = order.created_at
         fulfillment_value = (order.fulfillment_status or order.order_status or "").strip().lower()
         if fulfillment_value in {"fulfilled", "completed", "delivered"}:
             fulfillment_label = "Completed"
@@ -156,6 +160,31 @@ def dashboard_page(
         if len(tiktok_orders) >= 10:
             break
     tiktok_recent_order_count = len(tiktok_orders)
+
+    # Stream status for hero card
+    _snap_now = datetime.now(timezone.utc)
+    _live_snap = _stream_snap()
+    _live_start_ts = float(_live_snap.get("start_time") or 0)
+    _live_end_ts = float(_live_snap.get("end_time") or 0)
+
+    def _ts_mins(ts: float):
+        if ts <= 0:
+            return None
+        return max(0, int((_snap_now.timestamp() - ts) / 60))
+
+    _stream_last_order_mins = None
+    if _last_tiktok_paid_dt is not None:
+        _dt_utc = _last_tiktok_paid_dt if _last_tiktok_paid_dt.tzinfo else _last_tiktok_paid_dt.replace(tzinfo=timezone.utc)
+        _stream_last_order_mins = max(0, int((_snap_now - _dt_utc).total_seconds() / 60))
+
+    stream_status = {
+        "active": _stream_currently_live(),
+        "started_mins": _ts_mins(_live_start_ts),
+        "ended_mins": _ts_mins(_live_end_ts) if _live_end_ts > 0 else None,
+        "last_order_mins": _stream_last_order_mins,
+        "title": str(_live_snap.get("title") or ""),
+    }
+
     recent_reviewed = build_message_list_items(
         session,
         session.exec(
@@ -247,6 +276,7 @@ def dashboard_page(
             "tiktok_today_rows": tiktok_rows,
             "tiktok_today_totals": tiktok_summary.get("totals", {}),
             "recent_promotions": recent_promotions,
+            "stream_status": stream_status,
         },
     )
 
