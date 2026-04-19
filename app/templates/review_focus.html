@@ -2,9 +2,9 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <!-- PWA -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,121 +12,78 @@
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
+    <link rel="stylesheet" href="/static/safe-area.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
-    <style>
-        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
-        * { box-sizing:border-box; }
-        html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
-        a { color:inherit; text-decoration:none; }
-        .page { max-width:1280px; margin:0 auto; padding: 28px 28px 60px; }
-        .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
-        .hero { padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
-        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; }
-        .pill { background:#f5eadc; color:var(--muted); }
-        .pill-danger { background:#fde8e6; color:#8e2722; }
-        h1 { margin:10px 0 8px; font-size:clamp(30px,4vw,48px); line-height:.95; letter-spacing:-.04em; font-weight: 800; }
-        .small { color:#a7b0ba; line-height:1.5; }
-        .nav, .meta-row, .action-row, .focus-strip, .focus-actions, .content-header { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-        .nav { justify-content:space-between; margin-bottom:16px; }
-        .focus-strip { justify-content:space-between; margin-bottom:18px; padding:14px 16px; border:1px solid var(--line); border-radius:20px; background:rgba(255,250,243,.88); box-shadow:0 14px 28px rgba(77,46,20,.08); position:sticky; top:12px; z-index:6; backdrop-filter:blur(10px); }
-        .focus-actions { justify-content:flex-end; }
-        .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; }
-        .primary-button { background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; box-shadow:0 10px 18px rgba(212,83,56,.22); }
-        .secondary-button { background:#fff; color:var(--text); border:1px solid var(--line); }
-        .card { padding:18px; }
-        .layout { display:grid; grid-template-columns:1fr 380px; gap:18px; align-items:start; }
-        .media { display:grid; gap:12px; }
-        .media img { width:100%; border-radius:18px; border:1px solid #e1d6c6; background:#fff; }
-        .message-box, .group-box { background:#fff; border:1px solid #eadfce; border-radius:16px; padding:14px; }
-        .message-box { white-space:pre-wrap; line-height:1.55; }
-        .group-item { padding:8px 0; border-top:1px solid #f0e7da; }
-        .group-item:first-child { border-top:none; padding-top:0; }
-        .content-header { justify-content:space-between; margin-bottom:12px; }
-        .section-title { margin:0; font-size:20px; letter-spacing:-.03em; }
-        .sticky-form { position:sticky; top:92px; }
-        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-        .field-wide { grid-column:1 / -1; }
-        label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
-        textarea { min-height:120px; resize:vertical; }
-        .flash { margin-bottom:12px; padding:12px 14px; border-radius:14px; border:1px solid; font-weight:700; }
-        .flash.success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
-        .flash.error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
-        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
-        .hero, .card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
-        .card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        @media (max-width:980px){ .layout, .form-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .focus-strip, .sticky-form { position:static; } }
-    </style>
-    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+    <link rel="stylesheet" href="/static/linear.css">
 </head>
 <body>
-    <div class="page">
-        <div class="focus-strip">
-            <div>
-                <strong>Focus review</strong>
-                <div class="small">Use this detail view when a row needs full attention and more visual space.</div>
-            </div>
-            <div class="focus-actions">
-                <a class="button secondary-button" href="{{ back_url }}">Back to Review</a>
-                <a class="button secondary-button" href="/dashboard">Dashboard</a>
-                {% if next_url %}<a class="button secondary-button" href="{{ next_url }}">Next in Queue</a>{% endif %}
-            </div>
-        </div>
-        <div class="nav">
-            <div class="action-row">
-                <a class="button secondary-button" href="{{ back_url }}">Back to Review</a>
-                <a class="button secondary-button" href="/dashboard">Dashboard</a>
-                {% if previous_url %}<a class="button secondary-button" href="{{ previous_url }}">Previous</a>{% endif %}
-                {% if next_url %}<a class="button secondary-button" href="{{ next_url }}">Next</a>{% endif %}
-            </div>
-            <div class="small">{% if current_position and queue_size %}Deal {{ current_position }} of {{ queue_size }}{% endif %}</div>
-        </div>
-
-        {% if success %}<div class="flash success">{{ success }}</div>{% endif %}
-        {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-
-        <section class="hero">
-            <div class="eyebrow">Focus Review</div>
-            <h1>{{ title }}</h1>
-            <div class="small">{{ message["channel"] or message["channel_id"] }} | {{ message["author"] or "" }} | {{ message["time"] }}</div>
-            {% if message["reviewed_by"] or message["reviewed_at"] %}<div class="small">Last reviewed{% if message["reviewed_by"] %} by {{ message["reviewed_by"] }}{% endif %}{% if message["reviewed_at"] %} on {{ message["reviewed_at"] }}{% endif %}</div>{% endif %}
-            <div class="meta-row" style="margin-top:12px;">
-                <span class="pill {% if message['status'] == 'failed' %}pill-danger{% endif %}">{{ message["status"] }}</span>
-                <span class="pill">{{ message["entry_kind"] or "unknown" }}</span>
-                <span class="pill">{{ message["amount_display"] or "no amount" }}</span>
-                {% if message["payment_display"] %}<span class="pill">{{ message["payment_display"] }}</span>{% endif %}
-            </div>
-        </section>
-
-        <div class="layout">
-            <div class="card">
-                <div class="content-header">
-                    <div>
-                        <h2 class="section-title">Context</h2>
-                        <div class="small">Review the images, original message, and grouped context before changing the parse.</div>
-                    </div>
+    <div class="lx-page">
+        <div class="lx-strip">
+            <div class="lx-strip-l">
+                <div>
+                    <p class="lx-strip-title">Focus review</p>
+                    <p class="lx-strip-sub">Detail view with full visual space for complex rows.</p>
                 </div>
-                <div class="media">
+            </div>
+            <div class="lx-strip-r">
+                <a class="lx-btn" href="{{ back_url }}">Back to Review</a>
+                <a class="lx-btn" href="/dashboard">Dashboard</a>
+                {% if next_url %}<a class="lx-btn" href="{{ next_url }}">Next in Queue</a>{% endif %}
+            </div>
+        </div>
+
+        <div class="lx-topbar" style="border-top:none;padding-top:0;">
+            <div class="lx-topbar-l">
+                <a class="lx-btn" href="{{ back_url }}">&#8592; Back to Review</a>
+                {% if previous_url %}<a class="lx-btn" href="{{ previous_url }}">Previous</a>{% endif %}
+                {% if next_url %}<a class="lx-btn" href="{{ next_url }}">Next</a>{% endif %}
+            </div>
+            <span class="lx-pag-info">{% if current_position and queue_size %}Deal {{ current_position }} of {{ queue_size }}{% endif %}</span>
+        </div>
+
+        {% if success %}<div class="lx-banner lx-banner-ok">{{ success }}</div>{% endif %}
+        {% if error %}<div class="lx-banner lx-banner-err">{{ error }}</div>{% endif %}
+
+        <div class="lx-page-head">
+            <p class="lx-eyebrow">Focus Review</p>
+            <h1 class="lx-h1">{{ title }}</h1>
+            <p class="lx-subtitle">{{ message["channel"] or message["channel_id"] }} &middot; {{ message["author"] or "" }} &middot; {{ message["time"] }}</p>
+            {% if message["reviewed_by"] or message["reviewed_at"] %}
+            <p class="lx-subtitle" style="margin-top:4px;">Last reviewed{% if message["reviewed_by"] %} by {{ message["reviewed_by"] }}{% endif %}{% if message["reviewed_at"] %} on {{ message["reviewed_at"] }}{% endif %}</p>
+            {% endif %}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+                <span class="lx-pill {% if message['status'] == 'failed' %}lx-pill-danger{% endif %}">{{ message["status"] }}</span>
+                <span class="lx-pill">{{ message["entry_kind"] or "unknown" }}</span>
+                <span class="lx-pill">{{ message["amount_display"] or "no amount" }}</span>
+                {% if message["payment_display"] %}<span class="lx-pill">{{ message["payment_display"] }}</span>{% endif %}
+            </div>
+        </div>
+
+        <div class="lx-layout-2">
+            <div class="lx-card" style="margin-bottom:0;">
+                <div class="lx-sh" style="margin-bottom:10px;">
+                    <h2 class="lx-sh-title">Context</h2>
+                    <span class="lx-sh-meta">Images · message · grouped context</span>
+                </div>
+                <div class="lx-media">
                     {% if message["image_urls"] %}
                         {% for url in message["image_urls"] %}
                         <a href="{{ url }}" target="_blank" rel="noopener noreferrer"><img src="{{ url }}" alt="attachment image"></a>
                         {% endfor %}
                     {% else %}
-                    <div class="message-box small">No image attached to this deal.</div>
+                    <p class="lx-note">No image attached to this deal.</p>
                     {% endif %}
                 </div>
-                <div class="message-box" style="margin-top:14px;">{{ message["message"] or "(image-only message)" }}</div>
+                <div class="lx-msg-box">{{ message["message"] or "(image-only message)" }}</div>
                 {% if message["grouped_messages"] %}
-                <div class="group-box" style="margin-top:14px;">
-                    <div class="small" style="font-weight:800; text-transform:uppercase; letter-spacing:.08em;">Grouped context</div>
+                <div class="lx-group-box">
+                    <div class="lx-group-head">Grouped context</div>
                     {% for grouped in message["grouped_messages"] %}
-                    <div class="group-item">
-                        <div class="small">{{ grouped["time"] }}{% if grouped["has_image"] %} | image{% endif %}{% if grouped["is_self"] %} | this row{% endif %}</div>
+                    <div class="lx-group-item">
+                        <div class="lx-group-meta">{{ grouped["time"] }}{% if grouped["has_image"] %} &middot; image{% endif %}{% if grouped["is_self"] %} &middot; this row{% endif %}</div>
                         <div>{{ grouped["message"] or "(image-only message)" }}</div>
                     </div>
                     {% endfor %}
@@ -134,46 +91,63 @@
                 {% endif %}
             </div>
 
-            <div class="card sticky-form">
-                <div class="content-header">
-                    <div>
-                        <h2 class="section-title">Review Decision</h2>
-                        <div class="small">Save if you need a draft correction. Use Save & Approve when the row is done.</div>
+            <div class="lx-sticky-col">
+                <div class="lx-card" style="margin-bottom:0;">
+                    <div class="lx-sh" style="margin-bottom:12px;">
+                        <h2 class="lx-sh-title">Review Decision</h2>
                     </div>
+                    <p class="lx-note" style="margin-bottom:12px;">Save for a draft correction. Use Save &amp; Approve when the row is done.</p>
+                    <form method="post" action="/messages/{{ message['id'] }}/edit-form">
+                        <input type="hidden" name="return_path" value="/review/focus/{{ message['id'] }}">
+                        <input type="hidden" name="status" value="review_queue">
+                        <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
+                        <input type="hidden" name="filter_expense_category" value="{{ selected_expense_category }}">
+                        <input type="hidden" name="after" value="{{ selected_after }}">
+                        <input type="hidden" name="before" value="{{ selected_before }}">
+                        <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
+                        <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
+                        <input type="hidden" name="page" value="{{ selected_page }}">
+                        <input type="hidden" name="limit" value="{{ selected_limit }}">
+                        <input type="hidden" name="parse_status" value="needs_review">
+                        <input type="hidden" name="needs_review" value="true">
+                        <div class="lx-edit-grid">
+                            <label class="lx-label">Financial Kind
+                                <select class="lx-select" name="entry_kind">{% for option in entry_kind_options %}<option value="{{ option }}" {% if (message["entry_kind"] or "") == option %}selected{% endif %}>{{ option or "auto" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Parsed Type
+                                <select class="lx-select" name="deal_type">{% for option in deal_type_options %}<option value="{{ option }}" {% if (message["type"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Cash
+                                <input class="lx-input" type="text" name="amount" value="{{ message['amount'] if message['amount'] is not none else '' }}">
+                            </label>
+                            <label class="lx-label">Payment
+                                <select class="lx-select" name="payment_method">{% for option in payment_method_options %}<option value="{{ option }}" {% if (message["payment"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Cash Direction (trade only)
+                                <select class="lx-select" name="cash_direction">{% for option in cash_direction_options %}<option value="{{ option }}" {% if (message["cash_direction"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Category
+                                <select class="lx-select" name="category">{% for option in category_options %}<option value="{{ option }}" {% if (message["category"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Expense Category
+                                <input class="lx-input" type="text" name="expense_category" value="{{ message['expense_category'] or '' }}" placeholder="leave blank for auto">
+                            </label>
+                            <label class="lx-label lx-field-wide">Notes
+                                <textarea class="lx-textarea" name="notes" style="min-height:100px;">{{ message["notes"] or "" }}</textarea>
+                            </label>
+                        </div>
+                        <div class="lx-action-row" style="margin-top:14px;">
+                            <button type="submit" class="lx-btn lx-btn-ok" formaction="/messages/{{ message['id'] }}/approve-form" formmethod="post">Approve</button>
+                            <button type="submit" class="lx-btn">Save</button>
+                            <button type="submit" name="approve_after_save" value="true" class="lx-btn lx-btn-primary">Save &amp; Approve</button>
+                            <button type="submit" class="lx-btn" formaction="/messages/{{ message['id'] }}/disregard-form" formmethod="post">Disregard</button>
+                            {% if next_url %}<a class="lx-btn" href="{{ next_url }}">Skip to Next</a>{% endif %}
+                        </div>
+                    </form>
                 </div>
-                <form method="post" action="/messages/{{ message['id'] }}/edit-form">
-                    <input type="hidden" name="return_path" value="/review/focus/{{ message['id'] }}">
-                    <input type="hidden" name="status" value="review_queue">
-                    <input type="hidden" name="channel_id" value="{{ selected_channel_id }}">
-                    <input type="hidden" name="filter_expense_category" value="{{ selected_expense_category }}">
-                    <input type="hidden" name="after" value="{{ selected_after }}">
-                    <input type="hidden" name="before" value="{{ selected_before }}">
-                    <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
-                    <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
-                    <input type="hidden" name="page" value="{{ selected_page }}">
-                    <input type="hidden" name="limit" value="{{ selected_limit }}">
-                    <input type="hidden" name="parse_status" value="needs_review">
-                    <input type="hidden" name="needs_review" value="true">
-                    <div class="form-grid">
-                        <label>Financial Kind<select name="entry_kind">{% for option in entry_kind_options %}<option value="{{ option }}" {% if (message["entry_kind"] or "") == option %}selected{% endif %}>{{ option or "auto" }}</option>{% endfor %}</select></label>
-                        <label>Parsed Type<select name="deal_type">{% for option in deal_type_options %}<option value="{{ option }}" {% if (message["type"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                        <label>Cash<input type="text" name="amount" value="{{ message['amount'] if message['amount'] is not none else '' }}"></label>
-                        <label>Payment<select name="payment_method">{% for option in payment_method_options %}<option value="{{ option }}" {% if (message["payment"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                        <label>Cash Direction (trade only)<select name="cash_direction">{% for option in cash_direction_options %}<option value="{{ option }}" {% if (message["cash_direction"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                        <label>Category<select name="category">{% for option in category_options %}<option value="{{ option }}" {% if (message["category"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                        <label>Expense Category<input type="text" name="expense_category" value="{{ message['expense_category'] or '' }}" placeholder="leave blank for auto"></label>
-                        <label class="field-wide">Notes<textarea name="notes">{{ message["notes"] or "" }}</textarea></label>
-                    </div>
-                    <div class="action-row" style="margin-top:14px;">
-                        <button type="submit" class="secondary-button" formaction="/messages/{{ message['id'] }}/approve-form" formmethod="post">Approve</button>
-                        <button type="submit" class="secondary-button">Save</button>
-                        <button type="submit" name="approve_after_save" value="true" class="primary-button">Save & Approve</button>
-                        <button type="submit" class="secondary-button" formaction="/messages/{{ message['id'] }}/disregard-form" formmethod="post">Disregard</button>
-                        {% if next_url %}<a class="button secondary-button" href="{{ next_url }}">Skip to Next</a>{% endif %}
-                    </div>
-                </form>
             </div>
         </div>
     </div>
+    {% include '_mobile_bottom_nav.html' %}
 </body>
 </html>

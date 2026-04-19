@@ -3,9 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,123 +15,84 @@
     <link rel="stylesheet" href="/static/safe-area.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
-    <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
-        * { box-sizing:border-box; }
-        html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
-        a { color:inherit; text-decoration:none; }
-        .page { max-width:1400px; margin:0 auto; padding: 28px 28px 60px; }
-        .hero, .card, .review-card { background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
-        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:28px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.55), transparent 24%), radial-gradient(circle at 78% 22%, rgba(213,83,56,.11), transparent 20%), linear-gradient(135deg, rgba(255,249,239,.98), rgba(255,238,223,.95)); }
-        .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
-        .eyebrow, .pill, .stat-label { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
-        .pill { background:#f5eadc; color:var(--muted); }
-        .pill-danger { background:#fde8e6; color:#8e2722; }
-        .pill-warn { background:#fff1d7; color:#8a580d; }
-        .pill-success { background:#e7f5ee; color:#11543d; }
-        h1, .section-title { font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif; }
-        h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.93; letter-spacing:-.045em; font-weight: 800; }
-        p, .small { color:#a7b0ba; line-height:1.5; }
-        .actions, .topbar, .meta-row, .group-list, .pagination, .workflow-strip, .workflow-actions, .queue-meta, .section-header { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-        .topbar { justify-content:space-between; margin-bottom:18px; }
-        .workflow-strip { justify-content:space-between; margin-bottom:18px; padding:14px 16px; border:1px solid rgba(159,49,29,.12); border-radius:20px; background:linear-gradient(180deg, rgba(255,253,248,.94), rgba(255,247,238,.82)); box-shadow:0 14px 28px rgba(77,46,20,.08); position:sticky; top:12px; z-index:6; backdrop-filter:blur(10px); }
-        .workflow-actions { justify-content:flex-end; }
-        .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; }
-        .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
-        .ghost-button { background:rgba(255,255,255,.78); color:var(--text); border:1px solid var(--line); }
-        .card { padding:18px; margin-bottom:18px; }
-        .filters { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
-        label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
-        .summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-        .stat { background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,248,238,.75)); border:1px solid var(--line); border-radius:18px; padding:14px; }
-        .stat-value { font-size:28px; font-weight:800; letter-spacing:-.04em; color:#ffffff; font-variant-numeric: tabular-nums; }
-        .review-list { display:grid; gap:16px; }
-        .review-card { padding:18px; display:grid; grid-template-columns:160px 1fr 340px; gap:16px; align-items:start; }
-        .queue-meta { margin:10px 0 0; }
-        .section-header { justify-content:space-between; margin-bottom:12px; }
-        .section-title { margin:0; font-size:24px; letter-spacing:-.04em; }
-        .section-subtitle { margin:4px 0 0; color:#a7b0ba; }
-        .thumb { width:100%; max-height:150px; object-fit:cover; border-radius:16px; border:1px solid #e2d7c7; background:#fff; }
-        .thumb-placeholder { min-height:120px; border-radius:16px; border:1px dashed #d8c7b3; display:grid; place-items:center; color:var(--muted); background:#fffdf9; }
-        .message-box, .group-box { background:#fff; border:1px solid #eadfce; border-radius:16px; padding:12px; }
-        .message-box { white-space:pre-wrap; line-height:1.5; margin-top:10px; }
-        .group-box { margin-top:10px; }
-        .group-item { padding:8px 0; border-top:1px solid #f0e7da; }
-        .group-item:first-child { border-top:none; padding-top:0; }
-        .edit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-        .field-wide { grid-column:1 / -1; }
-        textarea { min-height:80px; resize:vertical; }
-        .action-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-        .message-label { margin-top:12px; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#a7b0ba; }
-        .form-panel { background:linear-gradient(180deg, rgba(255,255,255,.84), rgba(255,248,238,.70)); border:1px solid #eadfce; border-radius:18px; padding:14px; }
-        .form-panel-title { margin:0 0 10px; font-size:16px; letter-spacing:-.02em; color:#ffffff; }
-        .flash { margin-bottom:12px; padding:12px 14px; border-radius:14px; border:1px solid; font-weight:700; }
-        .flash.success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
-        .flash.error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
-        .muted-link { color:var(--muted); font-size:12px; font-weight:700; }
-        .muted-link:hover { color:var(--accent-strong); }
-        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
-        .hero, .card, .review-card, .stat { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
-        .review-card, .card, .stat { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        @media (max-width:1250px){ .review-card { grid-template-columns:140px 1fr; } .review-card .form-panel { grid-column:1 / -1; } }
-        @media (max-width:960px){ .hero { grid-template-columns:1fr; text-align:center; } .eyebrow { margin:0 auto; } .filters, .summary-grid, .edit-grid, .review-card { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .workflow-strip { position:static; } }
-    </style>
-    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+    <link rel="stylesheet" href="/static/linear.css">
 </head>
 <body>
-    <div class="page">
+    <div class="lx-page">
         {% include "_workspace_nav.html" %}
-        <div class="topbar">
-            <div class="meta-row">
-                <span class="pill">{{ current_user.display_name if current_user else "Team member" }}</span>
-                <span class="pill">{{ current_user.role if current_user else "" }}</span>
+
+        <div class="lx-topbar">
+            <div class="lx-topbar-l">
+                <span class="lx-pill">{{ current_user.display_name if current_user else "Team member" }}</span>
+                <span class="lx-pill">{{ current_user.role if current_user else "" }}</span>
             </div>
-            <div class="actions">
-                <a class="button secondary-button" href="/dashboard">Dashboard</a>
-                {% if current_user and current_user.role == "admin" %}<a class="button secondary-button" href="/table">Admin Table</a>{% endif %}
-                <a class="button secondary-button" href="/review/history">Review History</a>
-                <a class="button secondary-button" href="/reports">Reports</a>
-                <form method="post" action="/logout" style="display:inline;"><button type="submit" class="button ghost-button">Log Out</button></form>
+            <div class="lx-topbar-r">
+                <a class="lx-btn" href="/dashboard">Dashboard</a>
+                {% if current_user and current_user.role == "admin" %}<a class="lx-btn" href="/table">Admin Table</a>{% endif %}
+                <a class="lx-btn" href="/review/history">Review History</a>
+                <a class="lx-btn" href="/reports">Reports</a>
+                <form method="post" action="/logout" style="display:inline;">
+                    <button type="submit" class="lx-btn">Log Out</button>
+                </form>
             </div>
         </div>
 
-        {% if success %}<div class="flash success">{{ success }}</div>{% endif %}
-        {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+        {% if success %}<div class="lx-banner lx-banner-ok">{{ success }}</div>{% endif %}
+        {% if error %}<div class="lx-banner lx-banner-err">{{ error }}</div>{% endif %}
 
-        <section class="hero">
-            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
-            <div>
-                <div class="eyebrow">Primary Review Queue</div>
-                <h1>{{ title }}</h1>
-                <p>This is the main review path. Review one deal at a time, fix the core financial fields quickly, and approve rows without digging through the admin tools.</p>
-                <div class="queue-meta">
-                    <span class="pill">Review required {{ summary["needs_review"] }}</span>
-                    <span class="pill">Failed {{ summary["failed"] }}</span>
-                    <span class="pill">With images {{ summary["with_images"] }}</span>
-                </div>
-                <div style="margin-top:10px;">
-                    <a class="muted-link" href="/review-table">Advanced: open the bulk admin review table &rarr;</a>
-                </div>
+        <div class="lx-page-head">
+            <p class="lx-eyebrow">Primary Review Queue</p>
+            <h1 class="lx-h1">{{ title }}</h1>
+            <p class="lx-subtitle">Review one deal at a time, fix the core financial fields, and approve rows without digging through admin tools.</p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+                <span class="lx-pill {% if summary['needs_review'] > 0 %}lx-pill-warn{% endif %}">Review required {{ summary["needs_review"] }}</span>
+                <span class="lx-pill {% if summary['failed'] > 0 %}lx-pill-danger{% endif %}">Failed {{ summary["failed"] }}</span>
+                <span class="lx-pill">With images {{ summary["with_images"] }}</span>
             </div>
-        </section>
+            <div style="margin-top:10px;">
+                <a href="/review-table" style="font-size:12px;font-weight:600;color:var(--lx-dim);">Advanced: open the bulk admin review table &rarr;</a>
+            </div>
+        </div>
 
-        <div class="card">
-            <form method="get" action="/review" class="filters">
-                <label>Channel<select name="channel_id"><option value="">All review channels</option>{% for ch in channels %}<option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>{% endfor %}</select></label>
-                <label>Expense Category<select name="expense_category"><option value="">All expense categories</option>{% for option in expense_category_options %}<option value="{{ option }}" {% if selected_expense_category == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label>After<input type="date" name="after" value="{{ selected_after }}"></label>
-                <label>Before<input type="date" name="before" value="{{ selected_before }}"></label>
-                <label>Rows<select name="limit">{% for option in [10,25,50,100] %}<option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label>
-                <label style="justify-content:end;"><span>&nbsp;</span><button type="submit" class="secondary-button">Apply Filters</button></label>
+        <div class="lx-card">
+            <form method="get" action="/review" class="lx-filters">
+                <label class="lx-label">Channel
+                    <select class="lx-select" name="channel_id">
+                        <option value="">All review channels</option>
+                        {% for ch in channels %}
+                        <option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="lx-label">Expense Category
+                    <select class="lx-select" name="expense_category">
+                        <option value="">All expense categories</option>
+                        {% for option in expense_category_options %}
+                        <option value="{{ option }}" {% if selected_expense_category == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="lx-label">After
+                    <input class="lx-input" type="date" name="after" value="{{ selected_after }}">
+                </label>
+                <label class="lx-label">Before
+                    <input class="lx-input" type="date" name="before" value="{{ selected_before }}">
+                </label>
+                <label class="lx-label">Rows
+                    <select class="lx-select" name="limit">
+                        {% for option in [10,25,50,100] %}
+                        <option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <div style="display:flex;align-items:flex-end;">
+                    <button type="submit" class="lx-btn" style="width:100%;">Apply Filters</button>
+                </div>
             </form>
-            <div class="action-row" style="margin-top:12px; justify-content:space-between;">
-                <div class="small">Reparse the currently filtered review rows with the latest deterministic rules, learned corrections, and stitch heuristics.</div>
+            <div class="lx-scope-strip">
+                <p class="lx-note">Reparse the currently filtered review rows with the latest deterministic rules, learned corrections, and stitch heuristics.</p>
                 <form method="post" action="/messages/bulk/reparse-filtered-form" onsubmit="return confirm('Reparse all currently filtered review rows?');">
                     <input type="hidden" name="return_path" value="/review">
                     <input type="hidden" name="status" value="review_queue">
@@ -144,55 +104,67 @@
                     <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
                     <input type="hidden" name="page" value="{{ pagination['page'] }}">
                     <input type="hidden" name="limit" value="{{ selected_limit }}">
-                    <button type="submit" class="secondary-button">Reparse Filtered Review Rows</button>
+                    <button type="submit" class="lx-btn">Reparse Filtered Review Rows</button>
                 </form>
             </div>
         </div>
 
-        <div class="summary-grid" style="margin-bottom:18px;">
-            <div class="stat"><div class="stat-label">Queue Size</div><div class="stat-value">{{ summary["needs_review"] + summary["failed"] }}</div></div>
-            <div class="stat"><div class="stat-label">Current Page</div><div class="stat-value">{{ pagination["page"] }}</div></div>
-            <div class="stat"><div class="stat-label">Showing</div><div class="stat-value">{{ pagination["start_row"] }}-{{ pagination["end_row"] }}</div></div>
-            <div class="stat"><div class="stat-label">Total Rows</div><div class="stat-value">{{ pagination["total_rows"] }}</div></div>
-        </div>
-
-        <div class="section-header">
-            <div>
-                <h2 class="section-title">Rows To Review</h2>
-                <p class="section-subtitle">Each card keeps the message context on the left and the decision panel on the right. Use this page for the normal review flow.</p>
+        <div class="lx-metrics-4">
+            <div class="lx-metric">
+                <div class="lx-metric-lbl">Queue Size</div>
+                <div class="lx-metric-val">{{ summary["needs_review"] + summary["failed"] }}</div>
+            </div>
+            <div class="lx-metric">
+                <div class="lx-metric-lbl">Current Page</div>
+                <div class="lx-metric-val">{{ pagination["page"] }}</div>
+            </div>
+            <div class="lx-metric">
+                <div class="lx-metric-lbl">Showing</div>
+                <div class="lx-metric-val">{{ pagination["start_row"] }}&ndash;{{ pagination["end_row"] }}</div>
+            </div>
+            <div class="lx-metric">
+                <div class="lx-metric-lbl">Total Rows</div>
+                <div class="lx-metric-val">{{ pagination["total_rows"] }}</div>
             </div>
         </div>
 
-        <div class="review-list">
+        <div class="lx-sh" style="margin-bottom:14px;">
+            <h2 class="lx-sh-title">Rows To Review</h2>
+            <span class="lx-sh-meta">Message context left &middot; decision panel right</span>
+        </div>
+
+        <div class="lx-review-list">
             {% for row in rows %}
-            <div class="review-card">
+            <div class="lx-review-card">
                 <div>
                     {% if row["first_image_url"] %}
-                    <a href="{{ row['first_image_url'] }}" target="_blank" rel="noopener noreferrer"><img class="thumb" src="{{ row['first_thumb_url'] or row['first_image_url'] }}" alt="deal image" loading="lazy"></a>
+                    <a href="{{ row['first_image_url'] }}" target="_blank" rel="noopener noreferrer">
+                        <img class="lx-thumb" src="{{ row['first_thumb_url'] or row['first_image_url'] }}" alt="deal image" loading="lazy">
+                    </a>
                     {% else %}
-                    <div class="thumb-placeholder">No image</div>
+                    <div class="lx-thumb-ph">No image</div>
                     {% endif %}
-                    <div class="meta-row" style="margin-top:10px;">
-                        <span class="pill {% if row['status'] == 'failed' %}pill-danger{% elif row['status'] == 'review_required' %}pill-warn{% else %}pill-success{% endif %}">{{ row["status"]|replace("_", " ") }}</span>
-                        {% if row["learning"]["promoted_rule"] %}<span class="pill pill-success">promoted rule</span>{% elif row["learning"]["exact_match"] %}<span class="pill pill-success">learned exact</span>{% elif row["learning"]["similar_count"] %}<span class="pill">memory {{ row["learning"]["similar_count"] }}</span>{% endif %}
+                    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px;">
+                        <span class="lx-pill {% if row['status'] == 'failed' %}lx-pill-danger{% elif row['status'] == 'review_required' %}lx-pill-warn{% else %}lx-pill-ok{% endif %}">{{ row["status"]|replace("_", " ") }}</span>
+                        {% if row["learning"]["promoted_rule"] %}<span class="lx-pill lx-pill-ok">promoted rule</span>{% elif row["learning"]["exact_match"] %}<span class="lx-pill lx-pill-ok">learned exact</span>{% elif row["learning"]["similar_count"] %}<span class="lx-pill">memory {{ row["learning"]["similar_count"] }}</span>{% endif %}
                     </div>
                 </div>
 
                 <div>
-                    <div class="meta-row">
-                        <strong>{{ row["channel"] or row["channel_id"] }}</strong>
-                        <span class="small">{{ row["time"] }}</span>
-                    </div>
-                    <div class="small">{{ row["author"] or "" }}</div>
-                    {% if row["reviewed_by"] or row["reviewed_at"] %}<div class="small">Last reviewed{% if row["reviewed_by"] %} by {{ row["reviewed_by"] }}{% endif %}{% if row["reviewed_at"] %} on {{ row["reviewed_at"] }}{% endif %}</div>{% endif %}
-                    <div class="message-label">Primary message</div>
-                    <div class="message-box">{{ row["message"] or "(image-only message)" }}</div>
+                    <div style="font-size:14px;font-weight:600;color:var(--lx-text);">{{ row["channel"] or row["channel_id"] }}</div>
+                    <div style="font-size:12px;color:var(--lx-muted);margin-top:3px;">{{ row["time"] }}</div>
+                    {% if row["author"] %}<div style="font-size:12px;color:var(--lx-muted);">{{ row["author"] }}</div>{% endif %}
+                    {% if row["reviewed_by"] or row["reviewed_at"] %}
+                    <div style="font-size:12px;color:var(--lx-dim);margin-top:3px;">Last reviewed{% if row["reviewed_by"] %} by {{ row["reviewed_by"] }}{% endif %}{% if row["reviewed_at"] %} on {{ row["reviewed_at"] }}{% endif %}</div>
+                    {% endif %}
+                    <div class="lx-msg-lbl">Primary message</div>
+                    <div class="lx-msg-box">{{ row["message"] or "(image-only message)" }}</div>
                     {% if row["grouped_messages"] %}
-                    <div class="group-box">
-                        <div class="small" style="font-weight:800; text-transform:uppercase; letter-spacing:.08em;">Grouped messages</div>
+                    <div class="lx-group-box">
+                        <div class="lx-group-head">Grouped messages</div>
                         {% for grouped in row["grouped_messages"] %}
-                        <div class="group-item">
-                            <div class="small">{{ grouped["time"] }}{% if grouped["has_image"] %} | image{% endif %}{% if grouped["is_self"] %} | this row{% endif %}</div>
+                        <div class="lx-group-item">
+                            <div class="lx-group-meta">{{ grouped["time"] }}{% if grouped["has_image"] %} &middot; image{% endif %}{% if grouped["is_self"] %} &middot; this row{% endif %}</div>
                             <div>{{ grouped["message"] or "(image-only message)" }}</div>
                         </div>
                         {% endfor %}
@@ -200,8 +172,8 @@
                     {% endif %}
                 </div>
 
-                <div class="form-panel">
-                    <h3 class="form-panel-title">Review Decision</h3>
+                <div class="lx-form-panel">
+                    <div class="lx-form-panel-title">Review Decision</div>
                     <form method="post" action="/messages/{{ row['id'] }}/edit-form">
                         <input type="hidden" name="return_path" value="/review">
                         <input type="hidden" name="status" value="review_queue">
@@ -215,41 +187,63 @@
                         <input type="hidden" name="limit" value="{{ selected_limit }}">
                         <input type="hidden" name="parse_status" value="needs_review">
                         <input type="hidden" name="needs_review" value="true">
-                        <div class="edit-grid">
-                            <label>Financial Kind<select name="entry_kind">{% for option in entry_kind_options %}<option value="{{ option }}" {% if (row["entry_kind"] or "") == option %}selected{% endif %}>{{ option or "auto" }}</option>{% endfor %}</select></label>
-                            <label>Parsed Type<select name="deal_type">{% for option in deal_type_options %}<option value="{{ option }}" {% if (row["type"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                            <label>Cash<input type="text" name="amount" value="{{ row['amount'] if row['amount'] is not none else '' }}"></label>
-                            <label>Payment<select name="payment_method">{% for option in payment_method_options %}<option value="{{ option }}" {% if (row["payment"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                            <label>Cash Direction (trade only)<select name="cash_direction">{% for option in cash_direction_options %}<option value="{{ option }}" {% if (row["cash_direction"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                            <label>Category<select name="category">{% for option in category_options %}<option value="{{ option }}" {% if (row["category"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select></label>
-                            <label>Expense Category<input type="text" name="expense_category" value="{{ row['expense_category'] or '' }}" placeholder="leave blank for auto"></label>
-                            <label class="field-wide">Notes<textarea name="notes">{{ row["notes"] or "" }}</textarea></label>
+                        <div class="lx-edit-grid">
+                            <label class="lx-label">Financial Kind
+                                <select class="lx-select" name="entry_kind">{% for option in entry_kind_options %}<option value="{{ option }}" {% if (row["entry_kind"] or "") == option %}selected{% endif %}>{{ option or "auto" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Parsed Type
+                                <select class="lx-select" name="deal_type">{% for option in deal_type_options %}<option value="{{ option }}" {% if (row["type"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Cash
+                                <input class="lx-input" type="text" name="amount" value="{{ row['amount'] if row['amount'] is not none else '' }}">
+                            </label>
+                            <label class="lx-label">Payment
+                                <select class="lx-select" name="payment_method">{% for option in payment_method_options %}<option value="{{ option }}" {% if (row["payment"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Cash Direction (trade only)
+                                <select class="lx-select" name="cash_direction">{% for option in cash_direction_options %}<option value="{{ option }}" {% if (row["cash_direction"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Category
+                                <select class="lx-select" name="category">{% for option in category_options %}<option value="{{ option }}" {% if (row["category"] or "") == option %}selected{% endif %}>{{ option or "blank" }}</option>{% endfor %}</select>
+                            </label>
+                            <label class="lx-label">Expense Category
+                                <input class="lx-input" type="text" name="expense_category" value="{{ row['expense_category'] or '' }}" placeholder="leave blank for auto">
+                            </label>
+                            <label class="lx-label lx-field-wide">Notes
+                                <textarea class="lx-textarea" name="notes">{{ row["notes"] or "" }}</textarea>
+                            </label>
                         </div>
-                        <div class="action-row">
-                            <button type="submit" class="ghost-button" formaction="/messages/{{ row['id'] }}/approve-form" formmethod="post">Approve</button>
-                            <button type="submit" class="secondary-button">Save</button>
-                            <button type="submit" name="approve_after_save" value="true" class="primary-button">Save & Approve</button>
-                            <button type="submit" class="ghost-button" formaction="/messages/{{ row['id'] }}/disregard-form" formmethod="post">Ignore Message</button>
-                            <a class="button ghost-button" href="/review/focus/{{ row['id'] }}?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Open Focus View</a>
-                            {% if pagination["has_next"] or pagination["page"] > 0 %}<a class="button ghost-button" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Next in Queue</a>{% endif %}
+                        <div class="lx-action-row">
+                            <button type="submit" class="lx-btn lx-btn-ok" formaction="/messages/{{ row['id'] }}/approve-form" formmethod="post">Approve</button>
+                            <button type="submit" class="lx-btn">Save</button>
+                            <button type="submit" name="approve_after_save" value="true" class="lx-btn lx-btn-primary">Save &amp; Approve</button>
+                            <button type="submit" class="lx-btn" formaction="/messages/{{ row['id'] }}/disregard-form" formmethod="post">Ignore</button>
+                            <a class="lx-btn" href="/review/focus/{{ row['id'] }}?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Focus View</a>
+                            {% if pagination["has_next"] or pagination["page"] > 0 %}<a class="lx-btn" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['page'] }}&limit={{ selected_limit }}">Next in Queue</a>{% endif %}
                         </div>
                     </form>
                 </div>
             </div>
             {% else %}
-            <div class="card"><div class="small">No review rows match the current filters.</div></div>
+            <div class="lx-card">
+                <p class="lx-note">No review rows match the current filters.</p>
+            </div>
             {% endfor %}
         </div>
 
-        <div class="card">
-            <div class="pagination">
-                {% if pagination["has_previous"] %}
-                <a class="button secondary-button" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['previous_page'] }}&limit={{ selected_limit }}">Previous</a>
-                {% endif %}
-                <span class="small">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
-                {% if pagination["has_next"] %}
-                <a class="button secondary-button" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['next_page'] }}&limit={{ selected_limit }}">Next</a>
-                {% endif %}
+        <div class="lx-card">
+            <div class="lx-pagination">
+                <div>
+                    {% if pagination["has_previous"] %}
+                    <a class="lx-btn" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['previous_page'] }}&limit={{ selected_limit }}">Previous</a>
+                    {% endif %}
+                </div>
+                <span class="lx-pag-info">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
+                <div>
+                    {% if pagination["has_next"] %}
+                    <a class="lx-btn" href="/review?channel_id={{ selected_channel_id }}&expense_category={{ selected_expense_category }}&after={{ selected_after }}&before={{ selected_before }}&sort_by={{ selected_sort_by }}&sort_dir={{ selected_sort_dir }}&page={{ pagination['next_page'] }}&limit={{ selected_limit }}">Next</a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>

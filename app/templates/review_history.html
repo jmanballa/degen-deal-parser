@@ -2,9 +2,9 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <!-- PWA -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -12,71 +12,68 @@
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon-180.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
+    <link rel="stylesheet" href="/static/safe-area.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
-    <style>
-        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
-        * { box-sizing:border-box; }
-        html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
-        a { color:inherit; text-decoration:none; }
-        .page { max-width:1300px; margin:0 auto; padding: 28px 28px 60px; }
-        .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
-        .hero, .card { padding:20px; margin-bottom:18px; }
-        .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; }
-        .pill { background:#f5eadc; color:var(--muted); }
-        h1 { margin:10px 0 8px; font-size:clamp(30px,4vw,44px); line-height:.95; letter-spacing:-.04em; font-weight: 800; }
-        .small { color:#a7b0ba; line-height:1.5; }
-        .topbar, .pagination { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
-        .button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; background:#fff; color:var(--text); border:1px solid var(--line); }
-        .history-item { padding:12px 0; border-top:1px solid #eee3d3; }
-        .history-item:first-child { border-top:none; padding-top:0; }
-        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
-        .hero, .card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
-        .card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        @media (max-width:960px){ .page { padding:16px 14px 28px; } }
-    </style>
-    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+    <link rel="stylesheet" href="/static/linear.css">
 </head>
 <body>
-    <div class="page">
-        <div class="topbar">
-            <a class="button" href="/review">Back to Review Queue</a>
-            <a class="button" href="/dashboard">Dashboard</a>
+    <div class="lx-page">
+        <div class="lx-topbar">
+            <div class="lx-topbar-l">
+                <a class="lx-btn" href="/review">&#8592; Back to Review Queue</a>
+            </div>
+            <div class="lx-topbar-r">
+                <a class="lx-btn" href="/dashboard">Dashboard</a>
+            </div>
         </div>
-        <section class="hero">
-            <div class="eyebrow">Audit Trail</div>
-            <h1>{{ title }}</h1>
-            <div class="small">See the most recently approved rows and who signed off on them.</div>
-        </section>
 
-        <div class="card">
+        <div class="lx-page-head">
+            <p class="lx-eyebrow">Audit Trail</p>
+            <h1 class="lx-h1">{{ title }}</h1>
+            <p class="lx-subtitle">The most recently approved rows and who signed off on them.</p>
+        </div>
+
+        <div class="lx-card">
             {% for row in rows %}
-            <div class="history-item">
-                <div><strong>{{ row["channel"] or row["channel_id"] }}</strong> <span class="small">| {{ row["time"] }}</span></div>
-                <div class="small">{{ row["author"] or "" }}{% if row["reviewed_by"] %} | reviewed by {{ row["reviewed_by"] }}{% endif %}{% if row["reviewed_at"] %} on {{ row["reviewed_at"] }}{% endif %}</div>
-                <div style="margin-top:6px;">{{ row["message"] or "(image-only message)" }}</div>
-                <div style="margin-top:8px;">
-                    <span class="pill">{{ row["entry_kind"] or "unknown" }}</span>
-                    {% if row["amount_display"] %}<span class="pill">{{ row["amount_display"] }}</span>{% endif %}
-                    {% if row["payment_display"] %}<span class="pill">{{ row["payment_display"] }}</span>{% endif %}
+            <div class="lx-history-item">
+                <div>
+                    <strong>{{ row["channel"] or row["channel_id"] }}</strong>
+                    <span style="font-size:12px;color:var(--lx-muted);margin-left:6px;">{{ row["time"] }}</span>
+                </div>
+                <div class="lx-history-meta">
+                    {{ row["author"] or "" }}{% if row["reviewed_by"] %} &middot; reviewed by {{ row["reviewed_by"] }}{% endif %}{% if row["reviewed_at"] %} on {{ row["reviewed_at"] }}{% endif %}
+                </div>
+                <div class="lx-history-msg">{{ row["message"] or "(image-only message)" }}</div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;">
+                    <span class="lx-pill">{{ row["entry_kind"] or "unknown" }}</span>
+                    {% if row["amount_display"] %}<span class="lx-pill">{{ row["amount_display"] }}</span>{% endif %}
+                    {% if row["payment_display"] %}<span class="lx-pill">{{ row["payment_display"] }}</span>{% endif %}
                 </div>
             </div>
             {% else %}
-            <div class="small">No approved review history yet.</div>
+            <p class="lx-note">No approved review history yet.</p>
             {% endfor %}
         </div>
 
-        <div class="card">
-            <div class="pagination">
-                {% if pagination["has_previous"] %}<a class="button" href="/review/history?page={{ pagination['previous_page'] }}&limit={{ pagination['limit'] }}">Previous</a>{% endif %}
-                <span class="small">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
-                {% if pagination["has_next"] %}<a class="button" href="/review/history?page={{ pagination['next_page'] }}&limit={{ pagination['limit'] }}">Next</a>{% endif %}
+        <div class="lx-card">
+            <div class="lx-pagination">
+                <div>
+                    {% if pagination["has_previous"] %}
+                    <a class="lx-btn" href="/review/history?page={{ pagination['previous_page'] }}&limit={{ pagination['limit'] }}">Previous</a>
+                    {% endif %}
+                </div>
+                <span class="lx-pag-info">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
+                <div>
+                    {% if pagination["has_next"] %}
+                    <a class="lx-btn" href="/review/history?page={{ pagination['next_page'] }}&limit={{ pagination['limit'] }}">Next</a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
+    {% include '_mobile_bottom_nav.html' %}
 </body>
 </html>
