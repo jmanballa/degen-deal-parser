@@ -72,8 +72,8 @@
             <div class="lx-sticky-col">
                 <div class="lx-card" style="margin-bottom:0;">
                     <div class="lx-stat"><div class="lx-stat-lbl">Amount</div><div class="lx-stat-val">{{ deal["amount_display"] or "—" }}</div></div>
-                    <div class="lx-stat"><div class="lx-stat-lbl">Money In</div><div class="lx-stat-val">${{ "%.2f"|format(deal["money_in"] or 0) }}</div></div>
-                    <div class="lx-stat"><div class="lx-stat-lbl">Money Out</div><div class="lx-stat-val">${{ "%.2f"|format(deal["money_out"] or 0) }}</div></div>
+                    <div class="lx-stat"><div class="lx-stat-lbl">Money In</div><div class="lx-stat-val">{{ deal["money_in"] | money }}</div></div>
+                    <div class="lx-stat"><div class="lx-stat-lbl">Money Out</div><div class="lx-stat-val">{{ deal["money_out"] | money }}</div></div>
                     <div class="lx-stat"><div class="lx-stat-lbl">Payment</div><div class="lx-stat-val">{{ deal["payment_display"] or "—" }}</div></div>
                     <div class="lx-stat"><div class="lx-stat-lbl">Trade Summary</div><div class="lx-stat-val">{{ deal["trade_summary"] or "—" }}</div></div>
                     <div class="lx-stat"><div class="lx-stat-lbl">Notes</div><div class="lx-stat-val">{{ deal["notes"] or "—" }}</div></div>

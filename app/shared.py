@@ -694,6 +694,27 @@ def format_pacific_datetime(value: object, include_zone: bool = True) -> str:
 templates.env.filters["pacific_datetime"] = format_pacific_datetime
 
 
+def format_money(value: object, decimals: Optional[int] = None) -> str:
+    if value is None:
+        return "\u2014"
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return "\u2014"
+    negative = amount < 0
+    abs_amount = abs(amount)
+    if decimals is not None:
+        formatted = f"{abs_amount:,.{decimals}f}"
+    elif abs_amount == int(abs_amount):
+        formatted = f"{int(abs_amount):,}"
+    else:
+        formatted = f"{abs_amount:,.2f}"
+    return f"-${formatted}" if negative else f"${formatted}"
+
+
+templates.env.filters["money"] = format_money
+
+
 def format_pacific_date(value: object) -> str:
     if value in (None, ""):
         return ""

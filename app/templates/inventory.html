@@ -166,10 +166,10 @@
                             {{ item.condition }}
                         {% else %}—{% endif %}
                     </td>
-                    <td class="price-cell">{% if item.cost_basis is not none %}${{ "%.2f"|format(item.cost_basis) }}{% else %}<span class="price-none">—</span>{% endif %}</td>
+                    <td class="price-cell">{{ item.cost_basis | money }}</td>
                     <td class="price-cell">
                         {% set ep = effective_price(item) %}
-                        {% if ep is not none %}${{ "%.2f"|format(ep) }}{% if item.list_price is not none %}<span style="font-size:10px;color:#a7b0ba;margin-left:3px;">manual</span>{% endif %}
+                        {% if ep is not none %}{{ ep | money }}{% if item.list_price is not none %}<span style="font-size:10px;color:#a7b0ba;margin-left:3px;">manual</span>{% endif %}
                         {% else %}<span class="price-none">—</span>{% endif %}
                     </td>
                     <td>

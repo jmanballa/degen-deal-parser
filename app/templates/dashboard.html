@@ -382,7 +382,7 @@
                                     <span class="db-tag">{{ order["fulfillment_label"] }}</span>
                                 </div>
                                 <div class="db-li-r">
-                                    <div class="db-li-amt">${{ "%.2f"|format(order["total_price"]) }}</div>
+                                    <div class="db-li-amt">{{ order["total_price"] | money }}</div>
                                 </div>
                             </div>
                             {% endfor %}

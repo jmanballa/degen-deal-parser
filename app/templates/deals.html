@@ -97,19 +97,19 @@
             </div>
             <div class="lx-metric">
                 <div class="lx-metric-lbl">Sales</div>
-                <div class="lx-metric-val">${{ "%.2f"|format(summary["totals"].get("sales", 0)) }}</div>
+                <div class="lx-metric-val">{{ summary["totals"].get("sales", 0) | money }}</div>
             </div>
             <div class="lx-metric">
                 <div class="lx-metric-lbl">Buys</div>
-                <div class="lx-metric-val">${{ "%.2f"|format(summary["totals"].get("buys", 0)) }}</div>
+                <div class="lx-metric-val">{{ summary["totals"].get("buys", 0) | money }}</div>
             </div>
             <div class="lx-metric">
                 <div class="lx-metric-lbl">Expenses</div>
-                <div class="lx-metric-val">${{ "%.2f"|format(summary["totals"].get("expenses", 0)) }}</div>
+                <div class="lx-metric-val">{{ summary["totals"].get("expenses", 0) | money }}</div>
             </div>
             <div class="lx-metric">
                 <div class="lx-metric-lbl">Net</div>
-                <div class="lx-metric-val">${{ "%.2f"|format(summary["totals"].get("net", 0)) }}</div>
+                <div class="lx-metric-val">{{ summary["totals"].get("net", 0) | money }}</div>
             </div>
         </div>
 
@@ -153,7 +153,7 @@
                     </div>
                     <div class="lx-fin-row">
                         <div class="lx-fin-lbl">Money In / Out</div>
-                        <div class="lx-fin-val">${{ "%.2f"|format(row["money_in"] or 0) }} / ${{ "%.2f"|format(row["money_out"] or 0) }}</div>
+                        <div class="lx-fin-val">{{ row["money_in"] | money }} / {{ row["money_out"] | money }}</div>
                     </div>
                 </div>
             </a>
