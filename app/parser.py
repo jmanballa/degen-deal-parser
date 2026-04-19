@@ -165,7 +165,7 @@ def choose_image_urls(urls: List[str], use_first_image_only: bool = True, max_im
 
 def parse_trade_hint(message_text: str) -> Dict[str, Any] | None:
     text = (message_text or "").strip()
-    lower = text.lower()
+    lower = _normalize_payment_tokens(text.lower())
 
     if not lower:
         return None
@@ -179,13 +179,13 @@ def parse_trade_hint(message_text: str) -> Dict[str, Any] | None:
         return None
 
     payment_match = re.search(
-        r"(?:plus|\+|&)\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap)?",
+        r"(?:plus|\+|&)\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|apple_pay)?",
         lower,
         re.I,
     )
     if not payment_match:
         payment_match = re.search(
-            r"\$\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap)?",
+            r"\$\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|apple_pay)?",
             lower,
             re.I,
         )
@@ -315,13 +315,13 @@ def parse_trade_hint(message_text: str) -> Dict[str, Any] | None:
 
 
 def extract_payment_amount_method(text: str) -> tuple[float | None, str | None]:
-    lower = _normalize_amount_text(normalize_message_part(text).lower())
+    lower = _normalize_payment_tokens(_normalize_amount_text(normalize_message_part(text).lower()))
     if not lower:
         return None, None
 
     patterns = [
-        r"^(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc)$",
-        r"^(zelle|venmo|paypal|cash|card|tap|cc|dc)\s*\$?\s*(\d+(?:\.\d{1,2})?)$",
+        r"^(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)$",
+        r"^(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)\s*\$?\s*(\d+(?:\.\d{1,2})?)$",
     ]
 
     for pattern in patterns:
@@ -342,9 +342,7 @@ def extract_payment_amount_method(text: str) -> tuple[float | None, str | None]:
                 exc_info=True,
             )
             return None, None
-        if payment == "tap":
-            payment = "card"
-        return amount, payment
+        return amount, normalize_payment_method(payment)
 
     return None, None
 
@@ -372,8 +370,20 @@ QUANTITY_UNITS = (
 GRADE_WORDS = ("psa", "bgs", "sgc", "cgc", "grade")
 
 
+_APPLE_PAY_RE = re.compile(r'\bapple\s+pay\b|\bapplepay\b|\bappstd\b', re.I)
+
+
+def _normalize_payment_tokens(text: str) -> str:
+    """Collapse multi-word / typo Apple Pay variants to the canonical token 'apple_pay'."""
+    return _APPLE_PAY_RE.sub('apple_pay', text)
+
+
 def normalize_payment_method(payment_method: str) -> str:
-    return "card" if payment_method in {"tap", "cc", "dc"} else payment_method
+    if payment_method in {"tap", "cc", "dc"}:
+        return "card"
+    if payment_method in {"apple pay", "applepay", "appstd", "apple_pay"}:
+        return "apple_pay"
+    return payment_method
 
 
 def _normalize_amount_text(text: str) -> str:
@@ -410,18 +420,18 @@ def _normalize_amount_text(text: str) -> str:
 
 
 def is_payment_method_only_message_text(text: str) -> bool:
-    lower = normalize_message_part(text).lower()
-    return bool(re.fullmatch(r"(zelle|venmo|paypal|cash|card|tap|cc|dc)", lower, re.I))
+    lower = _normalize_payment_tokens(normalize_message_part(text).lower())
+    return bool(re.fullmatch(r"(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)", lower, re.I))
 
 
 def extract_payment_segments(text: str) -> list[tuple[float, str]]:
-    lower = _normalize_amount_text(normalize_message_part(text).lower())
+    lower = _normalize_payment_tokens(_normalize_amount_text(normalize_message_part(text).lower()))
     if not lower:
         return []
 
     patterns = [
-        r"(?<![#\w])(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(cash|zelle|venmo|paypal|card|tap|cc|dc)\b",
-        r"\b(cash|zelle|venmo|paypal|card|tap|cc|dc)\s*\$?\s*(\d+(?:\.\d{1,2})?)\b",
+        r"(?<![#\w])(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(cash|zelle|venmo|paypal|card|tap|cc|dc|apple_pay)\b",
+        r"\b(cash|zelle|venmo|paypal|card|tap|cc|dc|apple_pay)\s*\$?\s*(\d+(?:\.\d{1,2})?)\b",
     ]
 
     segments: list[tuple[float, str]] = []
@@ -698,7 +708,7 @@ def parse_by_rules(message_text: str, channel_name: str | None = None) -> Dict[s
     trade_hint = parse_trade_hint(text)
     if trade_hint:
         return trade_hint
-    lower = text.lower()
+    lower = _normalize_payment_tokens(text.lower())
 
     explicit_type = infer_explicit_buy_sell_type(text)
     payment_summary = extract_payment_summary(text)
@@ -763,13 +773,13 @@ def parse_by_rules(message_text: str, channel_name: str | None = None) -> Dict[s
             }
 
     amount_first_match = re.fullmatch(
-        r"\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc)",
+        r"\$?\s*(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)",
         lower,
         re.I,
     )
 
     payment_first_match = re.fullmatch(
-        r"(zelle|venmo|paypal|cash|card|tap|cc|dc)\s*\$?\s*(\d+(?:\.\d{1,2})?)",
+        r"(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)\s*\$?\s*(\d+(?:\.\d{1,2})?)",
         lower,
         re.I,
     )
@@ -801,8 +811,8 @@ def parse_by_rules(message_text: str, channel_name: str | None = None) -> Dict[s
             "needs_review": False,
         }
     patterns = [
-        re.compile(r"\b(sold|sell)\b\s*\$?(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc)?", re.I),
-        re.compile(r"\b(bought|buy|paid)\b\s*\$?(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc)?", re.I),
+        re.compile(r"\b(sold|sell)\b\s*\$?(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)?", re.I),
+        re.compile(r"\b(bought|buy|paid)\b\s*\$?(\d+(?:\.\d{1,2})?)\s*(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)?", re.I),
         re.compile(r"\btrade\b", re.I),
     ]
 
@@ -866,14 +876,14 @@ def parse_by_rules(message_text: str, channel_name: str | None = None) -> Dict[s
 
 
 def has_transaction_signal(message_text: str) -> bool:
-    lower = normalize_detector_text(message_text).lower()
+    lower = _normalize_payment_tokens(normalize_detector_text(message_text).lower())
     if not lower:
         return False
 
     transaction_patterns = [
         r"\b(sold|sell|bought|buy|paid|trade|traded)\b",
-        r"\b(zelle|venmo|paypal|cash|tap|card|cc|dc)\b\s*\$?\d",
-        r"\$?\d+(?:\.\d{1,2})?\s*\b(zelle|venmo|paypal|cash|tap|card|cc|dc)\b",
+        r"\b(zelle|venmo|paypal|cash|tap|card|cc|dc|apple_pay)\b\s*\$?\d",
+        r"\$?\d+(?:\.\d{1,2})?\s*\b(zelle|venmo|paypal|cash|tap|card|cc|dc|apple_pay)\b",
         r"\b(top|bottom|left|right)\b.*\b(in|out)\b",
         r"\b(in)\b.*\b(out)\b",
         r"\b(out)\b.*\b(in)\b",
@@ -953,7 +963,7 @@ def _detect_conversational_noise(lower: str, image_urls: List[str] | None = None
         return "ignored wrong-channel message"
 
     is_payment_word = bool(re.fullmatch(
-        r"(zelle|venmo|paypal|cash|card|tap|cc|dc)", lower.strip(), re.I,
+        r"(zelle|venmo|paypal|cash|card|tap|cc|dc|apple_pay)", lower.strip(), re.I,
     ))
     if is_payment_word:
         return None
@@ -966,7 +976,7 @@ def _detect_conversational_noise(lower: str, image_urls: List[str] | None = None
 
 def detect_non_transaction_message(message_text: str, image_urls: List[str] | None = None) -> Dict[str, Any] | None:
     normalized = normalize_detector_text(message_text)
-    lower = normalized.lower()
+    lower = _normalize_payment_tokens(normalized.lower())
     image_urls = image_urls or []
 
     if not lower:
@@ -1247,7 +1257,7 @@ def build_schema() -> Dict[str, Any]:
             },
             "parsed_payment_method": {
                 "type": ["string", "null"],
-                "enum": ["cash", "zelle", "venmo", "paypal", "card", "mixed", "trade", "unknown", None]
+                "enum": ["cash", "zelle", "venmo", "paypal", "card", "apple_pay", "mixed", "trade", "unknown", None]
             },
             "parsed_cash_direction": {
                 "type": ["string", "null"],

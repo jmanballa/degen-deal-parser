@@ -5,6 +5,7 @@ from app.parser import (
     has_transaction_signal,
     infer_explicit_buy_sell_type,
     looks_like_internal_cash_transfer,
+    normalize_payment_method,
     parse_by_rules,
 )
 
@@ -79,6 +80,43 @@ class ParserStoreRulesTests(unittest.TestCase):
         )
         self.assertEqual(trade_financials.money_in, 0.0)
         self.assertEqual(trade_financials.money_out, 22.0)
+
+
+class ApplePayMappingTests(unittest.TestCase):
+    def test_normalize_apple_pay_variants(self):
+        self.assertEqual(normalize_payment_method("apple_pay"), "apple_pay")
+        self.assertEqual(normalize_payment_method("applepay"), "apple_pay")
+        self.assertEqual(normalize_payment_method("appstd"), "apple_pay")
+        self.assertEqual(normalize_payment_method("apple pay"), "apple_pay")
+
+    def test_parse_by_rules_apple_pay_two_word(self):
+        # "$800 Jeff Apple Pay" has a name in the middle — rule-based parser defers to AI,
+        # but "$800 Apple Pay" without a name is handled directly.
+        parsed = parse_by_rules("$800 Apple Pay", channel_name="║store-buys")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["parsed_payment_method"], "apple_pay")
+        self.assertEqual(parsed["parsed_amount"], 800.0)
+
+    def test_parse_by_rules_appstd_variant(self):
+        parsed = parse_by_rules("$150 Appstd", channel_name="store-sales-and-trades")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["parsed_payment_method"], "apple_pay")
+
+    def test_parse_by_rules_applepay_single_word(self):
+        parsed = parse_by_rules("$200 ApplePay", channel_name="store-sales-and-trades")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["parsed_payment_method"], "apple_pay")
+
+    def test_has_transaction_signal_apple_pay(self):
+        self.assertTrue(has_transaction_signal("$800 Apple Pay"))
+        self.assertTrue(has_transaction_signal("$50 Appstd"))
+
+    def test_payment_only_apple_pay_defaults_to_sell(self):
+        parsed = parse_by_rules("$100 Apple Pay", channel_name="store-sales-and-trades")
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["parsed_type"], "sell")
+        self.assertEqual(parsed["parsed_payment_method"], "apple_pay")
+        self.assertEqual(parsed["parsed_amount"], 100.0)
 
 
 if __name__ == "__main__":

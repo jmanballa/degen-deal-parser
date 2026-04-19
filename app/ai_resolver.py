@@ -83,6 +83,7 @@ Store conventions you MUST apply:
    text clearly says the store paid out (e.g. "gave 50 cash"), that is
    from_store.
  - "tap", "cc", "dc" all normalize to payment_method = "card".
+ - "Apple Pay", "ApplePay", "Appstd" all normalize to payment_method = "apple_pay".
  - A payment-only message like "$11 zelle" or "zelle 11" by itself
    defaults to a SELL (the store received money) unless other context
    clearly says otherwise.
@@ -104,7 +105,7 @@ decide whether you can resolve it confidently. Reply with a JSON object:
   "parse": {
     "parsed_type": "buy" | "sell" | "trade" | null,
     "parsed_amount": number | null,
-    "parsed_payment_method": "cash"|"zelle"|"venmo"|"paypal"|"card"|"unknown"|null,
+    "parsed_payment_method": "cash"|"zelle"|"venmo"|"paypal"|"card"|"apple_pay"|"unknown"|null,
     "parsed_cash_direction": "to_store" | "from_store" | "none" | null,
     "parsed_category": string | null,
     "parsed_items": [string, ...],

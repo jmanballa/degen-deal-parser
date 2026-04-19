@@ -48,6 +48,10 @@ PAYMENT_ALIASES = {
     "paypal": "paypal",
     "card": "card",
     "tap": "card",
+    "apple pay": "apple_pay",
+    "applepay": "apple_pay",
+    "appstd": "apple_pay",
+    "apple_pay": "apple_pay",
 }
 
 CATEGORY_TEXT_HINTS = {

@@ -29,8 +29,8 @@ CORRECTION_SNAPSHOT_FIELDS = (
 )
 
 PAYMENT_ONLY_PATTERNS = (
-    r"^(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(cash|zelle|venmo|paypal|card|tap|cc|dc)$",
-    r"^(cash|zelle|venmo|paypal|card|tap|cc|dc)\s*\$?\s*(\d+(?:\.\d{1,2})?)$",
+    r"^(?:plus|\+)?\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*(cash|zelle|venmo|paypal|card|tap|cc|dc|apple_pay)$",
+    r"^(cash|zelle|venmo|paypal|card|tap|cc|dc|apple_pay)\s*\$?\s*(\d+(?:\.\d{1,2})?)$",
 )
 
 TRADE_DIRECTION_PATTERNS = (
@@ -140,8 +140,11 @@ def build_field_diffs(parsed_before: dict[str, Any], corrected_after: dict[str, 
     return diffs
 
 
+_CORRECTIONS_APPLE_PAY_RE = re.compile(r'\bapple\s+pay\b|\bapplepay\b|\bappstd\b', re.I)
+
+
 def extract_payment_phrase(message_text: str) -> tuple[float | None, str | None]:
-    normalized = normalize_correction_text(message_text)
+    normalized = _CORRECTIONS_APPLE_PAY_RE.sub('apple_pay', normalize_correction_text(message_text))
     if not normalized:
         return None, None
 
@@ -168,7 +171,7 @@ def extract_trade_cash_phrase(message_text: str) -> tuple[float | None, str | No
         return None, None
 
     match = re.search(
-        r"(?:plus|\+)\s*\$?\s*(\d+(?:\.\d{1,2})?)(?:\s*(cash|zelle|venmo|paypal|card|tap|cc|dc))?",
+        r"(?:plus|\+)\s*\$?\s*(\d+(?:\.\d{1,2})?)(?:\s*(cash|zelle|venmo|paypal|card|tap|cc|dc|apple_pay))?",
         normalized,
         re.I,
     )
