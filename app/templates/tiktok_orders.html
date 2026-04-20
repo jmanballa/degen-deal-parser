@@ -83,7 +83,6 @@
         @media (max-width:1200px){.filters-form,.sync-form,.summary-grid,.helper-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:1fr}}
         @media (max-width:800px){.page{padding:16px 14px 28px}.filters-form,.sync-form,.summary-grid,.helper-grid{grid-template-columns:1fr}}
     </style>
-    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
     <style>
         .vip-badge {
             display: inline-flex;
@@ -108,10 +107,12 @@
             color: #8b5cf6;
         }
     </style>
+    <link rel="stylesheet" href="/static/linear.css?v=2026042007">
+    <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
     <div class="page">
-        {% include "_workspace_nav.html" %}
+        {% include "_linear_sidebar.html" %}
 
         {% if success %}<div class="banner banner-success">{{ success }}</div>{% endif %}
         {% if error %}<div class="banner banner-error">{{ error }}</div>{% endif %}

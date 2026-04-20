@@ -186,8 +186,13 @@
         .preset-btn:hover { border-color: var(--text-muted); color: var(--text); }
         .preset-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     </style>
+    <link rel="stylesheet" href="/static/linear.css?v=2026042007">
+    <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
+<div class="page">
+    {% include "_linear_sidebar.html" %}
+<div class="page-inner">
 <div class="container">
     <div class="page-header">
         <svg class="tt-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -952,5 +957,8 @@
     populateCompareSelects();
 })();
 </script>
+</div><!-- .container -->
+</div><!-- .page-inner -->
+</div><!-- .page -->
 </body>
 </html>

@@ -166,8 +166,13 @@
             .data-table th, .data-table td { padding: 6px 4px; }
         }
     </style>
+    <link rel="stylesheet" href="/static/linear.css?v=2026042007">
+    <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
+<div class="page">
+    {% include "_linear_sidebar.html" %}
+<div class="page-inner">
 <div class="container">
     <div class="page-header">
         <svg width="28" height="28" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -627,5 +632,8 @@
     loadBuyers();
 })();
 </script>
+</div><!-- .container -->
+</div><!-- .page-inner -->
+</div><!-- .page -->
 </body>
 </html>

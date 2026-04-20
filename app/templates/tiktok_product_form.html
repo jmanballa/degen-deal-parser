@@ -57,11 +57,12 @@
         .card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:700px) { .form-row,.form-row-3,.sku-row { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } }
     </style>
-    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042007">
+    <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
     <div class="page">
-        {% include "_workspace_nav.html" %}
+        {% include "_linear_sidebar.html" %}
 
         {% if request.query_params.get("error") %}
         <div class="banner banner-error">{{ request.query_params.get("error") }}</div>
