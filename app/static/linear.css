@@ -255,13 +255,19 @@ a { color: inherit; text-decoration: none; }
     letter-spacing: 0.08em;
 }
 
-/* Body offset on desktop so page content doesn't sit under the sidebar. */
+/* Body offset on desktop so page content doesn't sit under the sidebar.
+   Use !important to win over safe-area.css @supports padding-left rules. */
 @media (min-width: 1024px) {
-    body:has(.linear-sidebar) { padding-left: var(--linear-sidebar-w); }
+    body:has(.linear-sidebar) { padding-left: var(--linear-sidebar-w) !important; }
 }
 @media (min-width: 768px) and (max-width: 1023.98px) {
-    body:has(.linear-sidebar) { padding-left: var(--linear-sidebar-w-mini); }
-    .linear-sidebar { width: var(--linear-sidebar-w-mini); padding: 14px 8px 10px; }
+    body:has(.linear-sidebar) { padding-left: var(--linear-sidebar-w-mini) !important; }
+    .linear-sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: var(--linear-sidebar-w-mini);
+        padding: 14px 8px 10px;
+    }
     .linear-sidebar-brand-text,
     .linear-sidebar-section-label,
     .linear-sidebar-label,
@@ -277,7 +283,7 @@ a { color: inherit; text-decoration: none; }
 
 /* Collapsed state (user toggle on desktop) */
 @media (min-width: 1024px) {
-    html.linear-sidebar-collapsed body:has(.linear-sidebar) { padding-left: var(--linear-sidebar-w-mini); }
+    html.linear-sidebar-collapsed body:has(.linear-sidebar) { padding-left: var(--linear-sidebar-w-mini) !important; }
     html.linear-sidebar-collapsed .linear-sidebar {
         width: var(--linear-sidebar-w-mini);
         padding: 14px 8px 10px;

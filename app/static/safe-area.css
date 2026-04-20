@@ -8,6 +8,15 @@
     padding-right: env(safe-area-inset-right);
   }
 
+  /* When the linear sidebar is present it owns padding-left on desktop.
+     Only apply safe-area left/right on mobile (<=767px) where sidebar is hidden. */
+  @media (min-width: 768px) {
+    body:has(.linear-sidebar) {
+      padding-left: unset;
+      padding-right: unset;
+    }
+  }
+
   /* If there's a fixed bottom nav, it owns the bottom safe area.
      The body gets padding for nav height only, not double the inset. */
   body:has(.mobile-bottom-nav) {
