@@ -16,11 +16,13 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates  # noqa: F401 — used for _templates instance
 from sqlmodel import Session, select, func
 
-_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
-_templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+# Reuse the shared Jinja2Templates instance so custom filters registered in
+# app/shared.py (e.g. `money`, `pacific_datetime`) are available in
+# inventory templates as well. A separate instance would have an empty
+# filter env and any {{ x | money }} in the template would 500.
+from .shared import templates as _templates
 
 from .auth import has_role
 from .card_scanner import identify_card_from_image, lookup_card_image_and_price
