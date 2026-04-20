@@ -76,7 +76,7 @@
   }
 
   .mobile-bottom-nav .mbn-item.is-active {
-    color: #C8102E;
+    color: #ef4444;
   }
 
   .mobile-bottom-nav .mbn-item.is-active .mbn-label {
@@ -104,7 +104,7 @@
   }
 
   .mobile-bottom-nav .mbn-item[data-center="true"].is-active .mbn-icon {
-    filter: drop-shadow(0 0 6px rgba(200, 16, 46, 0.45));
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.45));
   }
 
   /* Leave room for the nav so content isn't hidden under it. */

@@ -31,8 +31,6 @@
             --bg: var(--lx-bg);
             --bg-strong: var(--lx-bg);
             --shadow: 0 1px 3px rgba(0,0,0,.4);
-            --accent: #60a5fa;
-            --accent-soft: #93c5fd;
             --positive: #22c55e;
             --negative: #ef4444;
             --radius-xl: 32px;
@@ -163,7 +161,7 @@
         }
         .hero-value {
             margin: 10px 0 8px;
-            font-size: clamp(46px, 6vw, 76px);
+            font-size: clamp(32px, 4vw, 44px);
             font-weight: 700;
             line-height: .9;
             color: #ffffff;
@@ -235,7 +233,7 @@
         button:hover { transform: translateY(-1px); }
         .primary-button {
             color: white;
-            background: linear-gradient(135deg, #1d4ed8, #3b82f6 64%, #60a5fa);
+            background: var(--lx-red);
             box-shadow: 0 4px 12px rgba(96, 165, 250, 0.24);
         }
         .secondary-button {
@@ -256,7 +254,7 @@
             border-color: transparent;
         }
         .quick-link.legacy {
-            color: var(--accent);
+            color: var(--lx-text);
             border-color: rgba(22, 119, 255, 0.14);
         }
         .kpi-grid,
@@ -266,7 +264,7 @@
             gap: 20px;
             margin-bottom: 20px;
         }
-        .kpi-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
         .content-grid { grid-template-columns: 1.1fr .9fr; }
         .data-grid { grid-template-columns: 1fr 1fr; }
         .metric-card {
@@ -495,7 +493,7 @@
             .statement-table { border-radius: 18px; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042011">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042012">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body class="finance-page">
