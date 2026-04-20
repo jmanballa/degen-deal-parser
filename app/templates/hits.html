@@ -76,10 +76,12 @@
         }
     </style>
     <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
+    <link rel="stylesheet" href="/static/linear.css">
+    <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
     <div class="page">
-        {% include "_workspace_nav.html" %}
+        {% include "_linear_sidebar.html" %}
 
         {% if request.query_params.get("success") %}
         <div class="flash success">Hit saved successfully.</div>
