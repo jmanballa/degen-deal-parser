@@ -1,0 +1,104 @@
+{# Linear-style left sidebar. Fixed on desktop, icon-only on medium, hidden on mobile. #}
+{% set _ls_path = request.url.path %}
+{% set _ls_role = current_user.role if current_user else "viewer" %}
+{% set _ls_is_admin = _ls_role == "admin" %}
+{% set _ls_is_reviewer = _ls_role in ("reviewer", "admin") %}
+{% macro _ls_item(href, label, active, icon) -%}
+<a href="{{ href }}" class="linear-sidebar-item{% if active %} is-active{% endif %}"{% if active %} aria-current="page"{% endif %}>
+    <span class="linear-sidebar-icon" aria-hidden="true">{{ icon|safe }}</span>
+    <span class="linear-sidebar-label">{{ label }}</span>
+</a>
+{%- endmacro %}
+<aside class="linear-sidebar" aria-label="Primary">
+    <div class="linear-sidebar-head">
+        <a class="linear-sidebar-brand" href="/dashboard" aria-label="Degen dashboard">
+            <img class="linear-sidebar-logo" src="/static/degen-logo.png" alt="">
+            <span class="linear-sidebar-brand-text">Degen</span>
+        </a>
+        <button class="linear-sidebar-collapse" type="button" aria-label="Toggle sidebar" title="Toggle sidebar">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h12M3 18h18"/></svg>
+        </button>
+    </div>
+    <nav class="linear-sidebar-nav">
+        <div class="linear-sidebar-section">
+            <div class="linear-sidebar-section-label">Workspace</div>
+            {{ _ls_item("/dashboard", "Dashboard", _ls_path == "/dashboard",
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>') }}
+            {% if _ls_is_reviewer %}
+            {{ _ls_item("/review", "Review", _ls_path.startswith("/review"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3a2 2 0 0 0-2 2v1H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3V5a2 2 0 0 0-2-2h-2Z"/><path d="m9 14 2 2 4-4"/></svg>') }}
+            {% endif %}
+            {{ _ls_item("/deals", "Deals", _ls_path.startswith("/deals"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/><circle cx="7" cy="7" r="1.5"/></svg>') }}
+        </div>
+        <div class="linear-sidebar-section">
+            <div class="linear-sidebar-section-label">Ops</div>
+            {{ _ls_item("/finance", "Finance", _ls_path.startswith("/finance") or _ls_path == "/pnl",
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>') }}
+            {{ _ls_item("/reports", "Reports", _ls_path.startswith("/reports"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg>') }}
+            {% if _ls_is_admin %}
+            {{ _ls_item("/bookkeeping", "Bookkeeping", _ls_path.startswith("/bookkeeping"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>') }}
+            {% endif %}
+            {{ _ls_item("/inventory", "Inventory", _ls_path.startswith("/inventory"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8l-9-5-9 5v8l9 5 9-5z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/></svg>') }}
+            {{ _ls_item("/hits", "Live Hits", _ls_path.startswith("/hits"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>') }}
+        </div>
+        <div class="linear-sidebar-section">
+            <div class="linear-sidebar-section-label">Channels</div>
+            {{ _ls_item("/shopify/orders", "Shopify", _ls_path.startswith("/shopify/orders"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>') }}
+            {{ _ls_item("/tiktok/orders", "TikTok Orders", _ls_path.startswith("/tiktok/orders") or _ls_path == "/tiktok",
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>') }}
+            {{ _ls_item("/tiktok/products", "TikTok Products", _ls_path.startswith("/tiktok/products"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>') }}
+            {{ _ls_item("/tiktok/streamer", "Streamer", _ls_path.startswith("/tiktok/streamer"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2" ry="2"/></svg>') }}
+            {{ _ls_item("/stream-manager", "Stream Manager", _ls_path.startswith("/stream-manager"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 22h8M12 18v4"/></svg>') }}
+        </div>
+        {% if _ls_is_admin %}
+        <div class="linear-sidebar-section">
+            <div class="linear-sidebar-section-label">Admin</div>
+            {{ _ls_item("/table", "Table", _ls_path.startswith("/table") or _ls_path.startswith("/review-table"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>') }}
+            {{ _ls_item("/status", "Status", _ls_path == "/status",
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>') }}
+            {{ _ls_item("/admin", "Admin", _ls_path.startswith("/admin") or _ls_path.startswith("/ops-log") or _ls_path.startswith("/learned-rule-log"),
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>') }}
+        </div>
+        {% endif %}
+    </nav>
+    <div class="linear-sidebar-foot">
+        {% if current_user %}
+        <div class="linear-sidebar-user" title="{{ current_user.display_name or current_user.username }} ({{ _ls_role }})">
+            <div class="linear-sidebar-avatar">{{ (current_user.display_name or current_user.username or "?")[:1]|upper }}</div>
+            <div class="linear-sidebar-user-text">
+                <div class="linear-sidebar-user-name">{{ current_user.display_name or current_user.username }}</div>
+                <div class="linear-sidebar-user-role">{{ _ls_role }}</div>
+            </div>
+        </div>
+        {% endif %}
+        <a href="/logout" class="linear-sidebar-item linear-sidebar-signout" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='/login');return false;">
+            <span class="linear-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
+            <span class="linear-sidebar-label">Sign out</span>
+        </a>
+    </div>
+</aside>
+<script>
+(function () {
+    var KEY = 'degen.ui.sidebarCollapsed';
+    var aside = document.currentScript.previousElementSibling;
+    if (!aside || !aside.classList || !aside.classList.contains('linear-sidebar')) return;
+    try {
+        if (localStorage.getItem(KEY) === '1') document.documentElement.classList.add('linear-sidebar-collapsed');
+    } catch (e) {}
+    var btn = aside.querySelector('.linear-sidebar-collapse');
+    if (btn) btn.addEventListener('click', function () {
+        var c = document.documentElement.classList.toggle('linear-sidebar-collapsed');
+        try { localStorage.setItem(KEY, c ? '1' : '0'); } catch (e) {}
+    });
+})();
+</script>
