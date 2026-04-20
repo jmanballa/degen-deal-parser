@@ -1,55 +1,135 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <!-- PWA -->
-    <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="Degen">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon-180.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
-    <link rel="stylesheet" href="/static/safe-area.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    {% include "_linear_base_head.html" %}
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
-        * { box-sizing:border-box; }
-        html { scroll-behavior: smooth; }
-        body { margin:0; min-height:100vh; display:grid; place-items:center; padding:20px; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
-        .card { width:min(460px,100%); background:var(--card); border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow); padding:28px; }
-        .logo { display:block; width:min(220px,70%); margin:0 auto 14px; }
-        .eyebrow { display:inline-flex; padding:6px 10px; border-radius:999px; background:rgba(37,28,22,.06); color:#ebc67a; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        h1 { margin:12px 0 8px; font-size:36px; line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight:800; }
-        p { margin:0 0 18px; color:#a7b0ba; line-height:1.5; }
-        label { display:block; margin-bottom:12px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        input { width:100%; margin-top:6px; padding:12px 14px; border-radius:14px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
-        button { width:100%; appearance:none; border:none; border-radius:14px; padding:12px 14px; background:linear-gradient(135deg,var(--accent),#ef6e48); color:#fff; font:inherit; font-weight:800; cursor:pointer; box-shadow:0 10px 18px rgba(212,83,56,.22); }
-        .error { margin-bottom:12px; padding:12px 14px; border-radius:14px; border:1px solid #efb8b4; background:#fff0ef; color:#9d2f2b; font-weight:700; }
-        .helper { margin-top:14px; color:#a7b0ba; font-size:13px; line-height:1.5; }
-        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
-        .card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        body {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background:
+                radial-gradient(circle at 20% 10%, rgba(99,102,241,.12), transparent 40%),
+                radial-gradient(circle at 80% 90%, rgba(168,85,247,.10), transparent 45%),
+                #08090a !important;
+        }
+        .login-card {
+            width: min(420px, 100%);
+            background: var(--lx-s1);
+            border: 1px solid var(--lx-br);
+            border-radius: 14px;
+            box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.4);
+            padding: 28px 26px;
+            color: var(--lx-text);
+        }
+        .login-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .login-brand img {
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            border: 1px solid var(--lx-br);
+            background: var(--lx-s2);
+            object-fit: cover;
+        }
+        .login-brand-text { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+        .login-eyebrow {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--lx-muted);
+            margin-bottom: 8px;
+        }
+        .login-card h1 {
+            margin: 0 0 6px;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--lx-text);
+        }
+        .login-card p { margin: 0 0 20px; color: var(--lx-muted); font-size: 13px; line-height: 1.5; }
+        .login-card label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--lx-muted);
+            margin-bottom: 12px;
+        }
+        .login-card input {
+            width: 100%;
+            margin-top: 6px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--lx-br2);
+            background: var(--lx-bg);
+            color: var(--lx-text);
+            font: inherit;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 120ms, box-shadow 120ms;
+        }
+        .login-card input:focus {
+            border-color: rgba(99,102,241,.55);
+            box-shadow: 0 0 0 3px rgba(99,102,241,.2);
+        }
+        .login-card button {
+            width: 100%;
+            appearance: none;
+            border: 1px solid rgba(99,102,241,.35);
+            border-radius: 8px;
+            padding: 10px 14px;
+            background: linear-gradient(180deg, #5b60ea, #4b50d6);
+            color: #fff;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: filter 120ms, transform 120ms;
+        }
+        .login-card button:hover { filter: brightness(1.08); }
+        .login-card button:active { transform: translateY(1px); }
+        .login-error {
+            margin-bottom: 14px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(239,68,68,.35);
+            background: rgba(239,68,68,.1);
+            color: #fca5a5;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .login-helper {
+            margin-top: 14px;
+            color: var(--lx-dim);
+            font-size: 12px;
+            line-height: 1.5;
+        }
     </style>
-    <link rel="stylesheet" href="/static/courtyard-theme.css?v=4">
 </head>
 <body>
-    <form class="card" method="post" action="/login">
-        <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
-        <div class="eyebrow">Team Sign In</div>
+    <form class="login-card" method="post" action="/login">
+        <div class="login-brand">
+            <img src="/static/degen-logo.png" alt="">
+            <span class="login-brand-text">Degen</span>
+        </div>
+        <div class="login-eyebrow">Team Sign In</div>
         <h1>{{ title }}</h1>
         <p>Use your Degen internal account to review deals, browse reports, or manage the parser.</p>
-        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
         <input type="hidden" name="next" value="{{ next_url }}">
         <label>Username<input type="text" name="username" autocomplete="username" required></label>
         <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
         <button type="submit">Sign In</button>
-        <div class="helper">Admin and reviewer users are seeded from your local app settings, so you can start using roles without a big setup process.</div>
+        <div class="login-helper">Admin and reviewer users are seeded from your local app settings.</div>
     </form>
 </body>
 </html>
