@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,208 +15,249 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); --green:#166647; --green-bg:#edf9f2; --yellow:#8a580d; --yellow-bg:#fff5df; --red:#9d2f2b; --red-bg:#fff0ef; --blue:#30548c; --blue-bg:#e7f0ff; --grey:#5d6a77; --grey-bg:#edf1f5; }
-        * { box-sizing:border-box; }
-        html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
-        a { color:inherit; text-decoration:none; }
-        .page { max-width:1660px; margin:0 auto; padding: 28px 28px 60px; }
-        .hero, .card { background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
-        .hero { display:grid; grid-template-columns:minmax(220px,300px) 1fr; gap:24px; align-items:center; padding:28px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.55), transparent 24%), radial-gradient(circle at 78% 22%, rgba(213,83,56,.11), transparent 20%), linear-gradient(135deg, rgba(255,249,239,.98), rgba(255,238,223,.95)); }
-        .logo-wrap img { width:100%; max-width:280px; display:block; margin:0 auto; filter:drop-shadow(0 18px 28px rgba(60,24,8,.2)); }
-        .card { padding:18px; margin-bottom:18px; }
-        .banner { padding:12px 16px; border-radius:14px; margin-bottom:16px; font-weight:700; border:1px solid; box-shadow:var(--shadow); }
-        .banner-success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
-        .banner-error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
-        .eyebrow, .pill, .status-pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
-        .pill { background:#f5eadc; color:var(--muted); }
-        .brand-tiktok { color: #ff0050; }
-        .status-ok,.status-success,.status-paid,.status-fulfilled { color:var(--green); background:var(--green-bg); }
-        .status-warn,.status-pending,.status-partial,.status-waiting,.status-skipped { color:var(--yellow); background:var(--yellow-bg); }
-        .status-bad,.status-failed,.status-error,.status-refunded { color:var(--red); background:var(--red-bg); }
-        .status-running,.status-webhook { color:var(--blue); background:var(--blue-bg); }
-        .status-idle,.status-grey,.status-unfulfilled,.status-other,.status-empty { color:var(--grey); background:var(--grey-bg); }
-        h1, .section-title { font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif; color:#ffffff; }
-        h1 { margin:10px 0 8px; font-size:clamp(34px,4vw,56px); line-height:.93; letter-spacing:-.045em; font-weight: 800; }
-        p, .subtle { color:#a7b0ba; }
-        p { margin:0 0 16px; max-width:900px; line-height:1.6; font-size:15px; }
-        .hero-meta, .section-header, .filter-row, .table-meta, .pagination-bar, .pagination-controls, .summary-strip, .helper-grid, .sync-grid { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
-        .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; transition:transform .15s ease; }
-        .button:hover, button:hover { transform:translateY(-1px); }
-        .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
-        label { display:block; font-size:12px; font-weight:700; color:#a7b0ba; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
-        input, select { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
-        .filters-form { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)) auto; gap:10px; align-items:end; }
-        .sync-form { display:grid; grid-template-columns:repeat(2,minmax(0,220px)) auto; gap:10px; align-items:end; }
-        .section-header { margin-bottom:12px; }
-        .section-title { margin:0; font-size:24px; letter-spacing:-.04em; }
-        .summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
-        .helper-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:stretch; }
-        .metric, .helper-card { background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,248,238,.75)); border:1px solid var(--line); border-radius:18px; padding:14px; min-height:92px; }
-        .helper-card ul { margin:8px 0 0; padding-left:18px; color:var(--muted); }
-        .metric-label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
-        .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; color:#ffffff; font-variant-numeric: tabular-nums; }
-        .subtle { font-size:12px; line-height:1.5; }
-        .table-scroll-top { overflow-x:auto; overflow-y:hidden; border:1px solid #eadfce; border-bottom:none; border-radius:20px 20px 0 0; background:rgba(255,255,255,.88); height:18px; }
-        .table-scroll-top-inner { height:1px; }
-        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:0 0 20px 20px; background:linear-gradient(180deg,#fffdfa,#fff9f2); max-height:72vh; }
-        table { width:100%; border-collapse:separate; border-spacing:0; min-width:1380px; }
-        th, td { padding:10px 12px; border-bottom:1px solid #efe4d6; vertical-align:top; text-align:left; font-size:13px; line-height:1.35; }
-        td { color:#f0eee8; }
-        thead th { position:sticky; top:0; z-index:2; background:#fff6ea; color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #e2d1bb; }
-        thead th a { display:inline-flex; align-items:center; gap:6px; color:inherit; }
-        .sort-button { display:inline-flex; align-items:center; gap:6px; background:none; border:none; padding:0; color:inherit; font:inherit; font-weight:inherit; text-transform:inherit; letter-spacing:inherit; cursor:pointer; }
-        .sort-indicator { color:var(--accent-strong); font-size:11px; }
-        tbody tr:hover { background:#fff9f1; }
-        .muted-cell { color:#a7b0ba; }
-        .mono { font-family:"Consolas","Courier New",monospace; font-size:12px; }
-        .item-summary { max-width:360px; white-space:normal; }
-        @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
-        .hero, .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
-        .hero:hover, .card:hover, .metric:hover { transform:translateY(-2px); box-shadow:0 24px 48px rgba(77,46,20,.18); }
-        .hero, .card, .metric { transition: transform .2s ease, box-shadow .2s ease; }
-        @media (max-width:1200px){.filters-form,.sync-form,.summary-grid,.helper-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:1fr}}
-        @media (max-width:800px){.page{padding:16px 14px 28px}.filters-form,.sync-form,.summary-grid,.helper-grid{grid-template-columns:1fr}}
-    </style>
-    <style>
+        /* ── Page-specific dark styles ─────────────────────────────────── */
+
+        /* Status pills — dark-compat semantic colours */
+        .status-pill {
+            display: inline-flex; align-items: center;
+            padding: 3px 9px; border-radius: 5px;
+            font-size: 11px; font-weight: 600;
+            white-space: nowrap; font-variant-numeric: tabular-nums;
+        }
+        .status-ok,.status-success,.status-paid,.status-fulfilled {
+            color: #86efac; background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.28);
+        }
+        .status-warn,.status-pending,.status-partial,.status-waiting,.status-skipped {
+            color: #fcd34d; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.28);
+        }
+        .status-bad,.status-failed,.status-error,.status-refunded {
+            color: #fca5a5; background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.28);
+        }
+        .status-running,.status-webhook {
+            color: #93c5fd; background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.28);
+        }
+        .status-idle,.status-grey,.status-unfulfilled,.status-other,.status-empty {
+            color: var(--lx-muted); background: rgba(255,255,255,.06); border: 1px solid var(--lx-br);
+        }
+
+        /* VIP badge */
         .vip-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 3px;
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            background: linear-gradient(135deg, rgba(139, 92, 246, .12), rgba(167, 139, 250, .18));
-            border: 1px solid rgba(139, 92, 246, .3);
-            color: #7c3aed;
-            margin-left: 6px;
-            vertical-align: middle;
-            white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 7px; border-radius: 999px;
+            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+            background: rgba(139,92,246,.12); border: 1px solid rgba(139,92,246,.28);
+            color: #c4b5fd; margin-left: 6px; vertical-align: middle; white-space: nowrap;
         }
-        .vip-badge-spent {
-            font-size: 9px;
-            font-weight: 600;
-            color: #8b5cf6;
+        .vip-badge-spent { font-size: 9px; font-weight: 600; color: #a78bfa; }
+
+        /* TikTok brand accent */
+        .brand-tiktok { color: #ff0050; }
+
+        /* Page layout */
+        .tk-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+        .tk-summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 10px; margin-bottom: 16px; }
+        .tk-filters-form {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0,1fr)) auto;
+            gap: 10px; align-items: end;
+        }
+        .tk-sync-form { display: grid; grid-template-columns: repeat(2, minmax(0,180px)) auto; gap: 10px; align-items: end; }
+
+        /* Info list inside cards */
+        .tk-info-list { margin: 8px 0 0; padding-left: 18px; color: var(--lx-muted); font-size: 13px; line-height: 1.8; }
+        .tk-info-list li { color: var(--lx-muted); }
+
+        /* Table */
+        .tk-table-top {
+            overflow-x: auto; overflow-y: hidden;
+            border: 1px solid var(--lx-br); border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            background: var(--lx-s2); height: 18px;
+        }
+        .tk-table-top-inner { height: 1px; }
+        .tk-table-shell {
+            overflow: auto;
+            border: 1px solid var(--lx-br); border-radius: 0 0 10px 10px;
+            background: var(--lx-s1); max-height: 72vh;
+        }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1380px; }
+        th, td { padding: 9px 12px; border-bottom: 1px solid var(--lx-br); vertical-align: top; text-align: left; font-size: 13px; line-height: 1.35; color: var(--lx-text); }
+        thead th {
+            position: sticky; top: 0; z-index: 2;
+            background: var(--lx-s2); color: var(--lx-muted);
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+            border-bottom: 1px solid var(--lx-br2);
+        }
+        thead th a { display: inline-flex; align-items: center; gap: 6px; color: inherit; }
+        tbody tr:hover td { background: rgba(255,255,255,.03); }
+        td:last-child, th:last-child { border-right: none; }
+        .muted-cell { color: var(--lx-muted); }
+        .mono { font-family: "Consolas","Courier New",monospace; font-size: 12px; }
+        .item-summary { max-width: 340px; white-space: normal; }
+        .sort-button {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: none; border: none; padding: 0;
+            color: inherit; font: inherit; font-weight: inherit;
+            text-transform: inherit; letter-spacing: inherit; cursor: pointer;
+        }
+        .sort-indicator { color: #ef4444; font-size: 11px; }
+
+        /* Pagination strip */
+        .tk-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+        /* Section headers within cards */
+        .tk-card-head { margin-bottom: 14px; }
+        .tk-card-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--lx-text); letter-spacing: -.01em; }
+        .tk-card-sub { font-size: 12px; color: var(--lx-muted); margin: 0; }
+
+        /* Inline helper card (sub-card inside a card) */
+        .tk-inner-card {
+            background: var(--lx-s2); border: 1px solid var(--lx-br);
+            border-radius: 8px; padding: 14px;
+        }
+        .tk-inner-lbl {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .07em; color: var(--lx-dim); margin: 0 0 8px;
+        }
+
+        @media (max-width: 1200px) {
+            .tk-filters-form { grid-template-columns: repeat(4, minmax(0,1fr)); }
+            .tk-summary-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+            .tk-grid2 { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 800px) {
+            .tk-filters-form { grid-template-columns: repeat(2, minmax(0,1fr)); }
+            .tk-summary-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+            .tk-sync-form { grid-template-columns: 1fr; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042007">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
     <div class="page">
         {% include "_linear_sidebar.html" %}
 
-        {% if success %}<div class="banner banner-success">{{ success }}</div>{% endif %}
-        {% if error %}<div class="banner banner-error">{{ error }}</div>{% endif %}
+        {% if success %}<div class="lx-banner lx-banner-ok">{{ success }}</div>{% endif %}
+        {% if error %}<div class="lx-banner lx-banner-err">{{ error }}</div>{% endif %}
 
-        <section class="hero">
-            <div class="logo-wrap"><img src="/static/degen-logo.png" alt="Degen Collectibles logo"></div>
-            <div>
-                <div class="eyebrow"><svg style="display:inline-block;vertical-align:middle;margin-right:6px" width="16" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff0050" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Degen Collectibles TikTok Shop Orders</div>
-                <h1>{{ title }}</h1>
-                <p>Standalone TikTok Shop orders page with automatic pull status, manual sync controls, order totals, daily rollups, and the full order table in one place.</p>
-                <div class="hero-meta">
-                    <span class="pill">{{ pagination["total_rows"] }} matching orders</span>
-                    <span class="pill">Auto sync {% if auto_sync_enabled %}every {{ sync_interval_minutes }} min{% else %}disabled{% endif %}</span>
-                    <span class="status-pill status-{{ sync_snapshot["sync_status"] or "idle" }}">{{ sync_snapshot["sync_label"] }}</span>
+        <!-- Page header — slim title row replacing the big hero block -->
+        <div class="lx-page-head">
+            <div class="lx-head-row">
+                <div>
+                    <p class="lx-eyebrow">
+                        <svg style="display:inline-block;vertical-align:middle;margin-right:5px" width="13" height="15" viewBox="0 0 24 24" fill="none" stroke="#ff0050" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                        TikTok Shop
+                    </p>
+                    <h1 class="lx-h1">{{ title }}</h1>
+                    <p class="lx-subtitle">Automatic pull status, manual sync controls, order totals, daily rollups, and full order table.</p>
+                </div>
+                <div class="lx-head-actions">
+                    <span class="lx-pill">{{ pagination["total_rows"] }} matching orders</span>
+                    <span class="lx-pill">Auto sync {% if auto_sync_enabled %}every {{ sync_interval_minutes }} min{% else %}disabled{% endif %}</span>
+                    <span class="status-pill status-{{ sync_snapshot['sync_status'] or 'idle' }}">{{ sync_snapshot["sync_label"] }}</span>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <div class="card">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">Filters</h2>
-                    <div class="subtle">Slice the TikTok order stream by date, status, source, currency, or customer/order text.</div>
-                </div>
+        <!-- Filters -->
+        <div class="lx-card">
+            <div class="tk-card-head">
+                <h2 class="tk-card-title">Filters</h2>
+                <p class="tk-card-sub">Slice by date, status, source, currency, or customer/order text.</p>
             </div>
-            <form method="get" action="/tiktok/orders" class="filters-form" id="orders-filter-form">
+            <form method="get" action="/tiktok/orders" class="tk-filters-form" id="orders-filter-form">
                 <div>
-                    <label>Livestream</label>
-                    <select name="stream" id="stream-filter">
-                        <option value="">All Streams</option>
-                        {% for s in stream_sessions %}
-                        <option value="{{ s.id }}" {% if selected_stream == s.id %}selected{% endif %}>{{ s.title or 'Untitled' }} — ${{ "%.0f"|format(s.gmv or 0) }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="lx-label">Livestream
+                        <select name="stream" id="stream-filter" class="lx-select">
+                            <option value="">All Streams</option>
+                            {% for s in stream_sessions %}
+                            <option value="{{ s.id }}" {% if selected_stream == s.id %}selected{% endif %}>{{ s.title or 'Untitled' }} — ${{ "%.0f"|format(s.gmv or 0) }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
                 </div>
                 <div>
-                    <label>From</label>
-                    <input type="date" name="start" id="date-start" value="{{ selected_start }}">
+                    <label class="lx-label">From
+                        <input type="date" name="start" id="date-start" class="lx-input" value="{{ selected_start }}">
+                    </label>
                 </div>
                 <div>
-                    <label>To</label>
-                    <input type="date" name="end" id="date-end" value="{{ selected_end }}">
+                    <label class="lx-label">To
+                        <input type="date" name="end" id="date-end" class="lx-input" value="{{ selected_end }}">
+                    </label>
                 </div>
                 <div>
-                    <label>Financial status</label>
-                    <select name="financial_status">
-                        <option value="">All</option>
-                        {% for value in financial_statuses %}<option value="{{ value }}" {% if selected_financial_status == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
-                    </select>
+                    <label class="lx-label">Financial status
+                        <select name="financial_status" class="lx-select">
+                            <option value="">All</option>
+                            {% for value in financial_statuses %}<option value="{{ value }}" {% if selected_financial_status == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+                        </select>
+                    </label>
                 </div>
                 <div>
-                    <label>Fulfillment</label>
-                    <select name="fulfillment_status">
-                        <option value="">All</option>
-                        {% for value in fulfillment_statuses %}<option value="{{ value }}" {% if selected_fulfillment_status == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
-                    </select>
+                    <label class="lx-label">Fulfillment
+                        <select name="fulfillment_status" class="lx-select">
+                            <option value="">All</option>
+                            {% for value in fulfillment_statuses %}<option value="{{ value }}" {% if selected_fulfillment_status == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+                        </select>
+                    </label>
                 </div>
                 <div>
-                    <label>Order status</label>
-                    <select name="order_status">
-                        <option value="">All</option>
-                        {% for value in order_statuses %}<option value="{{ value }}" {% if selected_order_status == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
-                    </select>
+                    <label class="lx-label">Order status
+                        <select name="order_status" class="lx-select">
+                            <option value="">All</option>
+                            {% for value in order_statuses %}<option value="{{ value }}" {% if selected_order_status == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+                        </select>
+                    </label>
                 </div>
                 <div>
-                    <label>Source</label>
-                    <select name="source">
-                        <option value="">All</option>
-                        {% for value in source_options %}<option value="{{ value }}" {% if selected_source == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
-                    </select>
+                    <label class="lx-label">Source
+                        <select name="source" class="lx-select">
+                            <option value="">All</option>
+                            {% for value in source_options %}<option value="{{ value }}" {% if selected_source == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+                        </select>
+                    </label>
                 </div>
                 <div>
-                    <label>Currency</label>
-                    <select name="currency">
-                        <option value="">All</option>
-                        {% for value in currency_options %}<option value="{{ value }}" {% if selected_currency == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
-                    </select>
+                    <label class="lx-label">Currency
+                        <select name="currency" class="lx-select">
+                            <option value="">All</option>
+                            {% for value in currency_options %}<option value="{{ value }}" {% if selected_currency == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+                        </select>
+                    </label>
                 </div>
                 <div>
-                    <label>Search</label>
-                    <input type="text" name="search" value="{{ selected_search }}" placeholder="Order #, customer, item, shop">
+                    <label class="lx-label">Search
+                        <input type="text" name="search" class="lx-input" value="{{ selected_search }}" placeholder="Order #, customer, item, shop">
+                    </label>
                 </div>
                 <input type="hidden" name="sort_by" value="{{ selected_sort_by }}">
                 <input type="hidden" name="sort_dir" value="{{ selected_sort_dir }}">
                 <input type="hidden" name="limit" value="{{ pagination['limit'] }}">
-                <button type="submit" class="primary-button">Apply</button>
+                <div style="padding-top:20px">
+                    <button type="submit" class="lx-btn lx-btn-primary" style="width:100%">Apply</button>
+                </div>
             </form>
         </div>
 
-        <div class="card">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">Integration Status</h2>
-                    <div class="subtle">Connection health, last callback/webhook timestamps, and the most recent automatic or manual sync result.</div>
-                </div>
+        <!-- Integration Status -->
+        <div class="lx-card">
+            <div class="tk-card-head">
+                <h2 class="tk-card-title">Integration Status</h2>
+                <p class="tk-card-sub">Connection health, last callback/webhook timestamps, and most recent sync result.</p>
             </div>
-            <div class="helper-grid">
-                <div class="helper-card">
-                    <div class="metric-label">Connection</div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <div class="tk-grid2">
+                <div class="tk-inner-card">
+                    <div class="tk-inner-lbl">Connection</div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
                         <span class="status-pill status-{{ sync_snapshot['status_tone'] }}">{{ sync_snapshot["status_label"] }}</span>
                         <span class="status-pill status-{{ sync_snapshot['sync_status'] or 'idle' }}">{{ sync_snapshot["sync_label"] }}</span>
                     </div>
-                    <ul>
+                    <ul class="tk-info-list">
                         <li>Shop key: <span class="mono">{{ sync_snapshot["shop_key"] }}</span></li>
                         <li>Has tokens: {{ "yes" if sync_snapshot["has_tokens"] else "no" }}</li>
                         <li>Last auth: {{ auth_row.updated_at|pacific_datetime if auth_row and auth_row.updated_at else "none yet" }}</li>
@@ -224,9 +265,9 @@
                         <li>Last webhook: {{ integration_state["last_webhook_at"]|pacific_datetime if integration_state["last_webhook_at"] else "none yet" }}</li>
                     </ul>
                 </div>
-                <div class="helper-card">
-                    <div class="metric-label">Pull activity</div>
-                    <ul>
+                <div class="tk-inner-card">
+                    <div class="tk-inner-lbl">Pull activity</div>
+                    <ul class="tk-info-list">
                         <li>Running now: {{ "yes" if sync_snapshot["is_running"] else "no" }}</li>
                         <li>Last started: {{ sync_snapshot["last_pull_started_at"]|pacific_datetime if sync_snapshot["last_pull_started_at"] else "none yet" }}</li>
                         <li>Last finished: {{ sync_snapshot["last_pull_finished_at"]|pacific_datetime if sync_snapshot["last_pull_finished_at"] else "none yet" }}</li>
@@ -237,59 +278,61 @@
                         {% if integration_state["last_error"] %}<li>Last error: {{ integration_state["last_error"] }}</li>{% endif %}
                     </ul>
                     {% if current_user and current_user.role == "admin" %}
-                    <form method="post" action="/tiktok/orders/sync-form" class="sync-form" style="margin-top:12px;">
+                    <form method="post" action="/tiktok/orders/sync-form" class="tk-sync-form" style="margin-top:12px;">
                         <div>
-                            <label>Sync since date</label>
-                            <input type="date" name="since" value="{{ sync_since_default }}">
+                            <label class="lx-label">Sync since date
+                                <input type="date" name="since" class="lx-input" value="{{ sync_since_default }}">
+                            </label>
                         </div>
                         <div>
-                            <label>Limit</label>
-                            <input type="number" name="limit" min="1" value="{{ sync_limit_default }}">
+                            <label class="lx-label">Limit
+                                <input type="number" name="limit" min="1" class="lx-input" value="{{ sync_limit_default }}">
+                            </label>
                         </div>
-                        <button type="submit" class="secondary-button">Run Sync Now</button>
+                        <div style="padding-top:20px">
+                            <button type="submit" class="lx-btn">Run Sync Now</button>
+                        </div>
                     </form>
                     {% endif %}
                 </div>
             </div>
         </div>
 
-        <div class="summary-grid">
-            <div class="metric"><div class="metric-label">Orders</div><div class="metric-value">{{ summary["orders"] }}</div></div>
-            <div class="metric"><div class="metric-label">Paid Orders</div><div class="metric-value">{{ summary["paid_orders"] }}</div></div>
-            <div class="metric"><div class="metric-label">Gross</div><div class="metric-value">${{ "%.2f"|format(summary["gross_revenue"]) }}</div></div>
-            <div class="metric"><div class="metric-label">Tax</div><div class="metric-value">${{ "%.2f"|format(summary["total_tax"]) }}</div></div>
-            <div class="metric"><div class="metric-label">Net</div><div class="metric-value">${{ "%.2f"|format(summary["net_revenue"]) }}</div></div>
-            <div class="metric"><div class="metric-label">Avg Net Order</div><div class="metric-value">${{ "%.2f"|format(summary["avg_order_value_net"]) }}</div></div>
+        <!-- Summary metrics -->
+        <div class="tk-summary-grid">
+            <div class="lx-metric"><div class="lx-metric-lbl">Orders</div><div class="lx-metric-val">{{ summary["orders"] }}</div></div>
+            <div class="lx-metric"><div class="lx-metric-lbl">Paid Orders</div><div class="lx-metric-val">{{ summary["paid_orders"] }}</div></div>
+            <div class="lx-metric"><div class="lx-metric-lbl">Gross</div><div class="lx-metric-val">${{ "%.2f"|format(summary["gross_revenue"]) }}</div></div>
+            <div class="lx-metric"><div class="lx-metric-lbl">Tax</div><div class="lx-metric-val">${{ "%.2f"|format(summary["total_tax"]) }}</div></div>
+            <div class="lx-metric"><div class="lx-metric-lbl">Net</div><div class="lx-metric-val">${{ "%.2f"|format(summary["net_revenue"]) }}</div></div>
+            <div class="lx-metric"><div class="lx-metric-lbl">Avg Net Order</div><div class="lx-metric-val">${{ "%.2f"|format(summary["avg_order_value_net"]) }}</div></div>
         </div>
 
-        <div class="helper-grid" style="margin-bottom:18px;">
-            <div class="card">
-                <div class="section-header">
-                    <div>
-                        <h2 class="section-title">Status Breakdown</h2>
-                        <div class="subtle">Financial, order, and fulfillment counts for the current filtered set.</div>
-                    </div>
+        <!-- Status Breakdown + Top Items -->
+        <div class="tk-grid2">
+            <div class="lx-card" style="margin-bottom:0">
+                <div class="tk-card-head">
+                    <h2 class="tk-card-title">Status Breakdown</h2>
+                    <p class="tk-card-sub">Financial, order, and fulfillment counts for the filtered set.</p>
                 </div>
-                <div class="helper-grid">
-                    <div class="helper-card">
-                        <div class="metric-label">Financial status</div>
-                        <ul>{% for key, value in summary["status_counts"].items() %}<li>{{ key }}: {{ value }}</li>{% else %}<li>No rows</li>{% endfor %}</ul>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="tk-inner-card">
+                        <div class="tk-inner-lbl">Financial status</div>
+                        <ul class="tk-info-list">{% for key, value in summary["status_counts"].items() %}<li>{{ key }}: {{ value }}</li>{% else %}<li>No rows</li>{% endfor %}</ul>
                     </div>
-                    <div class="helper-card">
-                        <div class="metric-label">Order status</div>
-                        <ul>{% for key, value in summary["order_status_counts"].items() %}<li>{{ key }}: {{ value }}</li>{% else %}<li>No rows</li>{% endfor %}</ul>
+                    <div class="tk-inner-card">
+                        <div class="tk-inner-lbl">Order status</div>
+                        <ul class="tk-info-list">{% for key, value in summary["order_status_counts"].items() %}<li>{{ key }}: {{ value }}</li>{% else %}<li>No rows</li>{% endfor %}</ul>
                     </div>
                 </div>
             </div>
-            <div class="card">
-                <div class="section-header">
-                    <div>
-                        <h2 class="section-title">Top Items</h2>
-                        <div class="subtle">Normalized line-item titles from the current TikTok order set.</div>
-                    </div>
+            <div class="lx-card" style="margin-bottom:0">
+                <div class="tk-card-head">
+                    <h2 class="tk-card-title">Top Items</h2>
+                    <p class="tk-card-sub">Normalized line-item titles from the current TikTok order set.</p>
                 </div>
-                <div class="helper-card">
-                    <ul>
+                <div class="tk-inner-card">
+                    <ul class="tk-info-list">
                         {% for item in line_item_summary["top_item_titles"] %}
                         <li>{{ item["title"] }} x{{ item["quantity"] }}</li>
                         {% else %}
@@ -300,19 +343,20 @@
             </div>
         </div>
 
-        <div class="card" id="orders-table">
-            <div class="table-meta">
+        <!-- Orders table -->
+        <div class="lx-card" id="orders-table" style="margin-top:16px">
+            <div class="tk-pagination" style="margin-bottom:12px;">
                 <div>
-                    <h2 class="section-title">Orders</h2>
-                    <div class="subtle">Rows {{ pagination["start_row"] }}-{{ pagination["end_row"] }} of {{ pagination["total_rows"] }}</div>
+                    <h2 class="tk-card-title" style="margin:0">Orders</h2>
+                    <p class="tk-card-sub" style="margin:0">Rows {{ pagination["start_row"] }}–{{ pagination["end_row"] }} of {{ pagination["total_rows"] }}</p>
                 </div>
-                <div class="pagination-controls">
-                    {% if pagination["has_previous"] %}<a class="button secondary-button" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['previous_page'], limit=pagination['limit']) }}" style="width:auto;">Previous</a>{% endif %}
-                    {% if pagination["has_next"] %}<a class="button secondary-button" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['next_page'], limit=pagination['limit']) }}" style="width:auto;">Next</a>{% endif %}
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    {% if pagination["has_previous"] %}<a class="lx-btn" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['previous_page'], limit=pagination['limit']) }}">Previous</a>{% endif %}
+                    {% if pagination["has_next"] %}<a class="lx-btn" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['next_page'], limit=pagination['limit']) }}">Next</a>{% endif %}
                 </div>
             </div>
-            <div class="table-scroll-top"><div class="table-scroll-top-inner"></div></div>
-            <div class="table-shell">
+            <div class="tk-table-top"><div class="tk-table-top-inner"></div></div>
+            <div class="tk-table-shell">
                 <table>
                     <thead>
                         <tr>
@@ -352,24 +396,23 @@
                     </tbody>
                 </table>
             </div>
-            <div class="pagination-bar" style="margin-top:12px;">
-                <div class="subtle">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</div>
-                <div class="pagination-controls">
-                    {% if pagination["has_previous"] %}<a class="button secondary-button" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['previous_page'], limit=pagination['limit']) }}" style="width:auto;">Previous</a>{% endif %}
-                    {% if pagination["has_next"] %}<a class="button secondary-button" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['next_page'], limit=pagination['limit']) }}" style="width:auto;">Next</a>{% endif %}
+            <div class="tk-pagination">
+                <p class="tk-card-sub" style="margin:0">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    {% if pagination["has_previous"] %}<a class="lx-btn" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['previous_page'], limit=pagination['limit']) }}">Previous</a>{% endif %}
+                    {% if pagination["has_next"] %}<a class="lx-btn" href="{{ page_url(start=selected_start, end=selected_end, financial_status=selected_financial_status, fulfillment_status=selected_fulfillment_status, order_status=selected_order_status, source=selected_source, currency=selected_currency, search=selected_search, sort_by=selected_sort_by, sort_dir=selected_sort_dir, page=pagination['next_page'], limit=pagination['limit']) }}">Next</a>{% endif %}
                 </div>
             </div>
         </div>
 
-        <div class="card">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">Daily Totals</h2>
-                    <div class="subtle">Paid-like TikTok Shop orders roll up into gross, tax, and net. Click a date to filter the orders table to that day.</div>
-                </div>
+        <!-- Daily Totals -->
+        <div class="lx-card">
+            <div class="tk-card-head">
+                <h2 class="tk-card-title">Daily Totals</h2>
+                <p class="tk-card-sub">Paid-like TikTok Shop orders rolled up into gross, tax, and net. Click a date to filter the orders table to that day.</p>
             </div>
-            <div class="table-scroll-top"><div class="table-scroll-top-inner"></div></div>
-            <div class="table-shell">
+            <div class="tk-table-top"><div class="tk-table-top-inner"></div></div>
+            <div class="tk-table-shell">
                 <table id="daily-totals-table">
                     <thead>
                         <tr>
