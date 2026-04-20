@@ -15,7 +15,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>Review Batch — Inventory</title>
     <style>
         :root {
@@ -44,9 +44,7 @@
         body {
             margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
             -webkit-font-smoothing:antialiased; color:var(--text);
-            background:radial-gradient(circle at top left,rgba(240,196,107,.26),transparent 24%),
-                radial-gradient(circle at 84% 10%,rgba(213,83,56,.10),transparent 18%),
-                linear-gradient(180deg,#fcf7f0 0%,var(--bg) 46%,var(--bg-deep) 100%);
+            background: var(--lx-bg);
             min-height:100vh;
         }
         a { color:inherit; text-decoration:none; }
@@ -178,7 +176,7 @@
         @keyframes row-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
         tr { animation:row-in .25s ease both; }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042012">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

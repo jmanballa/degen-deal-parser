@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#08090a">
@@ -15,7 +15,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
         :root {
@@ -42,7 +42,7 @@
 }
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
+        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background: var(--lx-bg); }
         a { color:inherit; text-decoration:none; }
         .page { max-width:1660px; margin:0 auto; padding: 28px 28px 60px; }
         .workspace-nav, .nav-links, .hero-meta, .section-header, .filter-row, .table-meta, .pagination-bar, .pagination-controls, .summary-strip { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
@@ -56,7 +56,7 @@
         .banner-success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
         .banner-error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
         .eyebrow, .pill, .status-pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
+        .eyebrow { background:var(--lx-s2); color:var(--lx-muted); width:fit-content; }
         .pill { background:#f5eadc; color:var(--muted); }
         .brand-shopify { color: #95bf47; }
         .status-paid,.status-fulfilled { color:var(--green); background:var(--green-bg); }
@@ -70,7 +70,8 @@
         p { margin:0 0 16px; max-width:900px; line-height:1.6; font-size:15px; }
         .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; transition:transform .15s ease; }
         .button:hover, button:hover { transform:translateY(-1px); }
-        .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
+        .primary-button { background: var(--lx-red); color:#fff; border:1px solid var(--lx-red); }
+        .primary-button:hover { background:#dc2626; border-color:#dc2626; }
         .secondary-button { background: var(--lx-s1); color:var(--text); border:1px solid var(--line); }
         label { display:block; font-size:12px; font-weight:700; color:#a7b0ba; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
         input, select { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; }
@@ -91,7 +92,7 @@
         td { color:#f0eee8; }
         thead th { position:sticky; top:0; z-index:2; background: var(--lx-s2); color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #e2d1bb; }
         thead th a { display:inline-flex; align-items:center; gap:6px; color:inherit; }
-        tbody tr:hover { background: transparent; }
+        tbody tr:hover { background: rgba(255,255,255,.04); }
         .muted-cell { color:#a7b0ba; }
         .mono { font-family:"Consolas","Courier New",monospace; font-size:12px; }
         .item-summary { max-width:360px; white-space:normal; }
@@ -103,7 +104,7 @@
         @media (max-width:1200px){.filters-form,.backfill-form,.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:1fr}.workspace-nav{position:static}}
         @media (max-width:800px){.page{padding:16px 14px 28px}.filters-form,.backfill-form,.summary-grid{grid-template-columns:1fr}}
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042012">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

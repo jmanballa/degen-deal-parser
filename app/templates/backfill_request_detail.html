@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#08090a">
@@ -14,7 +15,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
         :root {
@@ -41,13 +42,13 @@
 }
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background: var(--lx-bg); }
         a { color:inherit; text-decoration:none; }
         .page { max-width:1360px; margin:0 auto; padding: 28px 28px 60px; }
         .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .hero { padding:24px; margin-bottom:18px; background: var(--lx-s1); border: 1px solid var(--lx-br); }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
+        .eyebrow { background:var(--lx-s2); color:var(--lx-muted); width:fit-content; }
         .pill { background:#f5eadc; color:var(--muted); }
         .pill.info { background:#e7f1fb; color:#184f88; }
         .pill.warning { background:#fff1d7; color:#8a580d; }
@@ -75,7 +76,7 @@
     <script>
         setTimeout(() => window.location.reload(), 5000);
     </script>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042012">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

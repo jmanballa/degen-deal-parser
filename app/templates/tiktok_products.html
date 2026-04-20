@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#08090a">
@@ -15,7 +15,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
         * { box-sizing:border-box; }
@@ -59,14 +59,14 @@
         .product-thumb-placeholder { width:48px; height:48px; border-radius:10px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; color:var(--preview-muted, #a7b0ba); font-size:16px; }
         .product-title { font-weight:700; max-width:340px; white-space:normal; }
         .product-title a { color:var(--preview-text, #f5f1e8) !important; text-decoration:none; }
-        .product-title a:hover { color:var(--preview-gold, #ebc67a) !important; text-decoration:underline; }
+        .product-title a:hover { color: var(--lx-red) !important; text-decoration:underline; }
         @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
         .hero, .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         .hero, .card, .metric { transition: transform .2s ease, box-shadow .2s ease; }
         @media (max-width:1200px){.filters-form,.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:1fr}}
         @media (max-width:800px){.page{padding:16px 14px 28px}.filters-form,.summary-grid{grid-template-columns:1fr}}
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042012">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

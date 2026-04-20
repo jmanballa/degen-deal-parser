@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#08090a">
@@ -15,7 +15,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
         :root {
@@ -42,7 +42,7 @@
 }
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.22), transparent 26%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
+        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background: var(--lx-bg); }
         a { color:inherit; text-decoration:none; }
         .page { max-width:1440px; margin:0 auto; padding: 28px 28px 60px; }
         .workspace-nav, .nav-links, .hero-meta { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
@@ -52,7 +52,7 @@
         .hero { display:grid; grid-template-columns:1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background: var(--lx-s1); border: 1px solid var(--lx-br); }
         .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
+        .eyebrow { background:var(--lx-s2); color:var(--lx-muted); width:fit-content; }
         .pill { background:#f5eadc; color:var(--muted); }
         .pill.good { background:#e7f5ee; color:var(--good); }
         .pill.warn { background:#fff1d7; color:var(--warn); }
@@ -80,7 +80,7 @@
         .hero, .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:1100px){ .hero, .metric-grid, .double-grid, .table-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .workspace-nav { position:static; } .hero { text-align:center; } .eyebrow { margin:0 auto; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042012">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

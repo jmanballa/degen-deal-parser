@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
     <meta name="theme-color" content="#08090a">
@@ -15,7 +15,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
         :root {
@@ -42,7 +42,7 @@
 }
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
-        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 24%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 100%); }
+        body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background: var(--lx-bg); }
         a { color:inherit; text-decoration:none; }
         .page { max-width:880px; margin:0 auto; padding:16px; }
         .hero, .card, .list-row, .total-row { background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); box-shadow:var(--shadow); }
@@ -50,7 +50,7 @@
         .hero { padding:24px; margin-bottom:16px; }
         .card { padding:18px; margin-bottom:16px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; }
+        .eyebrow { background:var(--lx-s2); color:var(--lx-muted); }
         .pill { background:#f5eadc; color:var(--muted); }
         .pill.warn { background:#fff1d7; color:#8a580d; }
         .pill.ok { background:#e7f5ee; color:#11543d; }
@@ -60,7 +60,8 @@
         p, .small { color:#a7b0ba; line-height:1.5; }
         .actions, .meta-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
         .button { display:inline-flex; align-items:center; border-radius:16px; padding:11px 15px; font-weight:800; border:1px solid var(--line); background: var(--lx-s1); }
-        .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; border:none; }
+        .primary-button { background: var(--lx-red); color:#fff; border:1px solid var(--lx-red); }
+        .primary-button:hover { background:#dc2626; border-color:#dc2626; }
         .section-title { margin:0 0 6px; font-size:24px; letter-spacing:-.04em; color:#ffffff; }
         .section-subtitle { margin:0 0 14px; color:#a7b0ba; }
         .list { display:grid; gap:12px; }
@@ -82,7 +83,7 @@
             .amount { white-space:normal; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042012">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>
