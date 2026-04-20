@@ -342,7 +342,7 @@ a { color: inherit; text-decoration: none; }
     /* Hide desktop-only collapse toggle inside the drawer */
     .linear-sidebar-collapse { display: none; }
 
-    /* Sticky mobile top bar */
+    /* Sticky mobile top bar — break out of .page's 20px top padding and 32px horizontal padding */
     .linear-mobile-topbar {
         display: flex;
         align-items: center;
@@ -350,30 +350,40 @@ a { color: inherit; text-decoration: none; }
         top: 0;
         z-index: 100;
         gap: 10px;
-        padding: max(10px, env(safe-area-inset-top, 10px)) 12px 10px;
+        /* pull back into viewport flush with top, spanning full width */
+        margin: -20px -32px 12px;
+        width: calc(100% + 64px);
+        padding: max(12px, env(safe-area-inset-top, 0px) + 8px) 12px 10px;
         background: #0b0c0e;
         border-bottom: 1px solid var(--lx-br);
         -webkit-tap-highlight-color: transparent;
+        box-sizing: border-box;
     }
 
-    /* Hamburger button */
+    /* Hamburger button — !important overrides unscoped inline button{} rules on some pages */
     .linear-hamburger {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        border: 1px solid transparent;
-        background: transparent;
-        color: var(--lx-text);
-        cursor: pointer;
-        flex-shrink: 0;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 44px !important;
+        height: 44px !important;
+        border-radius: 8px !important;
+        border: 1px solid transparent !important;
+        background: transparent !important;
+        color: var(--lx-text) !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
         -webkit-tap-highlight-color: transparent;
+        padding: 0 !important;
+    }
+    .linear-hamburger svg {
+        width: 24px !important;
+        height: 24px !important;
+        display: block !important;
     }
     .linear-hamburger:hover, .linear-hamburger:focus-visible {
-        background: var(--lx-s1);
-        border-color: var(--lx-br);
+        background: var(--lx-s1) !important;
+        border-color: var(--lx-br) !important;
         outline: none;
     }
 
