@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,7 +18,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f5eee4; --card:#fffaf4; --line:#dccdbb; --text:#241b15; --muted:#6c5d50; --good:#11543d; --warn:#8a580d; --bad:#8e2722; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
         body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.22), transparent 26%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
@@ -28,7 +49,7 @@
         .workspace-nav { justify-content:space-between; margin-bottom:14px; padding:12px 16px; border:1px solid var(--line); border-radius:20px; background:rgba(255,250,244,.88); box-shadow:0 14px 28px rgba(77,46,20,.08); position:sticky; top:12px; z-index:5; backdrop-filter:blur(10px); }
         .nav-links { justify-content:flex-end; }
         .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .hero { display:grid; grid-template-columns:1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background: var(--lx-s1); border: 1px solid var(--lx-br); }
         .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
@@ -39,7 +60,7 @@
         h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight: 800; }
         h2 { margin:0; font-size:24px; letter-spacing:-.04em; color:#ffffff; }
         p, .small, .muted { color:#a7b0ba; line-height:1.5; }
-        .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background:#fff; border:1px solid var(--line); font-weight:800; }
+        .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background: var(--lx-s1); border:1px solid var(--line); font-weight:800; }
         .metric-grid, .double-grid, .table-grid { display:grid; gap:12px; }
         .metric-grid { grid-template-columns:repeat(6,minmax(0,1fr)); margin-bottom:18px; }
         .double-grid { grid-template-columns:1fr 1fr; }
@@ -59,7 +80,7 @@
         .hero, .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:1100px){ .hero, .metric-grid, .double-grid, .table-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .workspace-nav { position:static; } .hero { text-align:center; } .eyebrow { margin:0 auto; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
@@ -67,7 +88,6 @@
         {% include "_linear_sidebar.html" %}
 
         <section class="hero">
-            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
             <div>
                 <div class="eyebrow">Debug Workflow</div>
                 <h1>Debug Console</h1>

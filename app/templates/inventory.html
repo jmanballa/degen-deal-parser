@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,7 +18,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <title>Inventory</title>
     <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         html { scroll-behavior:smooth; }
         body { margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif; -webkit-font-smoothing:antialiased; color:var(--text); background:radial-gradient(circle at top left,rgba(240,196,107,.26),transparent 24%),radial-gradient(circle at 84% 10%,rgba(213,83,56,.10),transparent 18%),linear-gradient(180deg,#fcf7f0 0%,var(--bg) 46%,var(--bg-deep) 100%); }
@@ -31,19 +52,19 @@
         .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:700; cursor:pointer; transition:transform .15s; }
         .button:hover, button:hover { transform:translateY(-1px); }
         .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%,#f0875e); color:#fff; box-shadow:0 10px 20px rgba(159,49,29,.22); }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
+        .secondary-button { background: var(--lx-s1); color:var(--text); border:1px solid var(--line); }
         label { display:flex; flex-direction:column; gap:5px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        input, select { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        input, select { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; }
         .filters { display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto auto; gap:10px; align-items:end; margin-bottom:14px; }
         .scan-row { display:flex; gap:10px; align-items:center; margin-bottom:14px; }
-        .scan-input { flex:1; max-width:320px; padding:11px 14px; border-radius:14px; border:2px solid var(--accent); background:#fff; font:inherit; font-size:14px; font-weight:600; }
+        .scan-input { flex:1; max-width:320px; padding:11px 14px; border-radius:14px; border:2px solid var(--accent); background: var(--lx-s1); font:inherit; font-size:14px; font-weight:600; }
         .scan-input:focus { outline:none; box-shadow:0 0 0 3px rgba(213,83,56,.2); }
         .scan-label { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#a7b0ba; }
-        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:20px; background:#fff; max-height:72vh; margin-bottom:16px; }
+        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:20px; background: var(--lx-s1); max-height:72vh; margin-bottom:16px; }
         table { width:100%; border-collapse:separate; border-spacing:0; min-width:900px; }
         th, td { padding:10px 14px; border-bottom:1px solid #efe4d6; text-align:left; vertical-align:middle; font-size:13px; }
-        thead th { position:sticky; top:0; z-index:2; background:#fff6ea; color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; white-space:nowrap; }
-        tbody tr:hover { background:#fff9f1; }
+        thead th { position:sticky; top:0; z-index:2; background: var(--lx-s2); color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; white-space:nowrap; }
+        tbody tr:hover { background: transparent; }
         tbody tr:last-child td { border-bottom:none; }
         .badge { display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
         .badge-in-stock { background:#edf9f2; color:#166647; }
@@ -52,11 +73,11 @@
         .badge-held { background:#fff5df; color:#8a580d; }
         .badge-single { background:#f0f4ff; color:#3b4fa8; }
         .badge-slab { background:#fdf0ff; color:#7e3b9a; }
-        .btn-sm { padding:5px 10px; border-radius:10px; font-size:12px; font-weight:700; border:1px solid var(--line); background:#fff; color:var(--text); cursor:pointer; text-decoration:none; display:inline-block; }
+        .btn-sm { padding:5px 10px; border-radius:10px; font-size:12px; font-weight:700; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); cursor:pointer; text-decoration:none; display:inline-block; }
         .price-cell { font-variant-numeric:tabular-nums; font-weight:700; color:#166647; }
         .price-none { color:#a7b0ba; }
         .pagination { display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap; }
-        .page-btn { padding:7px 13px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; }
+        .page-btn { padding:7px 13px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; }
         .page-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
         .section-header { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; }
         .section-title { margin:0; font-size:22px; font-weight:800; letter-spacing:-.04em; }
@@ -67,7 +88,7 @@
         .card { animation:card-in .45s cubic-bezier(.22,1,.36,1) both; }
         @media(max-width:900px) { .filters{grid-template-columns:1fr 1fr;} .page{padding:16px 14px 28px;} }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>

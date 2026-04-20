@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,14 +18,35 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f7f1e8; --card:#fffaf3; --line:#e4d5c3; --text:#241b15; --muted:#6b5b4f; --accent:#d55338; --shadow:0 18px 36px rgba(77,46,20,.12); }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
         body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 28%), linear-gradient(180deg,#fcf8f2 0%, var(--bg) 100%); }
         a { color:inherit; text-decoration:none; }
         .page { max-width:1360px; margin:0 auto; padding: 28px 28px 60px; }
         .hero, .card { background:var(--card); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .hero { display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.5), transparent 24%), linear-gradient(135deg, rgba(255,248,236,.96), rgba(255,240,228,.92)); }
+        .hero { display:grid; grid-template-columns:1fr; gap:24px; align-items:center; padding:24px; margin-bottom:18px; background: var(--lx-s1); border: 1px solid var(--lx-br); }
         .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
@@ -35,7 +56,7 @@
         h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight: 800; }
         p, .small { color:#a7b0ba; line-height:1.5; }
         .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-        .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background:#fff; color:var(--text); border:1px solid var(--line); font-weight:800; }
+        .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background: var(--lx-s1); color:var(--text); border:1px solid var(--line); font-weight:800; }
         .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
         .metric { background:rgba(255,255,255,.72); border:1px solid var(--line); border-radius:18px; padding:14px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .metric-label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
@@ -49,14 +70,13 @@
         .hero, .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:1000px){ .hero, .grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } .hero { text-align:center; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
     <div class="page">
         {% include "_linear_sidebar.html" %}
         <section class="hero">
-            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
             <div>
                 <div class="eyebrow">Operations Trace</div>
                 <h1>Operations Log</h1>

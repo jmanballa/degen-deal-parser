@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,7 +17,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); --green:#166647; --green-bg:#edf9f2; --yellow:#8a580d; --yellow-bg:#fff5df; --red:#9d2f2b; --red-bg:#fff0ef; --blue:#30548c; --blue-bg:#e7f0ff; --grey:#5d6a77; --grey-bg:#edf1f5; }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
         body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
@@ -33,10 +54,10 @@
         .button, button { appearance:none; border:none; border-radius:16px; padding:12px 18px; font:inherit; font-weight:800; cursor:pointer; transition:transform .15s ease; }
         .button:hover, button:hover { transform:translateY(-1px); }
         .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
+        .secondary-button { background: var(--lx-s1); color:var(--text); border:1px solid var(--line); }
         .outline-button { background:transparent; color:var(--muted); border:1px dashed var(--line); }
         label { display:block; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
-        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; }
         textarea { min-height:100px; resize:vertical; }
         .form-group { margin-bottom:16px; }
         .form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -50,14 +71,14 @@
         .image-preview { width:80px; height:80px; border-radius:12px; object-fit:cover; border:1px solid var(--line); }
         .image-preview-wrap { position:relative; }
         .image-remove { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; background:var(--red); color:#fff; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; cursor:pointer; border:none; padding:0; }
-        .sku-row { display:grid; grid-template-columns:1fr 100px 100px auto; gap:10px; align-items:end; margin-bottom:10px; padding:12px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+        .sku-row { display:grid; grid-template-columns:1fr 100px 100px auto; gap:10px; align-items:end; margin-bottom:10px; padding:12px; border:1px solid var(--line); border-radius:14px; background: var(--lx-s1); }
         .loading-spinner { display:inline-block; width:16px; height:16px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation: spin .6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
         .card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:700px) { .form-row,.form-row-3,.sku-row { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
@@ -238,7 +259,7 @@
                     if (data.error) { catResults.textContent = data.error; return; }
                     var cats = data.categories || [];
                     if (!cats.length) { catResults.textContent = 'No categories found.'; return; }
-                    var html = '<div style="max-height:240px; overflow-y:auto; border:1px solid var(--line); border-radius:12px; background:#fff;">';
+                    var html = '<div style="max-height:240px; overflow-y:auto; border:1px solid var(--line); border-radius:12px; background: var(--lx-s1);">';
                     for (var i = 0; i < cats.length; i++) {
                         var c = cats[i];
                         var name = c.local_name || c.name || c.id;
@@ -286,7 +307,7 @@
                     if (data.error) { brandResults.textContent = data.error; return; }
                     var brands = data.brands || [];
                     if (!brands.length) { brandResults.textContent = 'No brands found.'; return; }
-                    var html = '<div style="max-height:180px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; background:#fff;">';
+                    var html = '<div style="max-height:180px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; background: var(--lx-s1);">';
                     for (var i = 0; i < brands.length; i++) {
                         var b = brands[i];
                         html += '<div style="padding:6px 10px; border-bottom:1px solid var(--line); cursor:pointer; font-size:13px;" data-brand-id="' + b.id + '" data-brand-name="' + (b.name || b.id) + '" class="brand-option">' + (b.name || b.id) + '</div>';

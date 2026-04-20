@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,25 +18,46 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <title>Add Inventory Item</title>
     <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         body { margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif; -webkit-font-smoothing:antialiased; color:var(--text); background:radial-gradient(circle at top left,rgba(240,196,107,.26),transparent 24%),radial-gradient(circle at 84% 10%,rgba(213,83,56,.10),transparent 18%),linear-gradient(180deg,#fcf7f0 0%,var(--bg) 46%,var(--bg-deep) 100%); }
         a { color:inherit; text-decoration:none; }
         .page { max-width:900px; margin:0 auto; padding:28px 28px 60px; }
         .card { padding:24px; margin-bottom:18px; background:linear-gradient(180deg,var(--card-strong),var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
         label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:14px; }
-        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
+        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; }
         textarea { resize:vertical; min-height:80px; }
         .two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
         .button, button { appearance:none; border:none; border-radius:14px; padding:11px 18px; font:inherit; font-weight:700; cursor:pointer; transition:transform .15s; }
         .button:hover, button:hover { transform:translateY(-1px); }
         .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%,#f0875e); color:#fff; box-shadow:0 10px 20px rgba(159,49,29,.22); }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
+        .secondary-button { background: var(--lx-s1); color:var(--text); border:1px solid var(--line); }
         h1 { margin:0 0 6px; font-size:clamp(26px,4vw,38px); line-height:1; letter-spacing:-.04em; color:#fff; font-weight:800; }
         p { color:#a7b0ba; margin:0 0 16px; }
         .eyebrow { display:inline-flex; align-items:center; padding:5px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; background:rgba(37,28,22,.06); color:#ebc67a; margin-bottom:10px; }
         .type-toggle { display:flex; gap:0; border:1px solid var(--line); border-radius:14px; overflow:hidden; width:fit-content; margin-bottom:20px; }
-        .type-btn { padding:9px 22px; font:inherit; font-weight:700; font-size:13px; border:none; cursor:pointer; background:#fff; color:#a7b0ba; transition:background .15s,color .15s; }
+        .type-btn { padding:9px 22px; font:inherit; font-weight:700; font-size:13px; border:none; cursor:pointer; background: var(--lx-s1); color:#a7b0ba; transition:background .15s,color .15s; }
         .type-btn.active { background:var(--accent); color:#fff; }
         .slab-fields { display:none; }
         .slab-fields.visible { display:block; }
@@ -51,7 +72,7 @@
         .card { animation:card-in .4s cubic-bezier(.22,1,.36,1) both; }
         @media(max-width:700px) { .two-col{grid-template-columns:1fr;} .page{padding:16px 14px 28px;} }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>

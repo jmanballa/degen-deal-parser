@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,12 +19,27 @@
     <title>Review Batch — Inventory</title>
     <style>
         :root {
-            --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8;
-            --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338;
-            --accent-strong:#9f311d; --green:#166647; --green-bg:#edf9f2;
-            --yellow-bg:#fff5df; --red-bg:#fff0ef;
-            --shadow:0 20px 44px rgba(77,46,20,.13);
-        }
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         body {
             margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
@@ -51,7 +66,7 @@
             display:flex; align-items:center; justify-content:space-between;
             gap:16px; flex-wrap:wrap; margin-bottom:24px;
         }
-        .page-title { font-size:24px; font-weight:900; letter-spacing:-.03em; margin:0; }
+        .page-title { font-size:24px; font-weight:700; letter-spacing:-.03em; margin:0; }
         .page-sub { font-size:13px; color:var(--muted); font-weight:500; margin:4px 0 0; }
         .header-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
@@ -66,7 +81,7 @@
         .btn-outline {
             appearance:none; border:1.5px solid var(--line); border-radius:14px; padding:12px 18px;
             font:inherit; font-size:14px; font-weight:700;
-            background:linear-gradient(180deg,#fffdfa,#fff4e8);
+            background: var(--lx-s1);
             color:var(--text); cursor:pointer; transition:all .15s;
         }
         .btn-outline:hover { border-color:#c9b8a0; }
@@ -107,18 +122,18 @@
             color:var(--text); outline:none; transition:border-color .15s, background .15s;
             min-width:140px;
         }
-        .name-input:focus { border-color:var(--accent); background:#fff; }
+        .name-input:focus { border-color:var(--accent); background: var(--lx-s1); }
         .set-input {
             width:100%; padding:6px 10px; border-radius:10px; border:1.5px solid transparent;
             background:transparent; font:inherit; font-size:12px; font-weight:500;
             color:var(--muted); outline:none; transition:border-color .15s, background .15s;
             min-width:100px;
         }
-        .set-input:focus { border-color:var(--accent); background:#fff; color:var(--text); }
+        .set-input:focus { border-color:var(--accent); background: var(--lx-s1); color:var(--text); }
 
         .cond-select {
             padding:5px 8px; border-radius:10px; border:1.5px solid var(--line);
-            background:#fff; font:inherit; font-size:12px; font-weight:700;
+            background: var(--lx-s1); font:inherit; font-size:12px; font-weight:700;
             color:var(--text); cursor:pointer;
         }
 
@@ -147,7 +162,7 @@
             padding:32px 28px; text-align:center; display:none;
         }
         .success-icon { font-size:52px; margin-bottom:12px; }
-        .success-title { font-size:22px; font-weight:900; letter-spacing:-.025em; margin:0 0 8px; }
+        .success-title { font-size:22px; font-weight:700; letter-spacing:-.025em; margin:0 0 8px; }
         .success-sub { font-size:14px; color:var(--muted); margin:0 0 20px; }
         .barcode-pills { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-bottom:20px; }
         .barcode-pill {
@@ -163,7 +178,7 @@
         @keyframes row-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
         tr { animation:row-in .25s ease both; }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>

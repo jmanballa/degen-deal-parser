@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,7 +18,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <title>Scan Barcode — Inventory</title>
     <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         body { margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif; -webkit-font-smoothing:antialiased; color:var(--text); background:radial-gradient(circle at top left,rgba(240,196,107,.26),transparent 24%),radial-gradient(circle at 84% 10%,rgba(213,83,56,.10),transparent 18%),linear-gradient(180deg,#fcf7f0 0%,var(--bg) 46%,var(--bg-deep) 100%); }
         a { color:inherit; text-decoration:none; }
@@ -28,21 +49,21 @@
         p { color:#a7b0ba; margin:0 0 24px; font-size:15px; }
         .eyebrow { display:inline-flex; align-items:center; padding:5px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; background:rgba(37,28,22,.06); color:#ebc67a; }
         .scan-wrap { display:flex; flex-direction:column; align-items:center; gap:14px; }
-        .scan-input { width:100%; max-width:380px; padding:16px 20px; border-radius:18px; border:2px solid var(--accent); background:#fff; font:inherit; font-size:18px; font-weight:700; text-align:center; letter-spacing:.04em; outline:none; transition:box-shadow .2s; }
+        .scan-input { width:100%; max-width:380px; padding:16px 20px; border-radius:18px; border:2px solid var(--accent); background: var(--lx-s1); font:inherit; font-size:18px; font-weight:700; text-align:center; letter-spacing:.04em; outline:none; transition:box-shadow .2s; }
         .scan-input:focus { box-shadow:0 0 0 4px rgba(213,83,56,.2); }
         .scan-hint { font-size:13px; color:#a7b0ba; font-weight:500; }
         .status-msg { min-height:48px; font-size:15px; font-weight:700; padding:12px 18px; border-radius:14px; background:transparent; transition:all .2s; }
         .status-msg.searching { color:#8a580d; background:#fff5df; border:1px solid #f0cda0; }
         .status-msg.error { color:#9d2f2b; background:#fff0ef; border:1px solid #efb8b4; }
         .status-msg.found { color:#166647; background:#edf9f2; border:1px solid #a6e2bf; }
-        .button { appearance:none; border:none; border-radius:14px; padding:11px 18px; font:inherit; font-weight:700; cursor:pointer; background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); margin-top:8px; }
+        .button { appearance:none; border:none; border-radius:14px; padding:11px 18px; font:inherit; font-weight:700; cursor:pointer; background: var(--lx-s1); color:var(--text); border:1px solid var(--line); margin-top:8px; }
         .back-link { color:#a7b0ba; font-size:13px; font-weight:600; margin-bottom:12px; display:inline-block; }
         .back-link:hover { color:var(--text); }
         .icon { font-size:48px; margin-bottom:8px; }
         @keyframes card-in { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
         .card { animation:card-in .45s cubic-bezier(.22,1,.36,1) both; }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>

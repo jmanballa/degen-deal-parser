@@ -2,9 +2,10 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,7 +18,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f4ebdf; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
         body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.24), transparent 24%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 100%); }
@@ -37,7 +59,7 @@
         h1 { margin:10px 0 8px; font-size:clamp(32px,7vw,48px); line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight:800; }
         p, .small { color:#a7b0ba; line-height:1.5; }
         .actions, .meta-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-        .button { display:inline-flex; align-items:center; border-radius:16px; padding:11px 15px; font-weight:800; border:1px solid var(--line); background:linear-gradient(180deg,#fffdfa,#fff4e8); }
+        .button { display:inline-flex; align-items:center; border-radius:16px; padding:11px 15px; font-weight:800; border:1px solid var(--line); background: var(--lx-s1); }
         .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; border:none; }
         .section-title { margin:0 0 6px; font-size:24px; letter-spacing:-.04em; color:#ffffff; }
         .section-subtitle { margin:0 0 14px; color:#a7b0ba; }
@@ -60,7 +82,7 @@
             .amount { white-space:normal; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>

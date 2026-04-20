@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,12 +19,27 @@
     <title>Scan Singles — Inventory</title>
     <style>
         :root {
-            --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8;
-            --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338;
-            --accent-strong:#9f311d; --green:#166647; --green-bg:#edf9f2;
-            --yellow-bg:#fff5df; --red-bg:#fff0ef;
-            --shadow:0 20px 44px rgba(77,46,20,.13);
-        }
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         body {
             margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
@@ -97,7 +112,7 @@
         .btn-outline {
             appearance:none; border:1px solid var(--line); border-radius:12px;
             padding:9px 14px; font:inherit; font-size:13px; font-weight:700;
-            background:linear-gradient(180deg,#fffdfa,#fff4e8);
+            background: var(--lx-s1);
             color:var(--text); cursor:pointer; transition:all .15s;
         }
         .btn-outline:hover { background:#fff7ee; border-color:#c9b8a0; }
@@ -141,7 +156,7 @@
         .batch-meta { font-size:11px; color:var(--muted); font-weight:500; margin-top:2px; }
         .batch-cond {
             font-size:12px; font-weight:700; padding:3px 8px; border-radius:8px;
-            border:1px solid var(--line); background:#fff; cursor:pointer;
+            border:1px solid var(--line); background: var(--lx-s1); cursor:pointer;
             font-family:inherit; color:var(--text); flex-shrink:0;
         }
         .batch-del {
@@ -174,7 +189,7 @@
         @keyframes item-in { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
         .batch-item { animation:item-in .25s ease both; }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>

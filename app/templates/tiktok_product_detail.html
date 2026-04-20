@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,7 +17,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); --green:#166647; --green-bg:#edf9f2; --yellow:#8a580d; --yellow-bg:#fff5df; --red:#9d2f2b; --red-bg:#fff0ef; --blue:#30548c; --blue-bg:#e7f0ff; --grey:#5d6a77; --grey-bg:#edf1f5; }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
         body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
@@ -35,7 +56,7 @@
         .status-bad,.status-failed,.status-platform_deactivated { color:var(--red); background:var(--red-bg); }
         .status-idle,.status-grey,.status-seller_deactivated,.status-other,.status-freeze,.status-deleted { color:var(--grey); background:var(--grey-bg); }
         .button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
+        .secondary-button { background: var(--lx-s1); color:var(--text); border:1px solid var(--line); }
         .mono { font-family:"Consolas","Courier New",monospace; font-size:12px; }
         .meta-grid { display:grid; grid-template-columns:160px 1fr; gap:6px 18px; font-size:14px; line-height:1.7; }
         .meta-label { color:var(--muted); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
@@ -44,9 +65,9 @@
         .gallery-img:hover { transform:scale(1.04); }
         .sku-table { width:100%; border-collapse:separate; border-spacing:0; }
         .sku-table th, .sku-table td { padding:10px 12px; border-bottom:1px solid #efe4d6; text-align:left; font-size:13px; }
-        .sku-table thead th { background:#fff6ea; color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #e2d1bb; }
-        .sku-table tbody tr:hover { background:#fff9f1; }
-        .description-block { white-space:pre-wrap; line-height:1.7; font-size:14px; color:var(--text); max-height:400px; overflow-y:auto; padding:14px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+        .sku-table thead th { background: var(--lx-s2); color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #e2d1bb; }
+        .sku-table tbody tr:hover { background: transparent; }
+        .description-block { white-space:pre-wrap; line-height:1.7; font-size:14px; color:var(--text); max-height:400px; overflow-y:auto; padding:14px; border:1px solid var(--line); border-radius:14px; background: var(--lx-s1); }
         .breadcrumb { font-size:13px; color:var(--muted); margin-bottom:12px; }
         .breadcrumb a { color:var(--accent); font-weight:700; }
         .breadcrumb a:hover { text-decoration:underline; }
@@ -54,7 +75,7 @@
         .card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:700px) { .page { padding:16px 14px 28px; } .meta-grid { grid-template-columns:1fr; } .gallery-img { width:100px; height:100px; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>

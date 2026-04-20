@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,7 +18,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
     <style>
-        :root { --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8; --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338; --accent-strong:#9f311d; --shadow:0 20px 44px rgba(77,46,20,.13); }
+        :root {
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         html { scroll-behavior: smooth; }
         body { margin:0; font-family:"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; -webkit-font-smoothing: antialiased; color:var(--text); background:radial-gradient(circle at top left, rgba(240,196,107,.26), transparent 24%), radial-gradient(circle at 84% 10%, rgba(213,83,56,.10), transparent 18%), linear-gradient(180deg,#fcf7f0 0%, var(--bg) 46%, var(--bg-deep) 100%); }
@@ -26,7 +47,7 @@
         .page { max-width:1440px; margin:0 auto; padding:28px 28px 60px; }
         .workspace-nav, .nav-links, .hero-meta, .section-header, .scope-strip, .actions, .meta-row, .pagination { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
         .workspace-nav { justify-content:space-between; margin-bottom:14px; padding:12px 16px; border:1px solid rgba(159,49,29,.12); border-radius:20px; background:linear-gradient(180deg, rgba(255,253,248,.94), rgba(255,247,238,.82)); box-shadow:0 14px 28px rgba(77,46,20,.08); position:sticky; top:12px; z-index:5; backdrop-filter:blur(10px); }
-        .hero { background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); display:grid; grid-template-columns:minmax(180px,250px) 1fr; gap:24px; align-items:center; padding:28px; margin-bottom:18px; background:radial-gradient(circle at 15% 20%, rgba(255,216,139,.55), transparent 24%), radial-gradient(circle at 78% 22%, rgba(213,83,56,.11), transparent 20%), linear-gradient(135deg, rgba(255,249,239,.98), rgba(255,238,223,.95)); }
+        .hero { background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); display:grid; grid-template-columns:1fr; gap:24px; align-items:center; padding:28px; margin-bottom:18px; background: var(--lx-s1); border: 1px solid var(--lx-br); }
         .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:rgba(37,28,22,.06); color:#ebc67a; width:fit-content; }
@@ -37,34 +58,34 @@
         .hero-meta { margin-top:12px; }
         .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; }
         .primary-button { background:linear-gradient(135deg,var(--accent-strong),#df623f 55%, #f0875e); color:#fff; box-shadow:0 14px 24px rgba(159,49,29,.24); }
-        .secondary-button { background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); border:1px solid var(--line); }
+        .secondary-button { background: var(--lx-s1); color:var(--text); border:1px solid var(--line); }
         .card { padding:18px; margin-bottom:18px; background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
         .filters { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; align-items:end; }
         label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
-        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; color:var(--text); font:inherit; }
-        .scope-strip { display:flex; justify-content:space-between; margin-top:14px; padding:12px 14px; border:1px solid #eadfce; border-radius:18px; background:#fffdf9; flex-wrap:wrap; gap:8px; }
-        .scope-chip { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background:#fff; border:1px solid var(--line); color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; }
+        .scope-strip { display:flex; justify-content:space-between; margin-top:14px; padding:12px 14px; border:1px solid #eadfce; border-radius:18px; background: var(--lx-s1); flex-wrap:wrap; gap:8px; }
+        .scope-chip { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background: var(--lx-s1); border:1px solid var(--line); color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
-        .metric { background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,248,238,.75)); border:1px solid var(--line); border-radius:18px; padding:14px; }
+        .metric { background: var(--lx-s1); border:1px solid var(--line); border-radius:18px; padding:14px; }
         .metric-label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
         .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; color:#24170f; font-variant-numeric:tabular-nums; }
         .section-header { justify-content:space-between; margin-bottom:12px; }
         .section-title { margin:0; font-size:24px; letter-spacing:-.04em; color:#24170f; font-weight:800; }
         .section-subtitle { margin:4px 0 0; color:#a7b0ba; }
-        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:20px; background:#fff; max-height:72vh; margin-bottom:18px; }
+        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:20px; background: var(--lx-s1); max-height:72vh; margin-bottom:18px; }
         table { width:100%; border-collapse:separate; border-spacing:0; }
         th, td { padding:10px 14px; border-bottom:1px solid #efe4d6; text-align:left; vertical-align:middle; font-size:13px; }
-        thead th { position:sticky; top:0; z-index:2; background:#fff6ea; color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; white-space:nowrap; }
-        tbody tr:hover { background:#fff9f1; }
+        thead th { position:sticky; top:0; z-index:2; background: var(--lx-s2); color:#a7b0ba; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; white-space:nowrap; }
+        tbody tr:hover { background: transparent; }
         tbody tr:last-child td { border-bottom:none; }
         .hit-note { max-width:260px; }
         .value-cell { white-space:nowrap; }
         .action-cell { white-space:nowrap; display:flex; gap:6px; }
-        .btn-sm { padding:5px 10px; border-radius:10px; font-size:12px; font-weight:700; border:1px solid var(--line); background:#fff; color:var(--text); cursor:pointer; }
+        .btn-sm { padding:5px 10px; border-radius:10px; font-size:12px; font-weight:700; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); cursor:pointer; }
         .btn-sm-danger { border-color:#efb8b4; color:#9d2f2b; background:#fff0ef; }
         .flash { margin-bottom:14px; padding:12px 14px; border-radius:14px; border:1px solid; font-weight:700; }
-        .flash.success { background:#edf9f2; border-color:#a6e2bf; color:#166647; }
-        .flash.error { background:#fff0ef; border-color:#efb8b4; color:#9d2f2b; }
+        .flash.success { background: var(--green-bg); border-color: rgba(34,197,94,.3); color: var(--green); }
+        .flash.error { background: var(--red-bg); border-color: rgba(239,68,68,.3); color: var(--red); }
         @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
         .hero, .card, .metric { animation:card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:900px) {
@@ -75,7 +96,7 @@
             .action-cell { flex-direction:column; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body>
@@ -90,8 +111,7 @@
         {% endif %}
 
         <section class="hero">
-            <img class="logo" src="/static/degen-logo.png" alt="Degen Collectibles logo">
-            <div>
+<div>
                 <div class="eyebrow">Streams</div>
                 <h1>{{ title }}</h1>
                 <p>Log and review hits from your livestreams. Filter by streamer, date, or search by customer and order number.</p>

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,20 +19,22 @@
     <title>{{ title }}</title>
     <style>
         :root {
-            --bg: #f4f5f7;
-            --bg-strong: #eceef2;
-            --panel: rgba(255, 255, 255, 0.82);
-            --panel-strong: rgba(255, 255, 255, 0.94);
-            --line: rgba(15, 23, 42, 0.08);
-            --line-strong: rgba(15, 23, 42, 0.14);
-            --text: #111827;
-            --muted: #667085;
-            --muted-strong: #475467;
-            --accent: #1677ff;
-            --accent-soft: #69a8ff;
-            --positive: #15803d;
-            --negative: #c2410c;
-            --shadow: 0 22px 60px rgba(15, 23, 42, 0.10);
+            --card: var(--lx-s1);
+            --card-strong: var(--lx-s2);
+            --panel: var(--lx-s1);
+            --panel-strong: var(--lx-s2);
+            --line: var(--lx-br);
+            --line-strong: var(--lx-br);
+            --text: var(--lx-text);
+            --muted: var(--lx-muted);
+            --muted-strong: var(--lx-text);
+            --bg: var(--lx-bg);
+            --bg-strong: var(--lx-bg);
+            --shadow: 0 1px 3px rgba(0,0,0,.4);
+            --accent: #60a5fa;
+            --accent-soft: #93c5fd;
+            --positive: #22c55e;
+            --negative: #ef4444;
             --radius-xl: 32px;
             --radius-lg: 24px;
             --radius-md: 18px;
@@ -43,10 +45,7 @@
         body {
             font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
             color: var(--text);
-            background:
-                radial-gradient(circle at 0% 0%, rgba(22, 119, 255, 0.12), transparent 24%),
-                radial-gradient(circle at 100% 0%, rgba(105, 168, 255, 0.14), transparent 20%),
-                linear-gradient(180deg, #fbfcfd 0%, var(--bg) 46%, var(--bg-strong) 100%);
+            background: var(--bg);
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
@@ -75,10 +74,8 @@
         .panel,
         .metric-card {
             border: 1px solid var(--line);
-            background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+            background: var(--panel);
             box-shadow: var(--shadow);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
         }
         .hero {
             display: grid;
@@ -87,10 +84,8 @@
             padding: 34px;
             border-radius: var(--radius-xl);
             margin-bottom: 18px;
-            background:
-                radial-gradient(circle at 12% 18%, rgba(22, 119, 255, 0.15), transparent 24%),
-                radial-gradient(circle at 84% 16%, rgba(255, 255, 255, 0.8), transparent 18%),
-                linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 255, 0.88));
+            background: var(--lx-s1);
+            border: 1px solid var(--lx-br);
         }
         .eyebrow,
         .chip,
@@ -107,8 +102,8 @@
         }
         .eyebrow {
             padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.8);
-            border: 1px solid rgba(22, 119, 255, 0.12);
+            background: var(--lx-s2);
+            border: 1px solid var(--lx-br);
             color: var(--accent);
             width: fit-content;
         }
@@ -146,7 +141,7 @@
         .tag {
             padding: 8px 12px;
             color: var(--muted);
-            background: rgba(255, 255, 255, 0.76);
+            background: var(--lx-s2);
             border: 1px solid var(--line);
         }
         .hero-stat {
@@ -156,10 +151,8 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            background:
-                radial-gradient(circle at top right, rgba(22, 119, 255, 0.18), transparent 24%),
-                linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 246, 255, 0.92));
-            border: 1px solid rgba(22, 119, 255, 0.12);
+            background: var(--lx-s2);
+            border: 1px solid var(--lx-br);
         }
         .hero-label {
             color: var(--muted);
@@ -189,7 +182,7 @@
             padding: 10px 12px;
             border-radius: 14px;
             border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.8);
+            background: var(--lx-s2);
         }
         .trend.positive { color: var(--positive); border-color: rgba(21, 128, 61, 0.14); }
         .trend.negative { color: var(--negative); border-color: rgba(194, 65, 12, 0.14); }
@@ -222,7 +215,7 @@
             padding: 12px 14px;
             border-radius: 14px;
             border: 1px solid var(--line-strong);
-            background: rgba(255, 255, 255, 0.88);
+            background: var(--lx-s1);
             color: var(--text);
             font: inherit;
         }
@@ -242,24 +235,24 @@
         button:hover { transform: translateY(-1px); }
         .primary-button {
             color: white;
-            background: linear-gradient(135deg, #0b66ff, #4b8fff 64%, #82b7ff);
-            box-shadow: 0 14px 28px rgba(22, 119, 255, 0.24);
+            background: linear-gradient(135deg, #1d4ed8, #3b82f6 64%, #60a5fa);
+            box-shadow: 0 4px 12px rgba(96, 165, 250, 0.24);
         }
         .secondary-button {
             color: var(--text);
-            background: rgba(255, 255, 255, 0.88);
-            border: 1px solid var(--line-strong);
+            background: var(--lx-s2);
+            border: 1px solid var(--lx-br);
         }
         .quick-row { justify-content: flex-end; }
         .quick-link {
             padding: 10px 14px;
             border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.72);
+            background: var(--lx-s2);
             color: var(--muted-strong);
         }
         .quick-link.active {
             color: white;
-            background: linear-gradient(135deg, #0b66ff, #4b8fff 64%, #82b7ff);
+            background: linear-gradient(135deg, #1d4ed8, #3b82f6 64%, #60a5fa);
             border-color: transparent;
         }
         .quick-link.legacy {
@@ -343,7 +336,7 @@
             overflow: auto;
             border: 1px solid var(--line);
             border-radius: 20px;
-            background: rgba(255, 255, 255, 0.78);
+            background: var(--lx-s1);
         }
         table {
             width: 100%;
@@ -353,7 +346,7 @@
         td {
             padding: 14px 16px;
             text-align: left;
-            border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+            border-bottom: 1px solid var(--lx-br);
             vertical-align: top;
             font-size: 14px;
             color: #f0eee8;
@@ -364,7 +357,7 @@
             font-weight: 700;
             letter-spacing: .1em;
             text-transform: uppercase;
-            background: rgba(247, 249, 252, 0.96);
+            background: var(--lx-s2);
             position: sticky;
             top: 0;
             z-index: 1;
@@ -394,7 +387,7 @@
         .quality-item,
         .channel-item {
             padding-top: 14px;
-            border-top: 1px solid rgba(15, 23, 42, 0.08);
+            border-top: 1px solid var(--lx-br);
         }
         .note-item:first-child,
         .quality-item:first-child,
@@ -440,7 +433,7 @@
             height: 12px;
             border-radius: 999px;
             overflow: hidden;
-            background: rgba(15, 23, 42, 0.08);
+            background: var(--lx-s2);
         }
         .bar-fill {
             height: 100%;
@@ -502,7 +495,7 @@
             .statement-table { border-radius: 18px; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
     <link rel="stylesheet" href="/static/safe-area.css">
 </head>
 <body class="finance-page">

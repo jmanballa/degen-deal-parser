@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <meta name="theme-color" content="#C8102E">
+    <meta name="theme-color" content="#08090a">
     <meta name="permissions-policy" content="camera=*">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Degen">
@@ -21,12 +21,27 @@
     <title>Degen Eye</title>
     <style>
         :root {
-            --bg:#f4ebdf; --bg-deep:#ead8c0; --card:#fff9f2; --card-strong:#fffdf8;
-            --line:#deccb6; --text:#24170f; --muted:#6b5849; --accent:#d55338;
-            --accent-strong:#9f311d; --green:#166647; --green-bg:#edf9f2;
-            --yellow-bg:#fff5df; --red-bg:#fff0ef; --blue:#1a6fb5; --blue-bg:#e8f4fd;
-            --shadow:0 20px 44px rgba(77,46,20,.13);
-        }
+    --card: var(--lx-s1);
+    --card-strong: var(--lx-s2);
+    --line: var(--lx-br);
+    --text: var(--lx-text);
+    --muted: var(--lx-muted);
+    --bg: var(--lx-bg);
+    --bg-deep: var(--lx-bg);
+    --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --accent: #ef4444;
+    --accent-strong: #dc2626;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,.14);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,.14);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,.15);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,.14);
+    --grey: #8b8f98;
+    --grey-bg: rgba(139,143,152,.1);
+}
         * { box-sizing:border-box; }
         body {
             margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
@@ -74,7 +89,7 @@
         .btn-cam-start { margin-top:12px; padding:12px 28px; border-radius:14px; border:none; background:linear-gradient(180deg,var(--accent),var(--accent-strong)); color:#fff; font:inherit; font-size:15px; font-weight:800; cursor:pointer; transition:opacity .15s; }
         .btn-cam-start:hover { opacity:.85; }
 
-        .flash-overlay { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .05s; z-index:8; }
+        .flash-overlay { position:absolute; inset:0; background: var(--lx-s1); opacity:0; pointer-events:none; transition:opacity .05s; z-index:8; }
         .flash-overlay.active { opacity:.7; }
 
         /* ===== CAMERA FLOATING CONTROLS ===== */
@@ -243,7 +258,7 @@
 
         /* Result content */
         .result-panel { padding:8px 20px 22px; }
-        .result-match { display:flex; gap:14px; padding:14px; border-radius:16px; background:#fff; border:1px solid var(--line); margin-bottom:12px; }
+        .result-match { display:flex; gap:14px; padding:14px; border-radius:16px; background: var(--lx-s1); border:1px solid var(--line); margin-bottom:12px; }
         .result-img { width:80px; height:112px; border-radius:8px; object-fit:cover; background:#f0e8dc; border:1px solid var(--line); flex-shrink:0; }
         .result-details { flex:1; min-width:0; }
         .result-name { font-size:16px; font-weight:800; margin-bottom:2px; color:var(--text); }
@@ -264,7 +279,7 @@
         .candidates-section { margin-top:16px; border-top:1px solid var(--line); padding-top:14px; }
         .candidates-header { font-size:13px; font-weight:700; color:var(--muted); margin-bottom:10px; }
         .candidates-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:10px; }
-        .candidate-card { cursor:pointer; padding:10px; border-radius:14px; text-align:center; background:#fff; border:2px solid var(--line); transition:all .15s; }
+        .candidate-card { cursor:pointer; padding:10px; border-radius:14px; text-align:center; background: var(--lx-s1); border:2px solid var(--line); transition:all .15s; }
         .candidate-card:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.08); }
         .candidate-card.selected { border-color:var(--accent); background:linear-gradient(180deg,#fff5f2,#ffebe6); }
         .candidate-card img { width:100%; aspect-ratio:5/7; object-fit:cover; border-radius:8px; background:#f0e8dc; margin-bottom:6px; }
@@ -283,7 +298,7 @@
         /* Buttons (result panel) */
         .btn-primary { appearance:none; border:none; border-radius:12px; padding:9px 16px; font:inherit; font-size:13px; font-weight:700; background:linear-gradient(180deg,var(--accent),var(--accent-strong)); color:#fff; cursor:pointer; transition:all .15s; }
         .btn-primary:hover { opacity:.9; }
-        .btn-outline { appearance:none; border:1px solid var(--line); border-radius:12px; padding:9px 14px; font:inherit; font-size:13px; font-weight:700; background:linear-gradient(180deg,#fffdfa,#fff4e8); color:var(--text); cursor:pointer; transition:all .15s; }
+        .btn-outline { appearance:none; border:1px solid var(--line); border-radius:12px; padding:9px 14px; font:inherit; font-size:13px; font-weight:700; background: var(--lx-s1); color:var(--text); cursor:pointer; transition:all .15s; }
         .btn-outline:hover { background:#fff7ee; border-color:#c9b8a0; }
 
         /* ===== TOAST ===== */
@@ -373,7 +388,7 @@
             .batch-offer-label { color:var(--muted); }
             .batch-offer-amount { color:var(--accent-strong); }
             .batch-offer-none { color:var(--muted); }
-            .batch-cond { background:#fff; border-color:var(--line); color:var(--text); }
+            .batch-cond { background: var(--lx-s1); border-color:var(--line); color:var(--text); }
             .batch-del { color:var(--muted); }
             .batch-del:hover { color:var(--accent); background:var(--red-bg); }
             .batch-item.processing .batch-name { color:var(--muted); }
@@ -384,7 +399,7 @@
             .queue-badge-queued { background:rgba(0,0,0,.05); color:var(--muted); }
             .queue-badge-error { background:var(--red-bg); color:#9d2f2b; }
 
-            .btn-secondary { background:linear-gradient(180deg,#fffdfa,#fff4e8); border-color:var(--line); color:var(--text); }
+            .btn-secondary { background: var(--lx-s1); border-color:var(--line); color:var(--text); }
             .btn-secondary:hover { background:#fff7ee; border-color:#c9b8a0; }
 
             .toast-container { bottom:80px; }
@@ -503,8 +518,8 @@
                 backdrop-filter:none; -webkit-backdrop-filter:none;
             }
             .buy-calc-label { color:var(--muted); }
-            .buy-pct-input { background:#fff; color:var(--text); border-color:var(--line); }
-            .buy-mode-toggle { background:#fff; border-color:var(--line); }
+            .buy-pct-input { background: var(--lx-s1); color:var(--text); border-color:var(--line); }
+            .buy-mode-toggle { background: var(--lx-s1); border-color:var(--line); }
             .buy-mode-btn { color:var(--muted); }
             .offline-banner { top:20px; left:20px; right:20px; border-radius:12px; }
             .retry-banner { top:20px; }
@@ -529,7 +544,7 @@
         .edit-field label { display:block; font-size:11px; font-weight:600; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
         .edit-field input, .edit-field select {
             width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px;
-            font-size:13px; font-family:inherit; background:#fff; box-sizing:border-box;
+            font-size:13px; font-family:inherit; background: var(--lx-s1); box-sizing:border-box;
         }
         .edit-card-header { display:flex; gap:12px; margin-bottom:16px; }
         .edit-card-thumb { width:64px; height:90px; border-radius:8px; object-fit:cover; background:#f0e8dc; border:1px solid var(--line); flex-shrink:0; }
@@ -544,7 +559,7 @@
         .search-results-area { min-height:80px; }
         .search-spinner { text-align:center; padding:30px 0; color:var(--muted); font-size:13px; }
         .search-empty { text-align:center; padding:30px 0; color:var(--muted); font-size:13px; }
-        .search-candidate-detail { margin-top:14px; padding:12px; background:#fff; border:1px solid var(--line); border-radius:12px; }
+        .search-candidate-detail { margin-top:14px; padding:12px; background: var(--lx-s1); border:1px solid var(--line); border-radius:12px; }
         .search-candidate-detail .detail-name { font-size:14px; font-weight:700; }
         .search-candidate-detail .detail-meta { font-size:12px; color:var(--muted); margin-top:2px; }
         .search-candidate-detail .detail-price { font-size:16px; font-weight:900; color:var(--green); margin-top:6px; }
@@ -557,7 +572,7 @@
             .manual-add-btn:hover { background:var(--card); }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042008">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042009">
 </head>
 <body>
 
@@ -1924,7 +1939,7 @@ var PKScanner = (function() {
                 var detectedV = data.detected_variant || '';
                 html += '<div style="margin-top:8px;">';
                 html += '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant / Finish:</label>';
-                html += '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                html += '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background: var(--lx-s1);">';
                 for (var vi = 0; vi < variants.length; vi++) {
                     var v = variants[vi];
                     var vLabel = v.price != null ? ' \u2014 $' + Number(v.price).toFixed(2) : (v.low_price != null ? ' \u2014 $' + Number(v.low_price).toFixed(2) + ' (TCG Low)' : '');
@@ -1938,7 +1953,7 @@ var PKScanner = (function() {
             if (hasConditions) {
                 html += '<div style="margin-top:6px;">';
                 html += '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Condition:</label>';
-                html += '<select id="condition-select" onchange="PKScanner.onResultConditionChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                html += '<select id="condition-select" onchange="PKScanner.onResultConditionChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background: var(--lx-s1);">';
                 for (var ci = 0; ci < CONDITIONS.length; ci++) {
                     html += '<option value="' + CONDITIONS[ci] + '"' + (CONDITIONS[ci] === 'NM' ? ' selected' : '') + '>' + CONDITIONS[ci] + '</option>';
                 }
@@ -2110,7 +2125,7 @@ var PKScanner = (function() {
                 var div = document.createElement('div');
                 div.style.cssText = 'margin-top:8px;';
                 var lbl = '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant / Finish:</label>';
-                var selHtml = '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                var selHtml = '<select id="variant-select" onchange="PKScanner.onVariantChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background: var(--lx-s1);">';
                 for (var vi = 0; vi < variants2.length; vi++) {
                     var v = variants2[vi];
                     var vLabel = v.price != null ? ' \u2014 $' + Number(v.price).toFixed(2) : (v.low_price != null ? ' \u2014 $' + Number(v.low_price).toFixed(2) + ' (TCG Low)' : '');
@@ -2128,7 +2143,7 @@ var PKScanner = (function() {
                     var condDiv = document.createElement('div');
                     condDiv.style.cssText = 'margin-top:6px;';
                     var condLbl = '<label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Condition:</label>';
-                    var condSelHtml = '<select id="condition-select" onchange="PKScanner.onResultConditionChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+                    var condSelHtml = '<select id="condition-select" onchange="PKScanner.onResultConditionChange()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background: var(--lx-s1);">';
                     for (var cci = 0; cci < CONDITIONS.length; cci++) {
                         condSelHtml += '<option value="' + CONDITIONS[cci] + '"' + (CONDITIONS[cci] === 'NM' ? ' selected' : '') + '>' + CONDITIONS[cci] + '</option>';
                     }
@@ -2446,7 +2461,7 @@ var PKScanner = (function() {
 
     function _buildBatchVariantHtml(variants, selectedVariant, batchIdx) {
         if (!variants || !variants.length) return '';
-        var html = '<select class="batch-variant" data-batch-idx="' + batchIdx + '" style="font-size:10px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;max-width:110px;background:#fff;">';
+        var html = '<select class="batch-variant" data-batch-idx="' + batchIdx + '" style="font-size:10px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;max-width:110px;background: var(--lx-s1);">';
         for (var vk = 0; vk < variants.length; vk++) {
             var v = variants[vk];
             var sel = selectedVariant && v.name === selectedVariant ? ' selected' : '';
@@ -2976,7 +2991,7 @@ var PKScanner = (function() {
         var variantHtml = '';
         if (variants.length) {
             variantHtml = '<div style="margin-top:8px;"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Variant:</label>';
-            variantHtml += '<select id="search-variant" onchange="PKScanner._updateSearchPrice()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+            variantHtml += '<select id="search-variant" onchange="PKScanner._updateSearchPrice()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background: var(--lx-s1);">';
             for (var vi = 0; vi < variants.length; vi++) {
                 var v = variants[vi];
                 var condsAttr = v.conditions ? ' data-conditions="' + escHtml(JSON.stringify(v.conditions)) + '"' : '';
@@ -2987,7 +3002,7 @@ var PKScanner = (function() {
         }
 
         var condHtml = '<div style="margin-top:8px;"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Condition:</label>';
-        condHtml += '<select id="search-condition" onchange="PKScanner._updateSearchPrice()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:#fff;">';
+        condHtml += '<select id="search-condition" onchange="PKScanner._updateSearchPrice()" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background: var(--lx-s1);">';
         for (var ci = 0; ci < CONDITIONS.length; ci++) {
             condHtml += '<option value="' + CONDITIONS[ci] + '"' + (CONDITIONS[ci] === 'NM' ? ' selected' : '') + '>' + CONDITIONS[ci] + '</option>';
         }
