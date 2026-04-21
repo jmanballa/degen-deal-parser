@@ -51,19 +51,19 @@
         .card { padding:18px; margin-bottom:16px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:var(--lx-s2); color:var(--lx-muted); }
-        .pill { background:#f5eadc; color:var(--muted); }
+        .pill { background: var(--lx-s2); color: var(--lx-muted); border: 1px solid var(--lx-br); }
         .pill.warn { background:#fff1d7; color:#8a580d; }
         .pill.ok { background:#e7f5ee; color:#11543d; }
         .pill.info { background:#e7f1fb; color:#184f88; }
         h1, .section-title { font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif; }
         h1 { margin:10px 0 8px; font-size:clamp(32px,7vw,48px); line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight:800; }
-        p, .small { color:#a7b0ba; line-height:1.5; }
+        p, .small { color: var(--lx-muted); line-height:1.5; }
         .actions, .meta-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
         .button { display:inline-flex; align-items:center; border-radius:16px; padding:11px 15px; font-weight:800; border:1px solid var(--line); background: var(--lx-s1); }
         .primary-button { background: var(--lx-red); color:#fff; border:1px solid var(--lx-red); }
         .primary-button:hover { background:#dc2626; border-color:#dc2626; }
         .section-title { margin:0 0 6px; font-size:24px; letter-spacing:-.04em; color:#ffffff; }
-        .section-subtitle { margin:0 0 14px; color:#a7b0ba; }
+        .section-subtitle { margin:0 0 14px; color: var(--lx-muted); }
         .list { display:grid; gap:12px; }
         .list-row { display:block; border-radius:18px; padding:14px; }
         .row-top, .row-bottom { display:flex; gap:10px; justify-content:space-between; align-items:flex-start; }
@@ -83,7 +83,7 @@
             .amount { white-space:normal; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

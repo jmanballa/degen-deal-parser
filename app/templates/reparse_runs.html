@@ -52,17 +52,17 @@
         .card { background:var(--card); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); padding:16px; margin-bottom:14px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
         h1, h2 { margin:0 0 10px; color:#ffffff; }
         h1 { font-size:32px; letter-spacing:-.03em; font-weight: 800; }
-        p, .small { color:#a7b0ba; line-height:1.45; }
+        p, .small { color: var(--lx-muted); line-height:1.45; }
         table { width:100%; border-collapse:collapse; }
-        th, td { padding:10px 8px; border-top:1px solid #eadfce; text-align:left; vertical-align:top; }
-        th { border-top:none; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#a7b0ba; }
+        th, td { padding:10px 8px; border-top:1px solid var(--lx-br); text-align:left; vertical-align:top; }
+        th { border-top:none; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color: var(--lx-muted); }
         td { color:#f0eee8; }
-        .empty { color:#a7b0ba; }
+        .empty { color: var(--lx-muted); }
         @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
         .card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
-        @media (max-width:1000px){ table, thead, tbody, th, td, tr { display:block; } thead { display:none; } td { border-top:none; padding:6px 0; } tr { border-top:1px solid #eadfce; padding:8px 0; } }
+        @media (max-width:1000px){ table, thead, tbody, th, td, tr { display:block; } thead { display:none; } td { border-top:none; padding:6px 0; } tr { border-top:1px solid var(--lx-br); padding:8px 0; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

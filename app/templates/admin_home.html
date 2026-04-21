@@ -53,24 +53,24 @@
         .logo { width:100%; max-width:220px; display:block; margin:0 auto; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:var(--lx-s2); color:var(--lx-muted); width:fit-content; }
-        .pill { background:#f5eadc; color:var(--muted); }
+        .pill { background: var(--lx-s2); color: var(--lx-muted); border: 1px solid var(--lx-br); }
         h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight: 800; }
-        p, .small { color:#a7b0ba; line-height:1.5; }
+        p, .small { color: var(--lx-muted); line-height:1.5; }
         .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
         .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background: var(--lx-s1); color:var(--text); border:1px solid var(--line); font-weight:800; }
         .summary-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
         .metric { background: var(--lx-s1); border:1px solid var(--line); border-radius:18px; padding:14px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .metric-label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-label { color: var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
         .metric-value { font-size:28px; font-weight:800; letter-spacing:-.04em; color:#ffffff; font-variant-numeric: tabular-nums; }
         .layout { display:grid; grid-template-columns:1.1fr .9fr; gap:18px; }
         .action-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
         .action-card { padding:18px; }
         .action-card h3 { margin:0 0 8px; font-size:20px; letter-spacing:-.03em; color:#ffffff; }
-        .action-card p { margin:0 0 12px; color:#a7b0ba; }
+        .action-card p { margin:0 0 12px; color: var(--lx-muted); }
         .action-card-footer { justify-content:space-between; }
         .section-header { justify-content:space-between; margin-bottom:12px; }
         .section-title { margin:0; font-size:24px; letter-spacing:-.04em; color:#ffffff; }
-        .section-subtitle { margin:4px 0 0; color:#a7b0ba; }
+        .section-subtitle { margin:4px 0 0; color: var(--lx-muted); }
         .list { display:grid; gap:10px; }
         .list-item { padding:10px 0; border-top:1px solid var(--lx-br); }
         .list-item:first-child { border-top:none; padding-top:0; }
@@ -78,7 +78,7 @@
         .hero, .card, .metric, .action-card { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:1000px){ .hero, .layout, .summary-grid, .action-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } .hero { text-align:center; } .workspace-nav { position:static; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

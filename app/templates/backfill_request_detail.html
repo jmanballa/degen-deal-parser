@@ -49,26 +49,26 @@
         .hero { padding:24px; margin-bottom:18px; background: var(--lx-s1); border: 1px solid var(--lx-br); }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:var(--lx-s2); color:var(--lx-muted); width:fit-content; }
-        .pill { background:#f5eadc; color:var(--muted); }
+        .pill { background: var(--lx-s2); color: var(--lx-muted); border: 1px solid var(--lx-br); }
         .pill.info { background:#e7f1fb; color:#184f88; }
         .pill.warning { background:#fff1d7; color:#8a580d; }
         .pill.error { background:#fde8e6; color:#8e2722; }
         .pill.success { background:#e7f5ee; color:#11543d; }
         h1 { margin:10px 0 8px; font-size:clamp(32px,4vw,50px); line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight: 800; }
-        p, .small { color:#a7b0ba; line-height:1.5; }
+        p, .small { color: var(--lx-muted); line-height:1.5; }
         .actions, .meta, .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
         .button { display:inline-flex; align-items:center; border-radius:14px; padding:10px 14px; background: var(--lx-s1); color:var(--text); border:1px solid var(--line); font-weight:800; }
         .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
         .metric { background: var(--lx-s1); border:1px solid var(--line); border-radius:18px; padding:14px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .metric-label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-label { color: var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
         .metric-value { font-size:26px; font-weight:800; letter-spacing:-.04em; color:#ffffff; font-variant-numeric: tabular-nums; }
         .card { padding:18px; margin-bottom:18px; }
         .log-item { padding:14px 0; border-top:1px solid var(--lx-br); }
         .log-item:first-child { border-top:none; padding-top:0; }
         .detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
         .detail-card { background: var(--lx-s1); border:1px solid var(--line); border-radius:16px; padding:12px; }
-        .detail-card strong { display:block; margin-bottom:5px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#a7b0ba; }
-        .preview { margin-top:8px; padding:10px 12px; border-radius:12px; border:1px solid #eadfce; background: var(--lx-s1); white-space:pre-wrap; }
+        .detail-card strong { display:block; margin-bottom:5px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color: var(--lx-muted); }
+        .preview { margin-top:8px; padding:10px 12px; border-radius:12px; border:1px solid var(--lx-br); background: var(--lx-s1); white-space:pre-wrap; }
         @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
         .hero, .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:1000px){ .grid, .detail-grid { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } }
@@ -76,7 +76,7 @@
     <script>
         setTimeout(() => window.location.reload(), 5000);
     </script>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

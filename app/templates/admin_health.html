@@ -53,23 +53,23 @@
         h1, h2 { margin:0 0 10px; color:#ffffff; }
         h1 { font-size:32px; letter-spacing:-.03em; font-weight: 800; }
         h2 { font-size:20px; }
-        p, .small { color:#a7b0ba; line-height:1.45; }
+        p, .small { color: var(--lx-muted); line-height:1.45; }
         table { width:100%; border-collapse:collapse; }
-        th, td { padding:10px 8px; border-top:1px solid #eadfce; text-align:left; vertical-align:top; }
-        th { border-top:none; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#a7b0ba; }
+        th, td { padding:10px 8px; border-top:1px solid var(--lx-br); text-align:left; vertical-align:top; }
+        th { border-top:none; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color: var(--lx-muted); }
         td { color:#f0eee8; }
         .metrics { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
         .metric { border:1px solid var(--line); border-radius:14px; background: var(--lx-s1); padding:12px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .metric-label { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#a7b0ba; margin-bottom:6px; font-weight:700; }
+        .metric-label { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color: var(--lx-muted); margin-bottom:6px; font-weight:700; }
         .metric-value { font-size:26px; font-weight:800; color:#ffffff; font-variant-numeric: tabular-nums; }
         .error { color:var(--bad); }
         .warn { color:var(--warn); }
-        .empty { color:#a7b0ba; }
+        .empty { color: var(--lx-muted); }
         @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
         .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
-        @media (max-width:1000px){ .metrics { grid-template-columns:1fr 1fr; } table, thead, tbody, th, td, tr { display:block; } thead { display:none; } td { border-top:none; padding:6px 0; } tr { border-top:1px solid #eadfce; padding:8px 0; } }
+        @media (max-width:1000px){ .metrics { grid-template-columns:1fr 1fr; } table, thead, tbody, th, td, tr { display:block; } thead { display:none; } td { border-top:none; padding:6px 0; } tr { border-top:1px solid var(--lx-br); padding:8px 0; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>
@@ -78,7 +78,7 @@
 
         <div class="card">
             <h1>System Health</h1>
-            <div style="margin-bottom:10px;"><span style="display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background:#f5eadc; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Operator View</span></div>
+            <div style="margin-bottom:10px;"><span style="display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background: var(--lx-s2); color: var(--lx-muted); border: 1px solid var(--lx-br); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Operator View</span></div>
             <p>Use this page to answer three questions quickly: what is in the queue, what is failing, and what looks stuck.</p>
         </div>
 

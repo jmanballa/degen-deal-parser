@@ -51,9 +51,9 @@
         .logo { width:100%; max-width:160px; display:block; margin:0 auto; }
         .eyebrow, .pill { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:var(--lx-s2); color:var(--lx-muted); width:fit-content; }
-        .pill { background:#f5eadc; color:#a7b0ba; }
+        .pill { background: var(--lx-s2); color: var(--lx-muted); border: 1px solid var(--lx-br); }
         h1 { margin:8px 0 6px; font-size:clamp(28px,4vw,44px); line-height:.95; letter-spacing:-.045em; color:#ffffff; font-weight:800; }
-        p, .small { color:#a7b0ba; line-height:1.5; font-size:14px; }
+        p, .small { color: var(--lx-muted); line-height:1.5; font-size:14px; }
         .button, button { appearance:none; border:none; border-radius:16px; padding:11px 15px; font:inherit; font-weight:800; cursor:pointer; }
         .primary-button { background: var(--lx-red); color:#fff; border:1px solid var(--lx-red); font-size:16px; padding:14px 22px; }
         .primary-button:hover { background:#dc2626; border-color:#dc2626; }
@@ -61,7 +61,7 @@
         .card { padding:24px; margin-bottom:18px; background:linear-gradient(180deg, var(--card-strong), var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
         .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
         .form-full { grid-column:1 / -1; }
-        label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        label { display:flex; flex-direction:column; gap:6px; color: var(--lx-muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         input, select, textarea { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; font-size:15px; }
         textarea { resize:vertical; min-height:90px; }
         select { appearance:auto; }
@@ -70,12 +70,12 @@
         .flash.success { background: var(--green-bg); border-color: rgba(34,197,94,.3); color: var(--green); }
         .section-header { justify-content:space-between; margin-bottom:16px; }
         .section-title { margin:0; font-size:20px; letter-spacing:-.03em; color: var(--lx-text); font-weight:800; }
-        .section-subtitle { margin:4px 0 0; color:#a7b0ba; font-size:13px; }
+        .section-subtitle { margin:4px 0 0; color: var(--lx-muted); font-size:13px; }
         /* Recent hits mini-table */
-        .table-shell { overflow:auto; border:1px solid #eadfce; border-radius:16px; background: var(--lx-s1); }
+        .table-shell { overflow:auto; border:1px solid var(--lx-br); border-radius:16px; background: var(--lx-s1); }
         table { width:100%; border-collapse:separate; border-spacing:0; }
-        th, td { padding:9px 12px; border-bottom:1px solid #efe4d6; text-align:left; vertical-align:middle; font-size:12px; }
-        thead th { background: var(--lx-s2); color:#a7b0ba; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        th, td { padding:9px 12px; border-bottom:1px solid var(--lx-br); text-align:left; vertical-align:middle; font-size:12px; }
+        thead th { background: var(--lx-s2); color: var(--lx-muted); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         tbody tr:last-child td { border-bottom:none; }
         tbody tr:hover { background: rgba(255,255,255,.04); }
         .pill-big-hit { background:#fff0ef; color:#9d2f2b; border:1px solid #efb8b4; }
@@ -89,7 +89,7 @@
             .primary-button { width:100%; text-align:center; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

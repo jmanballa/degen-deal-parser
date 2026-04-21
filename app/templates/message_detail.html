@@ -52,13 +52,13 @@
         .hero { padding:24px; margin-bottom:18px; background: var(--lx-s1); border: 1px solid var(--lx-br); }
         .eyebrow, .pill, .meta-pill { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .eyebrow { background:var(--lx-s2); color:var(--lx-muted); }
-        .pill { background:#f5eadc; color:#a7b0ba; }
+        .pill { background: var(--lx-s2); color: var(--lx-muted); border: 1px solid var(--lx-br); }
         .pill-danger { background: var(--red-bg); color: var(--red); }
         .pill-success { background: var(--green-bg); color: var(--green); }
-        .meta-pill { background: var(--lx-s1); border:1px solid #ead7c1; color:#a7b0ba; text-transform:none; letter-spacing:0; }
+        .meta-pill { background: var(--lx-s1); border:1px solid #ead7c1; color: var(--lx-muted); text-transform:none; letter-spacing:0; }
         h1 { margin:10px 0 8px; font-size:clamp(28px,4vw,48px); line-height:.95; letter-spacing:-.04em; color:#ffffff; font-weight: 800; }
         h2 { margin:0 0 12px; }
-        .small { color:#a7b0ba; font-size:13px; line-height:1.5; }
+        .small { color: var(--lx-muted); font-size:13px; line-height:1.5; }
         .back-row, .hero-meta, .hero-actions, .button-row, .thumb-list { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
         .back-row { margin-bottom:14px; }
         .button, button { appearance:none; border:none; border-radius:14px; padding:10px 14px; font:inherit; font-weight:800; cursor:pointer; }
@@ -67,13 +67,13 @@
         .secondary-button { background: var(--lx-s1); color:var(--text); border:1px solid var(--line); }
         .layout { display:grid; grid-template-columns:1.05fr .95fr; gap:18px; align-items:start; }
         .card { padding:18px; }
-        .message-box { white-space:pre-wrap; border:1px solid #eadfce; border-radius:18px; padding:14px; background: var(--lx-s1); line-height:1.5; }
+        .message-box { white-space:pre-wrap; border:1px solid var(--lx-br); border-radius:18px; padding:14px; background: var(--lx-s1); line-height:1.5; }
         .summary-grid, .detail-grid, .edit-grid { display:grid; gap:12px; }
         .summary-grid { grid-template-columns:repeat(5,minmax(0,1fr)); margin-top:14px; }
         .detail-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
         .edit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
         .metric, .detail-card { background: var(--lx-s1); border:1px solid var(--line); border-radius:18px; padding:14px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .metric-label, .label { color:#a7b0ba; font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
+        .metric-label, .label { color: var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-weight:800; }
         .metric-value { font-size:24px; font-weight:800; letter-spacing:-.03em; color:#ffffff; font-variant-numeric: tabular-nums; }
         .field { display:flex; flex-direction:column; gap:6px; }
         .field-wide { grid-column:1 / -1; }
@@ -89,7 +89,7 @@
         @media (max-width:1200px){.layout{grid-template-columns:1fr}.sticky-card{position:static}.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
         @media (max-width:900px){.page{padding:16px 14px 28px}.summary-grid,.detail-grid,.edit-grid{grid-template-columns:1fr}}
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

@@ -46,7 +46,7 @@
         .page { max-width:1200px; margin:0 auto; padding:28px 28px 60px; }
         .card { padding:22px; margin-bottom:18px; background:linear-gradient(180deg,var(--card-strong),var(--card)); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow); }
         .two-col { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-        label { display:flex; flex-direction:column; gap:6px; color:#a7b0ba; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; }
+        label { display:flex; flex-direction:column; gap:6px; color: var(--lx-muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; }
         input, select, textarea { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background: var(--lx-s1); color:var(--text); font:inherit; }
         textarea { resize:vertical; min-height:80px; }
         .button, button { appearance:none; border:none; border-radius:14px; padding:10px 16px; font:inherit; font-weight:700; cursor:pointer; transition:transform .15s; }
@@ -64,26 +64,26 @@
         .badge-held { background:#fff5df; color:#8a580d; }
         .price-big { font-size:32px; font-weight:800; letter-spacing:-.04em; color:#166647; font-variant-numeric:tabular-nums; }
         .price-row { display:flex; gap:16px; align-items:baseline; flex-wrap:wrap; margin-bottom:12px; }
-        .price-label { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#a7b0ba; }
+        .price-label { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color: var(--lx-muted); }
         .price-val { font-size:18px; font-weight:700; font-variant-numeric:tabular-nums; }
-        .price-none { color:#a7b0ba; }
+        .price-none { color: var(--lx-muted); }
         .barcode-section { display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; border:1px solid var(--line); border-radius:16px; background: var(--lx-s1); }
         .barcode-svg-wrap svg { max-width:240px; height:auto; display:block; }
-        .barcode-code { font-family:monospace; font-size:14px; font-weight:700; color:#a7b0ba; }
+        .barcode-code { font-family:monospace; font-size:14px; font-weight:700; color: var(--lx-muted); }
         .shopify-section { padding:14px 16px; border:1px solid #a6e2bf; border-radius:16px; background:#edf9f2; margin-bottom:12px; }
         .shopify-section.not-linked { border-color:var(--line); background: var(--lx-s1); }
         .history-table { width:100%; border-collapse:collapse; font-size:12px; }
-        .history-table th { text-align:left; padding:6px 8px; color:#a7b0ba; font-weight:800; text-transform:uppercase; letter-spacing:.07em; border-bottom:1px solid var(--line); }
+        .history-table th { text-align:left; padding:6px 8px; color: var(--lx-muted); font-weight:800; text-transform:uppercase; letter-spacing:.07em; border-bottom:1px solid var(--line); }
         .history-table td { padding:6px 8px; border-bottom:1px solid #f0ebe3; font-variant-numeric:tabular-nums; }
         .action-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
-        .back-link { color:#a7b0ba; font-size:13px; font-weight:600; margin-bottom:12px; display:inline-block; }
+        .back-link { color: var(--lx-muted); font-size:13px; font-weight:600; margin-bottom:12px; display:inline-block; }
         .back-link:hover { color:var(--text); }
         .section-divider { margin:0 0 16px; padding-bottom:12px; border-bottom:1px solid var(--line); }
         @keyframes card-in { from{opacity:0;transform:translateY(12px) scale(.988)} to{opacity:1;transform:none} }
         .card { animation:card-in .4s cubic-bezier(.22,1,.36,1) both; }
         @media(max-width:800px) { .two-col{grid-template-columns:1fr;} .page{padding:16px 14px 28px;} }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>
@@ -98,12 +98,12 @@
             <div>
                 <span class="eyebrow" style="margin-bottom:8px;">{{ item.item_type.title() }}</span>
                 <h1 style="margin:8px 0 4px;font-size:clamp(24px,4vw,40px);line-height:1;letter-spacing:-.04em;color:#fff;font-weight:800;">{{ item.card_name }}</h1>
-                {% if item.set_name %}<p style="color:#a7b0ba;margin:4px 0;">{{ item.set_name }}{% if item.card_number %} · #{{ item.card_number }}{% endif %}</p>{% endif %}
+                {% if item.set_name %}<p style="color: var(--lx-muted);margin:4px 0;">{{ item.set_name }}{% if item.card_number %} · #{{ item.card_number }}{% endif %}</p>{% endif %}
                 <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                     <span class="badge badge-{{ item.status }}">{{ item.status.replace("_"," ").title() }}</span>
-                    <span style="font-size:12px;color:#a7b0ba;">{{ item.game }}</span>
-                    {% if item.language and item.language != "English" %}<span style="font-size:12px;color:#a7b0ba;">{{ item.language }}</span>{% endif %}
-                    <span style="font-family:monospace;font-size:12px;color:#a7b0ba;">{{ item.barcode }}</span>
+                    <span style="font-size:12px;color: var(--lx-muted);">{{ item.game }}</span>
+                    {% if item.language and item.language != "English" %}<span style="font-size:12px;color: var(--lx-muted);">{{ item.language }}</span>{% endif %}
+                    <span style="font-family:monospace;font-size:12px;color: var(--lx-muted);">{{ item.barcode }}</span>
                 </div>
             </div>
             <!-- Barcode -->
@@ -124,7 +124,7 @@
                 <div>
                     <div class="price-label">Effective Price</div>
                     <div class="price-big">${{ "%.2f"|format(effective_price) }}</div>
-                    {% if item.list_price is not none %}<div style="font-size:11px;color:#a7b0ba;">Manual override active</div>{% endif %}
+                    {% if item.list_price is not none %}<div style="font-size:11px;color: var(--lx-muted);">Manual override active</div>{% endif %}
                 </div>
                 {% else %}
                 <div><div class="price-label">Effective Price</div><div class="price-val price-none">Not priced</div></div>
@@ -174,8 +174,8 @@
             </div>
             {% else %}
             <div class="shopify-section not-linked">
-                <div style="font-weight:700;color:#a7b0ba;margin-bottom:6px;">Not listed on Shopify</div>
-                <p style="margin:0 0 12px;font-size:13px;color:#a7b0ba;">Push this item to create a Shopify product with the barcode as SKU.</p>
+                <div style="font-weight:700;color: var(--lx-muted);margin-bottom:6px;">Not listed on Shopify</div>
+                <p style="margin:0 0 12px;font-size:13px;color: var(--lx-muted);">Push this item to create a Shopify product with the barcode as SKU.</p>
                 <form method="post" action="/inventory/{{ item.id }}/push-shopify" style="display:inline;">
                     <button type="submit" class="primary-button">Push to Shopify</button>
                 </form>
