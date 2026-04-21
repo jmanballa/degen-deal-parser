@@ -75,7 +75,7 @@
         .section-subtitle { margin:4px 0 0; color:#a7b0ba; }
         .scope-chip { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background: var(--lx-s1); border:1px solid var(--line); color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
         .list { display:grid; gap:10px; }
-        .item { padding:12px 0; border-top:1px solid #eee3d3; }
+        .item { padding:12px 0; border-top:1px solid var(--lx-br); }
         .item:first-child { border-top:none; padding-top:0; }
         .action-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
         .metrics { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin-top:10px; }
@@ -92,13 +92,13 @@
         summary::-webkit-details-marker { display:none; }
         .details-summary { justify-content:space-between; }
         .details-body { padding:0 18px; }
-        pre { margin:0; padding:14px; border:1px solid var(--line); border-radius:18px; background:rgba(255,255,255,.72); overflow:auto; white-space:pre-wrap; word-break:break-word; }
+        pre { margin:0; padding:14px; border:1px solid var(--line); border-radius:18px; background: var(--lx-s1); color: var(--lx-text); overflow:auto; white-space:pre-wrap; word-break:break-word; }
         .table-actions { margin-top:8px; }
         @keyframes card-in { from { opacity:0; transform:translateY(16px) scale(.985); } to { opacity:1; transform:none; } }
         .hero, .card, .metric { animation: card-in .5s cubic-bezier(.22,1,.36,1) both; }
         @media (max-width:1000px){ .hero, .grid, .layout, .metrics { grid-template-columns:1fr; } .page { padding:16px 14px 28px; } .eyebrow { margin:0 auto; } .hero { text-align:center; } .workspace-nav { position:static; } table, thead, tbody, th, td, tr { display:block; } thead { display:none; } td { border-top:none; padding:6px 0; } tr { border-top:1px solid #eadfce; padding:8px 0; } }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body>

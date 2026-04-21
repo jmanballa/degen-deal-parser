@@ -80,7 +80,7 @@
             grid-template-columns: 1.2fr .8fr;
             gap: 24px;
             padding: 34px;
-            border-radius: var(--radius-xl);
+            border-radius: 24px;
             margin-bottom: 18px;
             background: var(--lx-s1);
             border: 1px solid var(--lx-br);
@@ -113,7 +113,7 @@
         }
         .hero h1 {
             margin: 16px 0 10px;
-            font-size: clamp(42px, 5vw, 68px);
+            font-size: clamp(34px, 4vw, 52px);
             line-height: .88;
             max-width: 760px;
             font-weight: 800;
@@ -234,7 +234,7 @@
         .primary-button {
             color: white;
             background: var(--lx-red);
-            box-shadow: 0 4px 12px rgba(96, 165, 250, 0.24);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.24);
         }
         .secondary-button {
             color: var(--text);
@@ -250,12 +250,12 @@
         }
         .quick-link.active {
             color: white;
-            background: linear-gradient(135deg, #1d4ed8, #3b82f6 64%, #60a5fa);
+            background: var(--lx-red);
             border-color: transparent;
         }
         .quick-link.legacy {
             color: var(--lx-text);
-            border-color: rgba(22, 119, 255, 0.14);
+            border-color: var(--lx-br);
         }
         .kpi-grid,
         .content-grid,
@@ -493,7 +493,7 @@
             .statement-table { border-radius: 18px; }
         }
     </style>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042013">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042014">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
 </head>
 <body class="finance-page">
