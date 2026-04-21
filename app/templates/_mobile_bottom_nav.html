@@ -21,11 +21,14 @@
         </svg>
         <span class="mbn-label">Streamer</span>
     </a>
-    <a href="/degen_eye" class="mbn-item mbn-item-center{% if _mbn_eye %} is-active{% endif %}" aria-label="Degen Eye" data-center="true">
-        <svg class="mbn-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
-        </svg>
+    <a href="/degen_eye" class="mbn-item mbn-item-center{% if _mbn_eye %} is-active{% endif %}" aria-label="Degen Eye" data-center="true"{% if _mbn_eye %} aria-current="page"{% endif %}>
+        <span class="mbn-eye-fab">
+            <svg class="mbn-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3" fill="rgba(255,255,255,.3)"/>
+            </svg>
+            <span class="mbn-eye-live-dot" aria-hidden="true"></span>
+        </span>
         <span class="mbn-label">Eye</span>
     </a>
     <a href="/deals" class="mbn-item{% if _mbn_deals %} is-active{% endif %}" aria-label="Deals">

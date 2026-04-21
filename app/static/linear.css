@@ -20,6 +20,11 @@
     --lx-live:  #22c55e;
     --lx-ldim:  rgba(34,197,94,.14);
 
+    /* Accent palette — used by Linear theme improvement cards/pills/amounts */
+    --cx-orange: #ff6a1c;
+    --cx-gold:   #e0b851;
+    --cx-green:  #93d6a7;
+
     /* Dashboard backward-compat aliases */
     --db-s1:    #111214;
     --db-s2:    #17181c;
@@ -422,7 +427,7 @@ a { color: inherit; text-decoration: none; }
 
 .db-hero {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
     margin: 16px 0 24px;
 }
@@ -1539,3 +1544,266 @@ details.lx-details[open] > summary::after { transform: rotate(-90deg); }
     .lx-metrics-4 { grid-template-columns: 1fr; }
     .lx-deal-card .lx-fin-grid { grid-template-columns: 1fr; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Linear Theme Improvements — dashboard hierarchy, deals scannable table,
+   Eye FAB. See docs/design/linear-theme-improvements/BRIEF.md
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* A — Dashboard accent modifiers */
+.db-card--accent-top { border-top-width: 2px !important; border-top-style: solid !important; }
+.db-card--accent-orange {
+    border-top-color: var(--cx-orange) !important;
+    background: rgba(255,106,28,.04) !important;
+}
+.db-card--accent-green {
+    border-top-color: var(--cx-green) !important;
+    background: rgba(147,214,167,.03) !important;
+}
+.db-card--accent-orange .db-ch h3 { color: var(--cx-orange) !important; }
+.db-card--accent-green  .db-ch h3 { color: var(--cx-green)  !important; }
+
+.db-num--lead {
+    color: var(--cx-orange) !important;
+    font-size: 44px;
+    line-height: 1;
+}
+.db-num--pos { color: var(--cx-green) !important; }
+.db-num--neg { color: var(--lx-red)  !important; }
+.db-num--zero { color: var(--db-muted) !important; }
+.db-num--warn { color: #fca5a5 !important; }
+
+.db-inline-breakdown {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--db-muted);
+    display: none;
+}
+.db-inline-breakdown b { color: var(--db-text); font-weight: 600; }
+
+.db-metric-grid {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 12px 0 16px;
+}
+.db-metric {
+    background: var(--db-s1);
+    border: 1px solid var(--db-br);
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+.db-metric--accent-top { border-top-width: 2px; border-top-style: solid; }
+.db-metric--accent-green { border-top-color: var(--cx-green); }
+.db-metric--accent-red   { border-top-color: var(--lx-red); }
+.db-metric-lbl-sm {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--db-muted);
+}
+.db-metric-val-sm {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--db-text);
+    font-variant-numeric: tabular-nums;
+    margin-top: 4px;
+}
+
+.db-recent-teaser { display: none; margin-top: 4px; }
+
+@media (max-width: 600px) {
+    .db-card--hero-mobile .db-bk { display: none; }
+    .db-card--hero-mobile .db-inline-breakdown { display: block; }
+    .db-hero-mobile-hide { display: none !important; }
+    .db-metric-grid { display: grid; }
+    .db-recent-teaser { display: block; }
+    .db-num--lead { font-size: 32px; }
+}
+
+/* B — Deals: filter strip + summary pills + color-coded amounts */
+.lx-kind-tabs {
+    display: inline-flex;
+    background: var(--lx-s2);
+    border: 1px solid var(--lx-br);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
+.lx-kind-tab {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--lx-muted);
+    border-radius: 6px;
+    text-decoration: none;
+    line-height: 1;
+    white-space: nowrap;
+}
+.lx-kind-tab:hover { color: var(--lx-text); }
+.lx-kind-tab.is-active {
+    background: rgba(255,106,28,.12);
+    color: var(--cx-orange);
+    border: 1px solid rgba(255,106,28,.4);
+    padding: 5px 11px;
+}
+
+.lx-filter-strip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.lx-filter-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.lx-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: var(--lx-s2);
+    border: 1px solid var(--lx-br);
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--lx-muted);
+    text-decoration: none;
+}
+.lx-filter-chip:hover { color: var(--lx-text); border-color: var(--lx-br2); }
+.lx-filter-chip-x { color: var(--lx-dim); font-weight: 700; }
+.lx-filter-more {
+    background: var(--lx-s1);
+    border: 1px solid var(--lx-br);
+    border-radius: 8px;
+}
+.lx-filter-more summary {
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--lx-muted);
+    cursor: pointer;
+    list-style: none;
+}
+.lx-filter-more summary::-webkit-details-marker { display: none; }
+.lx-filter-more[open] summary { border-bottom: 1px solid var(--lx-br); }
+.lx-filter-more .lx-filters {
+    padding: 12px;
+    margin: 0;
+}
+
+.lx-summary-strip {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0 0 14px;
+}
+.lx-sum-pill {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 5px 12px;
+    border-radius: 7px;
+    border: 1px solid var(--lx-br);
+    background: var(--lx-s1);
+    min-width: 90px;
+}
+.lx-sum-pill-lbl {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--lx-muted);
+}
+.lx-sum-pill-val {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--lx-text);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+}
+.lx-sum-pill--sales {
+    background: rgba(255,106,28,.08);
+    border-color: rgba(255,106,28,.3);
+}
+.lx-sum-pill--sales .lx-sum-pill-lbl,
+.lx-sum-pill--sales .lx-sum-pill-val { color: var(--cx-orange); }
+.lx-sum-pill--net {
+    background: rgba(147,214,167,.08);
+    border-color: rgba(147,214,167,.3);
+}
+.lx-sum-pill--net .lx-sum-pill-val { color: var(--cx-green); }
+
+/* Deals: color-coded amounts */
+.deals-amount {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    font-weight: 600;
+}
+.deals-amount--sale    { color: var(--cx-orange); }
+.deals-amount--buy     { color: var(--cx-gold);   }
+.deals-amount--expense { color: var(--lx-red);    }
+.deals-amount--unknown { color: var(--lx-dim);    }
+
+/* Deals: BK status icon column */
+.deals-bk {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.deals-bk--ok      { color: var(--lx-live); }
+.deals-bk--pending { color: #fbbf24; }
+.deals-bk--none    { color: var(--lx-dim); }
+
+/* C — Mobile nav Eye FAB + Live dot (Concept 3) */
+@media (max-width: 767.98px) {
+    .mobile-bottom-nav .mbn-item.mbn-item-center {
+        align-self: flex-start;
+    }
+    .mbn-eye-fab {
+        position: relative;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--cx-orange), #c44a00);
+        box-shadow: 0 4px 16px rgba(255,106,28,.5);
+        border: 2px solid #0b0c0e;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: -18px;
+        margin-bottom: 2px;
+    }
+    .mbn-eye-fab .mbn-icon {
+        width: 22px;
+        height: 22px;
+        stroke: #fff;
+        stroke-width: 2;
+        fill: none;
+    }
+    .mbn-eye-live-dot {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--lx-live);
+        border: 2px solid #0b0c0e;
+    }
+    .mobile-bottom-nav .mbn-item.mbn-item-center .mbn-label {
+        color: var(--cx-orange);
+        font-weight: 700;
+    }
+    /* Override safe-area.css center icon sizing — the FAB manages its own size */
+    .mobile-bottom-nav .mbn-item[data-center="true"] .mbn-icon {
+        width: 22px;
+        height: 22px;
+    }
+    .mobile-bottom-nav .mbn-item[data-center="true"].is-active .mbn-icon {
+        filter: none;
+    }
+}
+

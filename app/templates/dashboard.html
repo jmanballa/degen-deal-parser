@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
+    <link rel="stylesheet" href="/static/linear.css?v=1776744814">
 </head>
 <body>
     {% set user_role = current_user.role if current_user else "viewer" %}
@@ -38,12 +38,12 @@
         <div class="db-hero">
 
             <!-- 1 · Revenue today -->
-            <article class="db-card">
+            <article class="db-card db-card--accent-top db-card--accent-orange db-card--hero-mobile">
                 <div class="db-ch">
                     <h3>Revenue today</h3>
                     <span class="db-ch-meta">{{ dashboard_snapshot["today_label"] }}</span>
                 </div>
-                <div class="db-big">{{ dashboard_snapshot["today"]["revenue"]["total_display"] }}</div>
+                <div class="db-big db-num--lead">{{ dashboard_snapshot["today"]["revenue"]["total_display"] }}</div>
                 <div class="db-bk">
                     <div class="db-bk-row">
                         <span class="db-bk-lbl">Discord</span>
@@ -58,10 +58,18 @@
                         <span class="db-bk-val">{{ dashboard_snapshot["today"]["revenue"]["shopify_total_display"] }}<span class="db-bk-cnt">· {{ dashboard_snapshot["today"]["shopify"]["order_count"] }} orders</span></span>
                     </div>
                 </div>
+                <div class="db-inline-breakdown">
+                    Discord <b>{{ dashboard_snapshot["today"]["revenue"]["discord_total_display"] }}</b> · TikTok <b>{{ dashboard_snapshot["today"]["revenue"]["tiktok_total_display"] }}</b> · Shopify <b>{{ dashboard_snapshot["today"]["revenue"]["shopify_total_display"] }}</b>
+                </div>
             </article>
 
+            {% set _rev_total = dashboard_snapshot["today"]["revenue"]["total"] | float %}
+            {% set _pur_total = dashboard_snapshot["today"]["purchases"]["total"] | float %}
+            {% set _net_pl = _rev_total - _pur_total %}
+            {% set _net_pct = ((_net_pl / _rev_total) * 100) | round if _rev_total else 0 %}
+
             <!-- 2 · Purchases today -->
-            <article class="db-card">
+            <article class="db-card db-hero-mobile-hide">
                 <div class="db-ch">
                     <h3>Purchases today</h3>
                     <span class="db-ch-meta">{{ dashboard_snapshot["today"]["buy_count"] + dashboard_snapshot["today"]["trade_count"] + dashboard_snapshot["today"]["expense_count"] }} items</span>
@@ -89,8 +97,25 @@
                 </div>
             </article>
 
+            <!-- 2b · Net P&L today (derived) -->
+            <article class="db-card db-card--accent-top db-card--accent-green db-hero-mobile-hide">
+                <div class="db-ch">
+                    <h3>Net P&amp;L today</h3>
+                    <span class="db-ch-meta">revenue − purchases</span>
+                </div>
+                <div class="db-big {% if _net_pl > 0 %}db-num--pos{% elif _net_pl < 0 %}db-num--neg{% else %}db-num--zero{% endif %}">
+                    {% if _net_pl >= 0 %}+{% else %}-{% endif %}${{ "%.2f"|format(_net_pl if _net_pl >= 0 else -_net_pl) }}
+                </div>
+                <div class="db-bk">
+                    <div class="db-bk-row">
+                        <span class="db-bk-lbl">Margin</span>
+                        <span class="db-bk-val" style="color: var(--cx-green);">{% if _rev_total %}{{ _net_pct }}%{% else %}—{% endif %}</span>
+                    </div>
+                </div>
+            </article>
+
             <!-- 3 · Needs attention -->
-            <article class="db-card">
+            <article class="db-card db-hero-mobile-hide">
                 <div class="db-ch">
                     <h3>Needs attention</h3>
                     {% if is_reviewer %}
@@ -126,7 +151,7 @@
             </article>
 
             <!-- 4 · Stream status -->
-            <article class="db-card">
+            <article class="db-card db-hero-mobile-hide">
                 <div class="db-ch">
                     <h3>Stream</h3>
                     {% if stream_status["active"] %}
@@ -179,6 +204,58 @@
             </article>
 
         </div><!-- .db-hero -->
+
+        <!-- Mobile-only 2×2 compact stat grid (shown ≤600px) -->
+        <div class="db-metric-grid" aria-hidden="false">
+            <div class="db-metric">
+                <div class="db-metric-lbl-sm">Purchases</div>
+                <div class="db-metric-val-sm">{{ dashboard_snapshot["today"]["purchases"]["total_display"] }}</div>
+            </div>
+            <div class="db-metric db-metric--accent-top db-metric--accent-green">
+                <div class="db-metric-lbl-sm">Net P&amp;L</div>
+                <div class="db-metric-val-sm {% if _net_pl > 0 %}db-num--pos{% elif _net_pl < 0 %}db-num--neg{% else %}db-num--zero{% endif %}">
+                    {% if _net_pl >= 0 %}+{% else %}-{% endif %}${{ "%.0f"|format(_net_pl if _net_pl >= 0 else -_net_pl) }}
+                </div>
+            </div>
+            {% if is_reviewer %}
+            <a class="db-metric {% if review_summary['needs_review'] > 0 %}db-metric--accent-top db-metric--accent-red{% endif %}" href="/review" style="text-decoration:none;">
+                <div class="db-metric-lbl-sm">Review</div>
+                <div class="db-metric-val-sm {% if review_summary['needs_review'] > 0 %}db-num--warn{% endif %}">{{ review_summary["needs_review"] }}</div>
+            </a>
+            {% else %}
+            <div class="db-metric">
+                <div class="db-metric-lbl-sm">Orders</div>
+                <div class="db-metric-val-sm">{{ dashboard_snapshot["today"]["tiktok"]["paid_order_count"] }}</div>
+            </div>
+            {% endif %}
+            <a class="db-metric" href="/deals" style="text-decoration:none;">
+                <div class="db-metric-lbl-sm">Deals</div>
+                <div class="db-metric-val-sm">{{ dashboard_snapshot["today"]["rows"] }}</div>
+            </a>
+        </div>
+
+        <!-- Mobile-only recent deals teaser -->
+        <div class="db-recent-teaser">
+            <div class="db-sh" style="display:flex;justify-content:space-between;align-items:center;margin:4px 2px 8px;">
+                <span style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--db-muted);">Recent deals</span>
+                <a href="/deals" style="font-size:12px;font-weight:600;color:var(--cx-orange);">View all →</a>
+            </div>
+            <div class="db-list">
+                {% for row in recent_deals[:3] %}
+                <a class="db-li" href="/deals/{{ row['id'] }}">
+                    <div class="db-li-l">
+                        <div class="db-li-title">{{ row["channel"] or row["channel_id"] }}</div>
+                        <div class="db-li-sub">{{ row["time"] }} · {{ row["entry_kind"] or "unknown" }}</div>
+                    </div>
+                    <div class="db-li-r">
+                        {% if row["amount_display"] %}
+                        <div class="db-li-amt deals-amount {% if row['entry_kind'] == 'sale' %}deals-amount--sale{% elif row['entry_kind'] == 'buy' %}deals-amount--buy{% elif row['entry_kind'] == 'expense' %}deals-amount--expense{% else %}deals-amount--unknown{% endif %}">{{ row["amount_display"] }}</div>
+                        {% endif %}
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
 
         <!-- ══ MORE: everything else, collapsible ════════════════════════ -->
         <div class="db-more">

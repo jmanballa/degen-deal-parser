@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/static/linear.css?v=2026042015">
+    <link rel="stylesheet" href="/static/linear.css?v=1776744814">
 </head>
 <body>
     <div class="lx-page">
@@ -40,76 +40,75 @@
             </div>
         </div>
 
-        <div class="lx-card">
-            <div class="lx-sh" style="margin-bottom:14px;">
-                <h2 class="lx-sh-title">Filter The Ledger</h2>
-                <span class="lx-sh-meta">Narrow by channel, kind, or date range</span>
+        {# ── Compact filter strip: kind tabs + active-filter chips + more ── #}
+        {% set _qs_other = "channel_id=" ~ (selected_channel_id or "") ~ "&after=" ~ (selected_after or "") ~ "&before=" ~ (selected_before or "") ~ "&limit=" ~ (selected_limit or "") %}
+        <div class="lx-filter-strip">
+            <nav class="lx-kind-tabs" aria-label="Deal kind">
+                <a class="lx-kind-tab {% if not selected_entry_kind %}is-active{% endif %}" href="/deals?{{ _qs_other }}">All</a>
+                <a class="lx-kind-tab {% if selected_entry_kind == 'sale' %}is-active{% endif %}" href="/deals?entry_kind=sale&{{ _qs_other }}">Sales</a>
+                <a class="lx-kind-tab {% if selected_entry_kind == 'buy' %}is-active{% endif %}" href="/deals?entry_kind=buy&{{ _qs_other }}">Buys</a>
+                <a class="lx-kind-tab {% if selected_entry_kind == 'expense' %}is-active{% endif %}" href="/deals?entry_kind=expense&{{ _qs_other }}">Expenses</a>
+                <a class="lx-kind-tab {% if selected_entry_kind in ['unknown','trade'] %}is-active{% endif %}" href="/deals?entry_kind=unknown&{{ _qs_other }}">Other</a>
+            </nav>
+            <div class="lx-filter-chips">
+                {% if selected_channel_id %}
+                <a class="lx-filter-chip" href="/deals?entry_kind={{ selected_entry_kind or '' }}&after={{ selected_after or '' }}&before={{ selected_before or '' }}&limit={{ selected_limit or '' }}">channel <span class="lx-filter-chip-x">✕</span></a>
+                {% endif %}
+                {% if selected_after %}
+                <a class="lx-filter-chip" href="/deals?entry_kind={{ selected_entry_kind or '' }}&channel_id={{ selected_channel_id or '' }}&before={{ selected_before or '' }}&limit={{ selected_limit or '' }}">after {{ selected_after }} <span class="lx-filter-chip-x">✕</span></a>
+                {% endif %}
+                {% if selected_before %}
+                <a class="lx-filter-chip" href="/deals?entry_kind={{ selected_entry_kind or '' }}&channel_id={{ selected_channel_id or '' }}&after={{ selected_after or '' }}&limit={{ selected_limit or '' }}">before {{ selected_before }} <span class="lx-filter-chip-x">✕</span></a>
+                {% endif %}
             </div>
-            <form method="get" action="/deals" class="lx-filters">
-                <label class="lx-label">Channel
-                    <select class="lx-select" name="channel_id">
-                        <option value="">All watched channels</option>
-                        {% for ch in channels %}
-                        <option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label class="lx-label">Financial Kind
-                    <select class="lx-select" name="entry_kind">
-                        <option value="">All</option>
-                        <option value="sale" {% if selected_entry_kind == "sale" %}selected{% endif %}>sale</option>
-                        <option value="buy" {% if selected_entry_kind == "buy" %}selected{% endif %}>buy</option>
-                        <option value="trade" {% if selected_entry_kind == "trade" %}selected{% endif %}>trade</option>
-                        <option value="expense" {% if selected_entry_kind == "expense" %}selected{% endif %}>expense</option>
-                        <option value="unknown" {% if selected_entry_kind == "unknown" %}selected{% endif %}>unknown</option>
-                    </select>
-                </label>
-                <label class="lx-label">After
-                    <input class="lx-input" type="date" name="after" value="{{ selected_after }}">
-                </label>
-                <label class="lx-label">Before
-                    <input class="lx-input" type="date" name="before" value="{{ selected_before }}">
-                </label>
-                <label class="lx-label">Rows
-                    <select class="lx-select" name="limit">
-                        {% for option in [10,25,50,100] %}
-                        <option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <div style="display:flex;align-items:flex-end;">
-                    <button type="submit" class="lx-btn" style="width:100%;">Apply Filters</button>
-                </div>
-            </form>
-            <div class="lx-scope-strip">
-                <span class="lx-note">{{ selected_entry_kind if selected_entry_kind else "All deal kinds" }}{% if selected_channel_id %} · one channel{% else %} · watched channels{% endif %}</span>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                    <span class="lx-pill">{{ summary["rows"] }} rows</span>
-                    <span class="lx-pill">Page {{ pagination["page"] }} of {{ pagination["total_pages"] }}</span>
-                </div>
-            </div>
+            <details class="lx-filter-more">
+                <summary>+ Filter</summary>
+                <form method="get" action="/deals" class="lx-filters">
+                    <input type="hidden" name="entry_kind" value="{{ selected_entry_kind or '' }}">
+                    <label class="lx-label">Channel
+                        <select class="lx-select" name="channel_id">
+                            <option value="">All watched channels</option>
+                            {% for ch in channels %}
+                            <option value="{{ ch['channel_id'] }}" {% if selected_channel_id == ch['channel_id'] %}selected{% endif %}>{{ ch["channel_name"] }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="lx-label">After
+                        <input class="lx-input" type="date" name="after" value="{{ selected_after }}">
+                    </label>
+                    <label class="lx-label">Before
+                        <input class="lx-input" type="date" name="before" value="{{ selected_before }}">
+                    </label>
+                    <label class="lx-label">Rows
+                        <select class="lx-select" name="limit">
+                            {% for option in [10,25,50,100] %}
+                            <option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <div style="display:flex;align-items:flex-end;">
+                        <button type="submit" class="lx-btn" style="width:100%;">Apply</button>
+                    </div>
+                </form>
+            </details>
         </div>
 
-        <div class="lx-metrics">
-            <div class="lx-metric">
-                <div class="lx-metric-lbl">Rows</div>
-                <div class="lx-metric-val">{{ summary["rows"] }}</div>
+        <div class="lx-summary-strip">
+            <div class="lx-sum-pill lx-sum-pill--sales">
+                <span class="lx-sum-pill-lbl">Sales</span>
+                <span class="lx-sum-pill-val">{{ summary["totals"].get("sales", 0) | money }}</span>
             </div>
-            <div class="lx-metric">
-                <div class="lx-metric-lbl">Sales</div>
-                <div class="lx-metric-val">{{ summary["totals"].get("sales", 0) | money }}</div>
+            <div class="lx-sum-pill">
+                <span class="lx-sum-pill-lbl">Buys</span>
+                <span class="lx-sum-pill-val">{{ summary["totals"].get("buys", 0) | money }}</span>
             </div>
-            <div class="lx-metric">
-                <div class="lx-metric-lbl">Buys</div>
-                <div class="lx-metric-val">{{ summary["totals"].get("buys", 0) | money }}</div>
+            <div class="lx-sum-pill lx-sum-pill--net">
+                <span class="lx-sum-pill-lbl">Net</span>
+                <span class="lx-sum-pill-val">{{ summary["totals"].get("net", 0) | money }}</span>
             </div>
-            <div class="lx-metric">
-                <div class="lx-metric-lbl">Expenses</div>
-                <div class="lx-metric-val">{{ summary["totals"].get("expenses", 0) | money }}</div>
-            </div>
-            <div class="lx-metric">
-                <div class="lx-metric-lbl">Net</div>
-                <div class="lx-metric-val">{{ summary["totals"].get("net", 0) | money }}</div>
+            <div class="lx-sum-pill">
+                <span class="lx-sum-pill-lbl">Rows</span>
+                <span class="lx-sum-pill-val">{{ summary["rows"] }}</span>
             </div>
         </div>
 
@@ -133,7 +132,13 @@
                     <div class="lx-deal-meta">
                         <span>{{ row["time"] }}</span>
                         <span class="lx-pill">{{ row["entry_kind"] or "unknown" }}</span>
-                        {% if row["bookkeeping"]["status"] == "matched" %}<span class="lx-pill lx-pill-ok">bk matched</span>{% elif row["bookkeeping"]["status"] == "partial" %}<span class="lx-pill lx-pill-warn">bk partial</span>{% endif %}
+                        {% if row["bookkeeping"]["status"] == "matched" %}
+                            <span class="deals-bk deals-bk--ok" title="bookkept">✓</span>
+                        {% elif row["bookkeeping"]["status"] == "partial" %}
+                            <span class="deals-bk deals-bk--pending" title="partial">~</span>
+                        {% else %}
+                            <span class="deals-bk deals-bk--none" title="no bookkeeping">—</span>
+                        {% endif %}
                         {% if row["author"] %}<span>{{ row["author"] }}</span>{% endif %}
                     </div>
                     <div class="lx-deal-msg">{{ row["message"] or "(image-only message)" }}</div>
@@ -141,7 +146,7 @@
                 <div class="lx-fin-grid">
                     <div class="lx-fin-row">
                         <div class="lx-fin-lbl">Amount</div>
-                        <div class="lx-fin-val">{{ row["amount_display"] or "—" }}</div>
+                        <div class="lx-fin-val deals-amount {% if row['entry_kind'] == 'sale' %}deals-amount--sale{% elif row['entry_kind'] == 'buy' %}deals-amount--buy{% elif row['entry_kind'] == 'expense' %}deals-amount--expense{% else %}deals-amount--unknown{% endif %}">{{ row["amount_display"] or "—" }}</div>
                     </div>
                     <div class="lx-fin-row">
                         <div class="lx-fin-lbl">Payment</div>
