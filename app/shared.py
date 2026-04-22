@@ -3833,13 +3833,23 @@ def get_request_user(request: Request) -> Optional[User]:
 
 
 def redirect_to_login(request: Request) -> RedirectResponse:
+    # `/team/login` is the single canonical sign-in page for the whole site.
+    # `/login` still works as an alias (it 303s here), but pointing directly
+    # avoids an extra hop on every authz-failing request.
     next_path = request.url.path
     if request.url.query:
         next_path = f"{next_path}?{request.url.query}"
-    return RedirectResponse(url=f"/login?next={urlencode({'next': next_path})[5:]}", status_code=303)
+    return RedirectResponse(
+        url=f"/team/login?next={urlencode({'next': next_path})[5:]}",
+        status_code=303,
+    )
 
 
 def app_home_for_role(role: str) -> str:
+    # Employees don't have access to /dashboard (admin ops UI). Route them
+    # to the employee portal home so their post-login landing doesn't 403.
+    if role == "employee":
+        return "/team/"
     if role == "admin":
         return "/dashboard"
     if role == "reviewer":

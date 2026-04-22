@@ -193,52 +193,46 @@ def deal_detail_page(
     )
 
 
-@router.get("/login", response_class=HTMLResponse)
+def _team_login_redirect(request: Request, *, next: Optional[str] = None) -> RedirectResponse:
+    """`/login` is a thin alias for `/team/login` — one canonical sign-in
+    page for both employees and the ops team. We preserve `?next=` so
+    deep-links continue to work after auth."""
+    target = "/team/login"
+    next_clean = (next or "").strip()
+    # Only forward local paths to avoid open-redirect-via-alias.
+    if next_clean.startswith("/") and not next_clean.startswith("//"):
+        target = f"/team/login?next={urlencode({'next': next_clean})[5:]}"
+    return RedirectResponse(url=target, status_code=303)
+
+
+@router.get("/login")
 def login_page(
     request: Request,
     next: Optional[str] = Query(default=None),
-    error: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),  # absorbed for url-compat
 ):
+    # Already-signed-in users get sent straight to their role home so
+    # `/login` isn't a dead-end "please sign in" page for them.
     user = get_request_user(request)
     if user:
         return RedirectResponse(url=app_home_for_role(user.role), status_code=303)
-
-    return templates.TemplateResponse(
-        request,
-        "login.html",
-        {
-            "request": request,
-            "title": "Sign In",
-            "next_url": next or "",
-            "error": error,
-        },
-    )
+    return _team_login_redirect(request, next=next)
 
 
 @router.post("/login")
 def login_form(
     request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
     next: Optional[str] = Form(default=None),
-    session: Session = Depends(get_session),
 ):
-    user = authenticate_user(session, username, password)
-    if not user:
-        return RedirectResponse(
-            url=f"/login?error=Invalid+username+or+password&next={urlencode({'next': next or ''})[5:]}",
-            status_code=303,
-        )
-
-    request.session["user_id"] = user.id
-    if next and next.startswith("/") and not next.startswith("//"):
-        redirect_target = next
-    else:
-        redirect_target = app_home_for_role(user.role)
-    return RedirectResponse(url=redirect_target, status_code=303)
+    # Kept as an alias for any lingering form posts. We 303 to the
+    # canonical page; the user re-types credentials on the real form.
+    # (Post-bodies can't be forwarded across a 303 — 307 would preserve
+    # them but the /team/login CSRF check would reject the submission,
+    # so a clean re-prompt is the honest UX.)
+    return _team_login_redirect(request, next=next)
 
 
 @router.post("/logout")
 def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=303)
+    return RedirectResponse(url="/team/login?flash=You+have+been+signed+out.", status_code=303)

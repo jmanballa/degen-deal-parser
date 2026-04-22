@@ -100,18 +100,31 @@ def _require_employee(
 # Public auth flows
 # ---------------------------------------------------------------------------
 
+def _safe_next(value: Optional[str]) -> str:
+    """Only forward local paths to prevent open-redirects through `next`."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    return ""
+
+
 @router.get("/team/login", response_class=HTMLResponse)
 def team_login_page(
     request: Request,
+    next: Optional[str] = Query(default=None),
     error: Optional[str] = Query(default=None),
     flash: Optional[str] = Query(default=None),
 ):
     _portal_or_404()
+    from ..shared import app_home_for_role
+    next_url = _safe_next(next)
     user = getattr(request.state, "current_user", None)
     if user is not None:
-        if user.role == "employee":
-            return RedirectResponse("/team/", status_code=303)
-        return RedirectResponse("/dashboard", status_code=303)
+        if next_url:
+            return RedirectResponse(next_url, status_code=303)
+        return RedirectResponse(app_home_for_role(user.role), status_code=303)
     return templates.TemplateResponse(
         request,
         "team/login.html",
@@ -120,6 +133,7 @@ def team_login_page(
             "title": "Team Sign In",
             "error": error,
             "flash": flash,
+            "next_url": next_url,
             "csrf_token": issue_token(request),
         },
     )
@@ -131,10 +145,16 @@ async def team_login_post(
     username: str = Form(...),
     password: str = Form(...),
     csrf_token: str = Form(default=""),
+    next: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
 ):
     _portal_or_404()
+    from ..shared import app_home_for_role
+    from urllib.parse import urlencode as _urlencode
     ip = request.client.host if request.client else None
+    next_url = _safe_next(next)
+    next_qs = f"&next={_urlencode({'next': next_url})[5:]}" if next_url else ""
+
     if limited := rate_limited_or_429(
         request, key_prefix="team:login", max_requests=5, window_seconds=900.0
     ):
@@ -153,21 +173,22 @@ async def team_login_post(
 
     if not verify_token(request, csrf_token):
         return RedirectResponse(
-            "/team/login?error=Session+expired.+Please+try+again.",
+            f"/team/login?error=Session+expired.+Please+try+again.{next_qs}",
             status_code=303,
         )
 
     user = authenticate_user(session, username, password, ip_address=ip)
     if not user:
         return RedirectResponse(
-            "/team/login?error=Invalid+username+or+password", status_code=303
+            f"/team/login?error=Invalid+username+or+password{next_qs}",
+            status_code=303,
         )
 
     request.session["user_id"] = user.id
     rotate_token(request)  # m1 — bind a fresh CSRF to the authenticated session
-    if user.role == "employee":
-        return RedirectResponse("/team/", status_code=303)
-    return RedirectResponse("/dashboard", status_code=303)
+    if next_url:
+        return RedirectResponse(next_url, status_code=303)
+    return RedirectResponse(app_home_for_role(user.role), status_code=303)
 
 
 @router.post("/team/logout", dependencies=[Depends(require_csrf)])

@@ -5,6 +5,7 @@
 {% block content %}
 <form method="post" action="/team/login" autocomplete="on">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
     <div class="pt-field">
         <label class="pt-field-label" for="username">Username</label>
         <input class="pt-input" type="text" name="username" id="username" required autofocus autocomplete="username" placeholder="jane.doe">
