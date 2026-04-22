@@ -65,10 +65,33 @@ class _PIIHarness:
         from fastapi.testclient import TestClient
         self.client = TestClient(self.app_main.app)
 
+        # Always stub get_request_user in both shared and main. Tests that
+        # want a logged-in user call _login() which re-patches with a real
+        # User. Tests that don't call _login() still need the middleware to
+        # short-circuit to None instead of trying to hit managed_session()
+        # against the real (conftest) sqlite — which doesn't contain the
+        # user ids this test harness creates in its own in-memory engine.
+        from app import shared
+        import app.main as app_main
+
+        self._default_user_patcher_shared = patch.object(
+            shared, "get_request_user", return_value=None
+        )
+        self._default_user_patcher_shared.start()
+        self._default_user_patcher_main = patch.object(
+            app_main, "get_request_user", return_value=None
+        )
+        self._default_user_patcher_main.start()
+
     def _teardown(self):
         self.app_main.app.dependency_overrides.clear()
         self.session.close()
-        for attr in ("_patcher_shared", "_patcher_main"):
+        for attr in (
+            "_patcher_shared",
+            "_patcher_main",
+            "_default_user_patcher_shared",
+            "_default_user_patcher_main",
+        ):
             patcher = getattr(self, attr, None)
             if patcher:
                 patcher.stop()
@@ -88,6 +111,12 @@ class _PIIHarness:
             role=role,
             is_active=True,
         )
+        # Stop the default (None) stubs so this test can have a real user.
+        for attr in ("_default_user_patcher_shared", "_default_user_patcher_main"):
+            p = getattr(self, attr, None)
+            if p:
+                p.stop()
+                setattr(self, attr, None)
         self._patcher_shared = patch.object(shared, "get_request_user", return_value=u)
         self._patcher_shared.start()
         self._patcher_main = patch.object(app_main, "get_request_user", return_value=u)

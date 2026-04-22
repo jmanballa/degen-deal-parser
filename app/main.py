@@ -461,15 +461,12 @@ async def lifespan(app: FastAPI):
         app_heartbeat_thread.join(timeout=5)
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.session_secret,
-    session_cookie=settings.session_cookie_name,
-    max_age=settings.session_max_age_seconds,
-    https_only=settings.session_https_only,
-    same_site=settings.session_same_site,
-    domain=settings.effective_session_domain or None,
-)
+# NOTE: SessionMiddleware is registered LATER in this module (just after
+# the attach_current_user decorator) so it ends up as the OUTERMOST
+# middleware at runtime. Starlette's add_middleware inserts at position 0
+# of the stack, so whichever middleware is added LAST runs FIRST on the
+# request. We need SessionMiddleware to populate scope["session"] before
+# attach_current_user tries to resolve the logged-in user from the cookie.
 app.mount("/static", StaticFiles(directory=normalize_filesystem_path(BASE_DIR / "static")), name="static")
 
 from .inventory import router as inventory_router  # noqa: E402 — after app is created
@@ -703,6 +700,24 @@ async def attach_current_user(request: Request, call_next):
         return await call_next(request)
     request.state.current_user = get_request_user(request)
     return await call_next(request)
+
+
+# Register SessionMiddleware AFTER attach_current_user so it ends up as the
+# outermost middleware. Order matters: Starlette's add_middleware inserts at
+# position 0, so the last-added middleware runs first on the request. This
+# guarantees scope["session"] is populated before attach_current_user tries
+# to read session["user_id"]. Without this, every team-portal route thinks
+# the user is anonymous (because scope["session"] was still empty when the
+# middleware ran) and redirects to /team/login even for logged-in admins.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    session_cookie=settings.session_cookie_name,
+    max_age=settings.session_max_age_seconds,
+    https_only=settings.session_https_only,
+    same_site=settings.session_same_site,
+    domain=settings.effective_session_domain or None,
+)
 
 @app.get("/health", response_model=HealthOut)
 def health():
