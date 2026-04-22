@@ -850,6 +850,7 @@ def team_schedule(
     # same visual — no translation layer, no "my shifts" fork. Everyone
     # sees the published grid the same way; only the top-level wrapper
     # differs (admin has inputs, employee has static cells).
+    from datetime import date as _date
     from .team_admin_schedule import (
         _build_cell_key,
         _build_day_loc_key,
@@ -885,6 +886,7 @@ def team_schedule(
             "next_week": storefront_ctx["next_week"],
             "this_week": storefront_ctx["this_week"],
             "is_current_week": storefront_ctx["is_current_week"],
+            "today": _date.today(),
             **_nav_context(session, user),
         },
     )

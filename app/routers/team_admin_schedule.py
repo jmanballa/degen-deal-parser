@@ -15,6 +15,7 @@ floor sees.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -85,6 +86,86 @@ def _fmt_time_12h(t24: str) -> str:
         return f"{h12}:{m_s} {suffix}"
     except Exception:
         return t24
+
+
+# ---------------------------------------------------------------------------
+# Shift-hour parsing
+#
+# Admins type shift labels as free text ("10:30 AM - 6:30 PM"). To power the
+# 7shifts-style daily/weekly hour totals, we need to turn that text back into
+# a number of hours. The parser is deliberately forgiving: if we can't make
+# sense of a label, we return 0 hours rather than raising, so one weird cell
+# never hides the rest of the week's totals.
+# ---------------------------------------------------------------------------
+
+_RANGE_SPLIT_RE = re.compile(r"\s*[/,&]\s*")
+_TIME_RE = re.compile(
+    r"^\s*(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<ap>[ap](?:\.?m\.?)?)?\s*$",
+    re.IGNORECASE,
+)
+
+_NON_SHIFT_TOKENS = {"OFF", "SHOW", "REQUEST", "IF NEEDED", "STREAM"}
+
+
+def _parse_time_to_minutes(s: str) -> Optional[int]:
+    m = _TIME_RE.match(s)
+    if not m:
+        return None
+    h = int(m.group("h"))
+    mins = int(m.group("m") or 0)
+    ap = (m.group("ap") or "").lower().replace(".", "").replace("m", "")
+    if mins < 0 or mins > 59 or h < 0 or h > 23:
+        return None
+    if ap == "p" and h < 12:
+        h += 12
+    elif ap == "a" and h == 12:
+        h = 0
+    return h * 60 + mins
+
+
+def _parse_shift_hours(label: str) -> float:
+    """Return total hours in the label, or 0.0 if unparseable.
+
+    Supports:
+      - "10:30 AM - 6:30 PM", "10:30am-6:30pm", "10-6pm"
+      - Bare "9-5" → assumed 9 AM to 5 PM (business-day heuristic)
+      - Multiple ranges separated by '/', ',', or '&' (summed)
+      - Overnight ranges (end <= start) wrap to next day
+      - Labels like "OFF", "SHOW", "REQUEST" → 0 hours (they aren't shifts)
+    """
+    if not label:
+        return 0.0
+    upper = label.strip().upper()
+    if upper in _NON_SHIFT_TOKENS:
+        return 0.0
+
+    total = 0.0
+    for part in _RANGE_SPLIT_RE.split(label):
+        m = re.match(
+            r"^\s*(?P<a>[0-9:.apm\s]+?)\s*[-\u2013\u2014]\s*(?P<b>[0-9:.apm\s]+?)\s*$",
+            part,
+            re.IGNORECASE,
+        )
+        if not m:
+            continue
+        a_raw = m.group("a").strip()
+        b_raw = m.group("b").strip()
+        a_has_ap = bool(re.search(r"[ap]\.?m?\.?$", a_raw, re.I))
+        b_has_ap = bool(re.search(r"[ap]\.?m?\.?$", b_raw, re.I))
+        a = _parse_time_to_minutes(a_raw)
+        b = _parse_time_to_minutes(b_raw)
+        if a is None or b is None:
+            continue
+        # "9-5" business-day heuristic: no AM/PM on either side, bump
+        # the smaller end into PM so the total comes out to 8h not 20h.
+        if not a_has_ap and not b_has_ap:
+            a_h, b_h = a // 60, b // 60
+            if b_h < a_h and a_h <= 11:
+                b += 12 * 60
+        if b <= a:
+            b += 24 * 60  # overnight wrap
+        total += (b - a) / 60.0
+    return round(total, 2)
 
 
 # Palette used to give each StreamAccount a stable, distinct background
@@ -350,6 +431,34 @@ def _grid_context(
     else:
         prev_roster_count = len(prev_roster_ids)
 
+    # 7shifts-style totals: per-user weekly hours, per-day column totals,
+    # grand weekly total, and a raw "how many shift cells were scheduled".
+    # We only tally entries for users actually on the grid so rows hidden
+    # by a staff_kind filter don't pollute the totals.
+    user_ids_on_grid = {u.id for u in users if u.id is not None}
+    user_hours: dict[int, float] = {uid: 0.0 for uid in user_ids_on_grid}
+    day_hours: dict[str, float] = {d.isoformat(): 0.0 for d in week_days}
+    total_shifts = 0
+    for (uid, iso), e in entry_map.items():
+        if uid not in user_ids_on_grid:
+            continue
+        hrs = _parse_shift_hours(e.label or "")
+        if hrs > 0:
+            user_hours[uid] = user_hours.get(uid, 0.0) + hrs
+            day_hours[iso] = day_hours.get(iso, 0.0) + hrs
+        if (e.kind or "") in ("work", "all_day"):
+            total_shifts += 1
+    grand_hours = round(sum(user_hours.values()), 2)
+    # Count distinct employees who have at least one worked cell.
+    people_with_shifts = sum(
+        1
+        for uid in user_ids_on_grid
+        if any(
+            (entry_map.get((uid, d.isoformat())) and (entry_map[(uid, d.isoformat())].kind or "") in ("work", "all_day"))
+            for d in week_days
+        )
+    )
+
     return {
         "week_start": week_start,
         "week_start_iso": week_start.isoformat(),
@@ -368,6 +477,11 @@ def _grid_context(
         "is_current_week": week_start == _monday_of(date.today()),
         "staff_kind": staff_kind or "",
         "flash": flash,
+        "user_hours": user_hours,
+        "day_hours": day_hours,
+        "grand_hours": grand_hours,
+        "total_shifts": total_shifts,
+        "people_with_shifts": people_with_shifts,
     }
 
 
@@ -423,6 +537,14 @@ def _stream_grid_context(
         "is_current_week": week_start == _monday_of(date.today()),
         "staff_kind": STAFF_KIND_STREAM,
         "flash": flash,
+        # Stream grid is a mirror of StreamSchedule, not tracked as
+        # ShiftEntry hours. Kept at zero so the shared totals row in the
+        # Jinja macro still renders without special-casing.
+        "user_hours": {u.id: 0.0 for u in users if u.id is not None},
+        "day_hours": {d.isoformat(): 0.0 for d in week_days},
+        "grand_hours": 0.0,
+        "total_shifts": 0,
+        "people_with_shifts": 0,
     }
 
 
@@ -506,6 +628,7 @@ def admin_schedule_view(
             "next_week": storefront_ctx["next_week"],
             "this_week": storefront_ctx["this_week"],
             "is_current_week": storefront_ctx["is_current_week"],
+            "today": date.today(),
             "flash": flash,
         },
     )

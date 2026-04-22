@@ -568,6 +568,42 @@ class ClassifyShiftLabelTests(unittest.TestCase):
         self.assertEqual(classify_shift_label("12PM-8PM"), SHIFT_KIND_WORK)
 
 
+class ParseShiftHoursTests(unittest.TestCase):
+    """Pin the shift-hour parser behavior powering the 7shifts-style totals."""
+
+    def test_blank_and_non_shift_tokens_are_zero(self):
+        from app.routers.team_admin_schedule import _parse_shift_hours
+        for label in ("", "   ", "OFF", "SHOW", "REQUEST", "IF NEEDED"):
+            self.assertEqual(_parse_shift_hours(label), 0.0, label)
+
+    def test_ampm_ranges(self):
+        from app.routers.team_admin_schedule import _parse_shift_hours
+        self.assertEqual(_parse_shift_hours("10:30 AM - 6:30 PM"), 8.0)
+        self.assertEqual(_parse_shift_hours("10am-2pm"), 4.0)
+        self.assertEqual(_parse_shift_hours("4 PM - 8:15 PM"), 4.25)
+
+    def test_business_day_heuristic_for_bare_numbers(self):
+        """'9-5' should be 8 hrs (9 AM to 5 PM), not 20 hrs overnight."""
+        from app.routers.team_admin_schedule import _parse_shift_hours
+        self.assertEqual(_parse_shift_hours("9-5"), 8.0)
+        self.assertEqual(_parse_shift_hours("10-6"), 8.0)
+
+    def test_overnight_wrap(self):
+        from app.routers.team_admin_schedule import _parse_shift_hours
+        # 10 PM to 2 AM = 4 hours overnight.
+        self.assertEqual(_parse_shift_hours("10 PM - 2 AM"), 4.0)
+
+    def test_multiple_ranges_sum(self):
+        from app.routers.team_admin_schedule import _parse_shift_hours
+        # Split shift: morning + afternoon.
+        self.assertEqual(_parse_shift_hours("9 AM - 12 PM / 2 PM - 6 PM"), 7.0)
+
+    def test_unparseable_is_zero_not_exception(self):
+        from app.routers.team_admin_schedule import _parse_shift_hours
+        self.assertEqual(_parse_shift_hours("whatever"), 0.0)
+        self.assertEqual(_parse_shift_hours("10:30 AM -"), 0.0)
+
+
 # ---------------------------------------------------------------------------
 # Admin schedule save
 # ---------------------------------------------------------------------------

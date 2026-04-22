@@ -3,20 +3,28 @@
 
 {% block extra_head %}
 <style>
-    /* Colors inspired by the pasted screenshot: green = scheduled shift,
-       grey = OFF, blue = SHOW (convention shows), red = REQUEST (time off),
-       light-green = Stream / IF NEEDED / ALL. */
+    /* ======================================================================
+       Storefront schedule — 7shifts-style dark grid with colored shift
+       "blocks" inside each cell, click-to-edit modal, and per-row /
+       per-column hour totals. Stream grid reuses the same chrome but in
+       read-only mode (mirror of /stream-manager).
+       ====================================================================== */
+
     .sch-wrap { overflow-x: auto; }
     .sch-table {
         border-collapse: collapse;
-        min-width: 1000px;
+        min-width: 1100px;
         font-size: 12.5px;
+        width: 100%;
+        background: var(--lx-bg);
     }
     .sch-table th, .sch-table td {
         border: 1px solid var(--lx-br);
         padding: 0;
         vertical-align: middle;
     }
+
+    /* Per-day optional location/note input row. */
     .sch-loc-row th { background: var(--lx-s1); height: 30px; padding: 4px 6px; }
     .sch-loc-row .sch-loc-input {
         width: 100%;
@@ -29,71 +37,199 @@
         font-weight: 500;
     }
     .sch-loc-row .sch-loc-input::placeholder { color: var(--lx-muted); opacity: 0.5; }
+
+    /* Day-header row: date + weekday. Dark band, not the salmon from the
+       old design — matches 7shifts' minimal header. */
     .sch-head-row th {
-        background: #f6b37a;
-        color: #111;
+        background: var(--lx-s2);
+        color: var(--lx-text);
         font-weight: 600;
         padding: 6px 8px;
         text-align: left;
+        border-bottom: 2px solid var(--lx-br);
     }
-    .sch-head-row.is-stream th { background: #8cbef7; }
+    .sch-head-row .sch-today { color: #fdba74; font-weight: 700; }
+    .sch-head-row .sch-dayhrs { font-size: 10.5px; color: var(--lx-muted); font-weight: 500; }
+
+    /* Stream grid keeps a subtle tint so the admin can tell the two apart. */
+    .sch-head-row.is-stream th { background: rgba(96,165,250,0.10); }
+
     .sch-name-col {
-        background: #f6b37a;
-        color: #111;
+        background: var(--lx-s1);
+        color: var(--lx-text);
         font-weight: 600;
-        padding: 6px 10px;
+        padding: 8px 12px;
         white-space: nowrap;
-        width: 140px;
+        width: 170px;
     }
-    .sch-name-col.is-stream { background: #8cbef7; }
-    .sch-cell { padding: 0; height: 38px; }
-    .sch-cell input {
+    .sch-name-col.is-stream { background: rgba(96,165,250,0.08); }
+    .sch-name-inner { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .sch-name-sub { font-size: 10.5px; color: var(--lx-muted); font-weight: 500; display: block; margin-top: 2px; }
+
+    /* Cells are dark tiles; the "shift" sits inside as a colored pill so
+       multiple visual states can live on the same dark ground. */
+    .sch-cell {
+        height: 54px;
+        min-width: 118px;
+        padding: 4px;
+        position: relative;
+        background: var(--lx-bg);
+    }
+    .sch-cell.is-today { box-shadow: inset 2px 0 0 #fdba74; }
+
+    /* The clickable block (edit mode). */
+    .sch-block {
         width: 100%;
         height: 100%;
-        min-height: 38px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        font-family: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: inherit;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        padding: 4px 6px;
+        text-align: center;
+        transition: transform 0.08s ease, box-shadow 0.08s ease;
+    }
+    .sch-block:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    }
+    .sch-block:focus-visible {
+        outline: 2px solid #3b82f6;
+        outline-offset: 1px;
+    }
+    .sch-block-time { font-weight: 700; letter-spacing: 0.01em; }
+    .sch-block-note { font-size: 10.5px; font-weight: 500; opacity: 0.82; font-style: italic; }
+
+    /* Shift-kind colors applied to the inner block, not the cell. Dark
+       cell stays consistent; just the pill changes color. */
+    .sch-block.sch-k-work       { background: #86efac; color: #0f1a10; }
+    .sch-block.sch-k-off        { background: #a8a29e; color: #1c1917; }
+    .sch-block.sch-k-show       { background: #60a5fa; color: #0b1220; }
+    .sch-block.sch-k-request    { background: #f87171; color: #1a0000; }
+    .sch-block.sch-k-stream     { background: #bbf7d0; color: #0f1a10; }
+    .sch-block.sch-k-if_needed  { background: #bbf7d0; color: #0f1a10; font-style: italic; }
+    .sch-block.sch-k-all_day    { background: #86efac; color: #111; }
+    .sch-block.sch-k-blank {
         background: transparent;
-        border: none;
+        color: var(--lx-muted);
+        border-style: dashed;
+        border-color: rgba(148,163,184,0.25);
+        font-weight: 400;
+    }
+    .sch-block.sch-k-blank:hover { border-color: #3b82f6; color: #93c5fd; }
+    .sch-block.sch-k-blank .sch-block-add { font-size: 16px; font-weight: 400; line-height: 1; }
+
+    /* Read-only variant (Stream grid + /team/schedule): same look but
+       not interactive. */
+    .sch-block.is-ro { cursor: default; }
+    .sch-block.is-ro:hover { transform: none; box-shadow: none; }
+
+    /* "Dirty" marker — cell has been edited but not saved yet. */
+    .sch-cell.is-dirty::after {
+        content: "";
+        position: absolute;
+        top: 4px; right: 6px;
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: #fdba74;
+        box-shadow: 0 0 0 2px var(--lx-bg);
+    }
+
+    /* Footer totals row. */
+    .sch-foot-row td {
+        background: var(--lx-s1);
+        color: var(--lx-text);
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 8px 10px;
+        text-align: center;
+        border-top: 2px solid var(--lx-br);
+    }
+    .sch-foot-row td.sch-foot-label {
+        text-align: left;
+        color: var(--lx-muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: 10.5px;
+    }
+    .sch-foot-row td.sch-foot-grand { color: #fdba74; }
+
+    /* "Weekly total" column on the right. */
+    .sch-total-col {
+        background: var(--lx-s1);
+        color: var(--lx-text);
+        font-weight: 700;
         font-size: 12.5px;
         text-align: center;
-        color: inherit;
-        padding: 0 6px;
-        font-family: inherit;
+        padding: 6px 10px;
+        min-width: 70px;
     }
-    .sch-cell input:focus {
-        outline: 2px solid #3b82f6;
-        outline-offset: -2px;
-        background: rgba(59,130,246,0.08);
+    .sch-total-head {
+        background: var(--lx-s2);
+        color: var(--lx-muted);
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        text-align: center;
+        padding: 6px 8px;
     }
-    /* kind → color */
-    .sch-k-work       { background: #86efac; color: #111; }
-    .sch-k-off        { background: #a8a29e; color: #1c1917; }
-    .sch-k-show       { background: #60a5fa; color: #0b1220; font-weight: 600; }
-    .sch-k-request    { background: #f87171; color: #1a0000; font-weight: 600; }
-    .sch-k-stream     { background: #bbf7d0; color: #0f1a10; }
-    .sch-k-if_needed  { background: #bbf7d0; color: #0f1a10; font-style: italic; }
-    .sch-k-all_day    { background: #86efac; color: #111; font-weight: 600; }
-    .sch-k-blank      { background: var(--lx-bg); color: var(--lx-muted); }
-    .sch-k-blank input::placeholder { color: var(--lx-muted); opacity: 0.35; }
-    /* Cells pre-filled from /stream-manager — still editable, but visually
-       marked as "synced" so admins know they came from elsewhere. */
-    .sch-cell.sch-from-stream { font-style: italic; }
-    .sch-cell.sch-from-stream input { font-style: italic; }
 
+    /* Toolbar / week nav / summary. */
     .sch-toolbar {
         display: flex;
         justify-content: space-between;
-        gap: 12px;
+        gap: 14px;
         align-items: center;
         flex-wrap: wrap;
         margin-bottom: 14px;
     }
-    .sch-week-btns { display: flex; gap: 6px; align-items: center; }
+    .sch-week-btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .sch-wk-label { font-size: 14px; font-weight: 600; margin: 0 10px; }
+    .sch-summary {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        background: var(--lx-s1);
+        border: 1px solid var(--lx-br);
+        border-radius: 10px;
+        margin-bottom: 14px;
+        font-size: 12.5px;
+    }
+    .sch-summary .sch-summary-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .sch-summary .sch-summary-stat .sch-stat-num {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--lx-text);
+        line-height: 1;
+    }
+    .sch-summary .sch-summary-stat .sch-stat-lbl {
+        font-size: 10.5px;
+        color: var(--lx-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .sch-summary .sch-summary-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
     .sch-grid-title {
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-wrap: wrap;
         margin: 24px 0 10px;
         font-size: 15px;
         font-weight: 700;
@@ -112,6 +248,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 8px 14px;
+        align-items: center;
         font-size: 11.5px;
         color: var(--lx-muted);
         margin-top: 16px;
@@ -119,11 +256,8 @@
         border-top: 1px solid var(--lx-br);
     }
     .sch-legend-chip { display: inline-flex; align-items: center; gap: 4px; }
-    .sch-legend-sw {
-        display: inline-block;
-        width: 14px; height: 14px; border-radius: 3px;
-        border: 1px solid var(--lx-br);
-    }
+    .sch-legend-sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--lx-br); }
+
     .sch-roster-bar {
         display: flex;
         flex-wrap: wrap;
@@ -163,7 +297,7 @@
         opacity: 0.7;
     }
     .sch-remove-btn:hover { opacity: 1; background: rgba(248, 113, 113, 0.12); }
-    .sch-name-inner { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+
     .sch-account-legend {
         display: flex;
         flex-wrap: wrap;
@@ -177,6 +311,106 @@
         margin-bottom: 12px;
     }
     .sch-account-legend strong { color: var(--lx-text); margin-right: 4px; }
+
+    /* ---- Modal ---- */
+    .sch-modal {
+        border: 1px solid var(--lx-br);
+        border-radius: 14px;
+        background: var(--lx-s1);
+        color: var(--lx-text);
+        padding: 0;
+        width: min(440px, 92vw);
+        box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+    }
+    .sch-modal::backdrop { background: rgba(3, 7, 18, 0.65); backdrop-filter: blur(3px); }
+    .sch-modal-body { padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 14px; }
+    .sch-modal-body h3 { margin: 0; font-size: 15px; }
+    .sch-modal-sub { font-size: 12px; color: var(--lx-muted); margin-top: -8px; }
+    .sch-modal-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .sch-modal-tabs button {
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--lx-br);
+        background: var(--lx-bg);
+        color: var(--lx-text);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .sch-modal-tabs button.is-active {
+        background: #3b82f6;
+        border-color: #3b82f6;
+        color: white;
+    }
+    .sch-modal-times { display: flex; gap: 10px; }
+    .sch-modal-times label {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--lx-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .sch-modal-times input[type=time] {
+        background: var(--lx-bg);
+        border: 1px solid var(--lx-br);
+        color: var(--lx-text);
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-family: inherit;
+    }
+    .sch-modal-note label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--lx-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .sch-modal-note input {
+        background: var(--lx-bg);
+        border: 1px solid var(--lx-br);
+        color: var(--lx-text);
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-family: inherit;
+    }
+    .sch-modal-note-hint { font-size: 11px; color: var(--lx-muted); margin-top: -2px; }
+    .sch-modal-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding-top: 4px;
+    }
+    .sch-modal-actions button {
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        border: 1px solid var(--lx-br);
+    }
+    .sch-modal-actions button.sch-modal-del {
+        background: transparent;
+        color: #fca5a5;
+        border-color: rgba(239,68,68,0.4);
+    }
+    .sch-modal-actions button.sch-modal-cancel {
+        background: var(--lx-bg);
+        color: var(--lx-text);
+    }
+    .sch-modal-actions button.sch-modal-ok {
+        background: #3b82f6;
+        color: white;
+        border-color: #3b82f6;
+    }
+    .sch-modal-spacer { flex: 1; }
 </style>
 {% endblock %}
 
@@ -189,14 +423,16 @@
    of /stream-manager.
    --------------------------------------------------------------------- #}
 {% macro render_grid(ctx, kind_label, kind_slug, include_day_headers, read_only=False) %}
-    {# Effective "can edit" within this macro instance. The outer
-       can_edit is the user's overall admin.schedule.edit permission;
-       read_only lets us turn that off for this specific grid. #}
     {% set edit = can_edit and not read_only %}
 
     <div class="sch-grid-title">
         <span>{{ kind_label }} schedule</span>
         <span class="sch-kind-chip is-{{ kind_slug }}">{{ ctx.users|length }} on this week</span>
+        {% if kind_slug == 'storefront' %}
+        <span class="sch-kind-chip" style="background: rgba(148,163,184,0.12); color:#cbd5e1;">
+            {{ '%.1f'|format(ctx.grand_hours) }} hrs · {{ ctx.total_shifts }} shifts
+        </span>
+        {% endif %}
         {% if read_only %}
         <span class="sch-kind-chip" style="background: rgba(148,163,184,0.18); color:#cbd5e1;">
             Read-only · edit in
@@ -254,7 +490,7 @@
     </div>
     {% endif %}
 
-    <form method="post" action="/team/admin/schedule">
+    <form method="post" action="/team/admin/schedule" data-schgrid="{{ kind_slug }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <input type="hidden" name="week" value="{{ ctx.week_start_iso }}"/>
         <input type="hidden" name="staff_kind" value="{{ kind_slug }}"/>
@@ -280,24 +516,37 @@
                             {% endif %}
                         </th>
                         {% endfor %}
+                        <th></th>
                     </tr>
                     {% endif %}
                     <tr class="sch-head-row {% if kind_slug == 'stream' %}is-stream{% endif %}">
                         <th>{{ ctx.week_start.strftime('%b') }} {{ ctx.week_start.day }}</th>
                         {% for d in ctx.week_days %}
+                        {% set dhrs = ctx.day_hours.get(d.isoformat(), 0.0) %}
+                        {% set is_today = (d == today) %}
                         <th style="text-align:center; min-width:120px;">
-                            <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }}-{{ d.strftime('%b') }}</div>
-                            <div style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
+                            <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }} {{ d.strftime('%b') }}</div>
+                            <div class="{% if is_today %}sch-today{% endif %}" style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
+                            {% if kind_slug == 'storefront' %}
+                            <div class="sch-dayhrs">{% if dhrs > 0 %}{{ '%.1f'|format(dhrs) }} hrs{% else %}—{% endif %}</div>
+                            {% endif %}
                         </th>
                         {% endfor %}
+                        <th class="sch-total-head">Total</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for u in ctx.users %}
+                    {% set uhrs = ctx.user_hours.get(u.id, 0.0) %}
                     <tr>
                         <td class="sch-name-col {% if kind_slug == 'stream' %}is-stream{% endif %}">
                             <div class="sch-name-inner">
-                                <a href="/team/admin/employees/{{ u.id }}" style="color:inherit; text-decoration:none;">{{ u.display_name or u.username }}</a>
+                                <div>
+                                    <a href="/team/admin/employees/{{ u.id }}" style="color:inherit; text-decoration:none;">{{ u.display_name or u.username }}</a>
+                                    {% if kind_slug == 'storefront' %}
+                                    <span class="sch-name-sub">{% if uhrs > 0 %}{{ '%.1f'|format(uhrs) }} hrs this week{% else %}No shifts yet{% endif %}</span>
+                                    {% endif %}
+                                </div>
                                 {% if edit %}
                                 <button class="sch-remove-btn"
                                         type="submit"
@@ -312,24 +561,53 @@
                         {% set label = (entry.label if entry else (hint.label if hint else '')) %}
                         {% set kind = (entry.kind if entry else 'blank') %}
                         {% set hint_color = (hint.color if hint and not entry else None) %}
-                        <td class="sch-cell sch-k-{{ kind }}{% if hint_color %} sch-from-stream{% endif %}"
-                            {% if hint_color %}style="background: {{ hint_color }}; color:#0b1220;"{% endif %}
-                            {% if hint and not entry %}title="{{ hint.account_name }} · from Stream Manager"{% endif %}>
+                        {% set is_today = (d == today) %}
+                        <td class="sch-cell {% if is_today %}is-today{% endif %}"
+                            data-user-id="{{ u.id }}"
+                            data-user-name="{{ u.display_name or u.username }}"
+                            data-date="{{ d.isoformat() }}"
+                            data-date-label="{{ d.strftime('%A, %b') }} {{ d.day }}">
                             {% if edit %}
-                            <input type="text"
+                            <input type="hidden"
+                                   class="sch-cell-input"
                                    name="{{ build_cell_key(u.id, d) }}"
-                                   value="{{ label }}"
-                                   placeholder="—"
-                                   autocomplete="off"/>
+                                   value="{{ label }}"/>
+                            <button type="button"
+                                    class="sch-block sch-k-{{ kind }}"
+                                    data-label="{{ label }}"
+                                    data-kind="{{ kind }}"
+                                    {% if hint_color %}style="background: {{ hint_color }}; color:#0b1220;"{% endif %}
+                                    {% if hint and not entry %}title="{{ hint.account_name }} · from Stream Manager (click to override)"{% endif %}>
+                                {% if kind == 'blank' and not label %}
+                                <span class="sch-block-add">+</span>
+                                {% else %}
+                                <span class="sch-block-time">{{ label }}</span>
+                                {% endif %}
+                            </button>
                             {% else %}
-                            <div style="padding:8px 6px; text-align:center;">{{ label }}</div>
+                            <div class="sch-block sch-k-{{ kind }} is-ro"
+                                 {% if hint_color %}style="background: {{ hint_color }}; color:#0b1220;"{% endif %}
+                                 {% if hint and not entry %}title="{{ hint.account_name }} · from Stream Manager"{% endif %}>
+                                {% if kind == 'blank' and not label %}
+                                <span style="opacity:0.45;">—</span>
+                                {% else %}
+                                <span class="sch-block-time">{{ label }}</span>
+                                {% endif %}
+                            </div>
                             {% endif %}
                         </td>
                         {% endfor %}
+                        <td class="sch-total-col">
+                            {% if kind_slug == 'storefront' %}
+                                {% if uhrs > 0 %}{{ '%.1f'|format(uhrs) }}{% else %}—{% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                     {% if not ctx.users %}
-                    <tr><td colspan="{{ ctx.week_days|length + 1 }}" style="padding:24px; text-align:center; color:var(--lx-muted);">
+                    <tr><td colspan="{{ ctx.week_days|length + 2 }}" style="padding:24px; text-align:center; color:var(--lx-muted);">
                         {% if kind_slug == 'stream' %}
                         No Stream-role employees yet. Set an employee's <strong>Type</strong> to
                         <strong>Stream</strong> and mark them <strong>On schedule</strong> on the
@@ -340,11 +618,23 @@
                     </td></tr>
                     {% endif %}
                 </tbody>
+                {% if kind_slug == 'storefront' and ctx.users %}
+                <tfoot>
+                    <tr class="sch-foot-row">
+                        <td class="sch-foot-label">Daily hours</td>
+                        {% for d in ctx.week_days %}
+                        {% set dhrs = ctx.day_hours.get(d.isoformat(), 0.0) %}
+                        <td>{% if dhrs > 0 %}{{ '%.1f'|format(dhrs) }}{% else %}—{% endif %}</td>
+                        {% endfor %}
+                        <td class="sch-foot-grand">{% if ctx.grand_hours > 0 %}{{ '%.1f'|format(ctx.grand_hours) }}{% else %}—{% endif %}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
             </table>
         </div>
 
         {% if edit %}
-        <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+        <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
             <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
                 Save {{ kind_label|lower }} schedule
             </button>
@@ -385,15 +675,35 @@
     {% endif %}
 </div>
 
+{# 7shifts-style summary strip: quick stats for the visible Storefront week. #}
+<div class="sch-summary">
+    <div class="sch-summary-stat">
+        <span class="sch-stat-num">{{ '%.1f'|format(storefront.grand_hours) }}</span>
+        <span class="sch-stat-lbl">Scheduled hours</span>
+    </div>
+    <div class="sch-summary-stat">
+        <span class="sch-stat-num">{{ storefront.total_shifts }}</span>
+        <span class="sch-stat-lbl">Shifts</span>
+    </div>
+    <div class="sch-summary-stat">
+        <span class="sch-stat-num">{{ storefront.people_with_shifts }}/{{ storefront.users|length }}</span>
+        <span class="sch-stat-lbl">Working / on roster</span>
+    </div>
+    <div class="sch-summary-stat">
+        <span class="sch-stat-num">{{ stream.users|length }}</span>
+        <span class="sch-stat-lbl">Stream roster</span>
+    </div>
+    <div class="sch-summary-actions">
+        <span id="sch-dirty-flag" style="display:none; font-size:12px; color:#fdba74;">● Unsaved changes</span>
+    </div>
+</div>
+
 <p style="font-size:12px; color:var(--lx-muted); margin:-4px 0 14px; max-width:860px;">
-    Two independent schedules: <strong>Storefront</strong> for the floor team, and <strong>Stream</strong> for the live room.
-    On the Storefront grid, add employees individually each week and type shift times like
-    <code style="background:var(--lx-s2); padding:1px 5px; border-radius:4px;">10:30 AM - 6:30 PM</code> into the cells —
-    special words color themselves (<strong>OFF</strong>, <strong>SHOW</strong>, <strong>REQUEST</strong>, <strong>Stream</strong>, <strong>IF NEEDED</strong>, <strong>ALL</strong>).
-    The Stream grid is a read-only mirror of the
-    <a href="/stream-manager" style="color:#fdba74;">Stream Manager</a> — all Stream-role employees appear automatically
-    and each cell is color-coded by which stream account is booked.
-    Which grid an employee appears in is controlled by the <strong>Type</strong> column on the
+    Click any cell on the <strong>Storefront</strong> grid to add or edit a shift.
+    Daily and weekly hours update as soon as you save.
+    The <strong>Stream</strong> grid is a read-only mirror of the
+    <a href="/stream-manager" style="color:#fdba74;">Stream Manager</a> — cells are color-coded per stream account.
+    Employee type is controlled by the <strong>Type</strong> column on the
     <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a>.
 </p>
 
@@ -409,4 +719,283 @@
     <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#f87171;"></span> REQUEST (time off)</span>
     <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#bbf7d0;"></span> Stream / IF NEEDED</span>
 </div>
+
+{# ---- Click-to-edit modal (Storefront only) ---- #}
+{% if can_edit %}
+<dialog id="sch-modal" class="sch-modal">
+    <div class="sch-modal-body">
+        <h3 id="sch-modal-title">Edit shift</h3>
+        <div class="sch-modal-sub" id="sch-modal-sub"></div>
+
+        <div class="sch-modal-tabs" id="sch-modal-tabs">
+            <button type="button" data-status="shift">Shift</button>
+            <button type="button" data-status="off">OFF</button>
+            <button type="button" data-status="show">SHOW</button>
+            <button type="button" data-status="request">REQUEST</button>
+            <button type="button" data-status="stream">Stream</button>
+            <button type="button" data-status="if_needed">IF NEEDED</button>
+        </div>
+
+        <div class="sch-modal-times" id="sch-modal-times">
+            <label>
+                Start
+                <input type="time" id="sch-modal-start" step="900"/>
+            </label>
+            <label>
+                End
+                <input type="time" id="sch-modal-end" step="900"/>
+            </label>
+        </div>
+
+        <div class="sch-modal-note">
+            <label>
+                Note (optional)
+                <input type="text" id="sch-modal-note" maxlength="80" placeholder="e.g. front counter, opener"/>
+            </label>
+            <div class="sch-modal-note-hint" id="sch-modal-note-hint">
+                Notes only save for <strong>Shift</strong>, <strong>Stream</strong>, and <strong>IF NEEDED</strong>.
+            </div>
+        </div>
+
+        <div class="sch-modal-actions">
+            <button type="button" class="sch-modal-del" id="sch-modal-delete">Clear</button>
+            <span class="sch-modal-spacer"></span>
+            <button type="button" class="sch-modal-cancel" id="sch-modal-cancel">Cancel</button>
+            <button type="button" class="sch-modal-ok" id="sch-modal-save">Save</button>
+        </div>
+    </div>
+</dialog>
+
+<script>
+(function() {
+    "use strict";
+
+    // Only the Storefront grid is editable via this modal. Select it
+    // explicitly so Stream cells (read-only mirror) are inert.
+    var grid = document.querySelector('form[data-schgrid="storefront"]');
+    if (!grid) return;
+
+    var modal = document.getElementById('sch-modal');
+    if (!modal || typeof modal.showModal !== 'function') return;
+
+    var titleEl  = document.getElementById('sch-modal-title');
+    var subEl    = document.getElementById('sch-modal-sub');
+    var tabsEl   = document.getElementById('sch-modal-tabs');
+    var timesEl  = document.getElementById('sch-modal-times');
+    var startEl  = document.getElementById('sch-modal-start');
+    var endEl    = document.getElementById('sch-modal-end');
+    var noteEl   = document.getElementById('sch-modal-note');
+    var noteHint = document.getElementById('sch-modal-note-hint');
+    var saveBtn  = document.getElementById('sch-modal-save');
+    var delBtn   = document.getElementById('sch-modal-delete');
+    var cancelBtn= document.getElementById('sch-modal-cancel');
+    var dirtyFlag= document.getElementById('sch-dirty-flag');
+
+    var activeCell = null;
+    var activeInput = null;
+    var activeBlock = null;
+
+    function setStatus(status) {
+        Array.prototype.forEach.call(tabsEl.children, function(btn) {
+            btn.classList.toggle('is-active', btn.dataset.status === status);
+        });
+        var showTimes = status === 'shift';
+        timesEl.style.display = showTimes ? '' : 'none';
+        var allowNote = status === 'shift' || status === 'stream' || status === 'if_needed';
+        noteEl.disabled = !allowNote;
+        noteEl.style.opacity = allowNote ? '1' : '0.5';
+    }
+
+    // Parse existing label into {status, start, end, note} so re-opening
+    // the modal pre-fills from whatever's currently saved.
+    function parseLabel(label) {
+        var out = { status: 'shift', start: '', end: '', note: '' };
+        if (!label) { out.status = 'shift'; return out; }
+        var s = label.trim();
+        var up = s.toUpperCase();
+        if (up === 'OFF')     { out.status = 'off';     return out; }
+        if (up === 'SHOW')    { out.status = 'show';    return out; }
+        if (up === 'REQUEST') { out.status = 'request'; return out; }
+
+        // STREAM / IF NEEDED allow "Stream · Main" style notes.
+        var streamMatch = s.match(/^Stream(?:\s*[·•|-]\s*(.*))?$/i);
+        if (streamMatch) { out.status = 'stream'; out.note = (streamMatch[1] || '').trim(); return out; }
+        var ifnMatch = s.match(/^IF NEEDED(?:\s*[·•|-]\s*(.*))?$/i);
+        if (ifnMatch) { out.status = 'if_needed'; out.note = (ifnMatch[1] || '').trim(); return out; }
+
+        // Shift with optional note separated by " · ".
+        var parts = s.split(/\s*[·•|]\s*/);
+        var timePart = parts[0].trim();
+        out.note = parts.length > 1 ? parts.slice(1).join(' · ').trim() : '';
+
+        var rangeMatch = timePart.match(
+            /^\s*(\d{1,2}(?::\d{2})?\s*[aApP]?\.?[mM]?\.?)\s*[-\u2013]\s*(\d{1,2}(?::\d{2})?\s*[aApP]?\.?[mM]?\.?)\s*$/
+        );
+        if (rangeMatch) {
+            out.start = to24(rangeMatch[1]);
+            out.end = to24(rangeMatch[2]);
+        }
+        return out;
+    }
+
+    // "10:30 AM" / "10am" / "10" -> "10:30" 24h (or '' if unparseable).
+    function to24(raw) {
+        var m = raw.trim().toLowerCase().match(
+            /^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\.?m?\.?$/
+        );
+        if (!m) return '';
+        var h = parseInt(m[1], 10);
+        var mn = m[2] ? parseInt(m[2], 10) : 0;
+        var ap = m[3] || '';
+        if (ap.charAt(0) === 'p' && h < 12) h += 12;
+        else if (ap.charAt(0) === 'a' && h === 12) h = 0;
+        if (h > 23 || mn > 59) return '';
+        return String(h).padStart(2, '0') + ':' + String(mn).padStart(2, '0');
+    }
+
+    function from24(hhmm) {
+        if (!hhmm) return '';
+        var p = hhmm.split(':');
+        var h = parseInt(p[0], 10);
+        var m = p[1] || '00';
+        var suf = h < 12 ? 'AM' : 'PM';
+        var h12 = (h % 12) || 12;
+        return h12 + ':' + m + ' ' + suf;
+    }
+
+    // Build the canonical label string we store on the server. Matches
+    // the classify_shift_label() expectations in app/models.py.
+    function synthesize(status, start, end, note) {
+        note = (note || '').trim();
+        switch (status) {
+            case 'off':       return 'OFF';
+            case 'show':      return 'SHOW';
+            case 'request':   return 'REQUEST';
+            case 'stream':    return note ? 'Stream · ' + note : 'Stream';
+            case 'if_needed': return note ? 'IF NEEDED · ' + note : 'IF NEEDED';
+            case 'shift':
+            default:
+                if (!start && !end && !note) return '';
+                var rng = '';
+                if (start && end) {
+                    rng = from24(start) + ' - ' + from24(end);
+                }
+                if (rng && note) return rng + ' · ' + note;
+                if (rng) return rng;
+                return note;
+        }
+    }
+
+    function getStatus() {
+        var a = tabsEl.querySelector('.is-active');
+        return a ? a.dataset.status : 'shift';
+    }
+
+    function applyToCell(label) {
+        activeInput.value = label;
+        activeCell.classList.add('is-dirty');
+        if (dirtyFlag) dirtyFlag.style.display = 'inline-block';
+
+        // Update the visible block's color/content without a page reload.
+        activeBlock.style.background = '';
+        activeBlock.style.color = '';
+        activeBlock.className = 'sch-block sch-k-' + kindFromLabel(label);
+        activeBlock.innerHTML = '';
+        if (!label) {
+            var plus = document.createElement('span');
+            plus.className = 'sch-block-add';
+            plus.textContent = '+';
+            activeBlock.appendChild(plus);
+        } else {
+            var lines = splitLabelForDisplay(label);
+            var t = document.createElement('span');
+            t.className = 'sch-block-time';
+            t.textContent = lines.primary;
+            activeBlock.appendChild(t);
+            if (lines.note) {
+                var n = document.createElement('span');
+                n.className = 'sch-block-note';
+                n.textContent = lines.note;
+                activeBlock.appendChild(n);
+            }
+        }
+        activeBlock.dataset.label = label;
+    }
+
+    function splitLabelForDisplay(label) {
+        var parts = label.split(/\s*[·•|]\s*/);
+        return { primary: parts[0], note: parts.length > 1 ? parts.slice(1).join(' · ') : '' };
+    }
+
+    function kindFromLabel(label) {
+        var up = (label || '').trim().toUpperCase();
+        if (!up) return 'blank';
+        if (up === 'OFF') return 'off';
+        if (up === 'SHOW') return 'show';
+        if (up === 'REQUEST') return 'request';
+        if (up === 'ALL') return 'all_day';
+        if (up.indexOf('STREAM') !== -1) return 'stream';
+        if (up.indexOf('IF NEEDED') !== -1) return 'if_needed';
+        return 'work';
+    }
+
+    function openFor(cell) {
+        activeCell = cell;
+        activeInput = cell.querySelector('.sch-cell-input');
+        activeBlock = cell.querySelector('.sch-block');
+        if (!activeInput || !activeBlock) return;
+
+        var name = cell.dataset.userName || '';
+        var dateLabel = cell.dataset.dateLabel || '';
+        titleEl.textContent = name;
+        subEl.textContent = dateLabel;
+
+        var parsed = parseLabel(activeInput.value);
+        setStatus(parsed.status);
+        startEl.value = parsed.start;
+        endEl.value = parsed.end;
+        noteEl.value = parsed.note;
+
+        modal.showModal();
+        setTimeout(function() {
+            if (parsed.status === 'shift') startEl.focus();
+            else noteEl.focus();
+        }, 30);
+    }
+
+    tabsEl.addEventListener('click', function(ev) {
+        var t = ev.target.closest('button[data-status]');
+        if (!t) return;
+        setStatus(t.dataset.status);
+    });
+
+    saveBtn.addEventListener('click', function() {
+        var label = synthesize(getStatus(), startEl.value, endEl.value, noteEl.value);
+        applyToCell(label);
+        modal.close();
+    });
+    delBtn.addEventListener('click', function() {
+        applyToCell('');
+        modal.close();
+    });
+    cancelBtn.addEventListener('click', function() { modal.close(); });
+
+    grid.addEventListener('click', function(ev) {
+        var btn = ev.target.closest('.sch-block');
+        if (!btn) return;
+        ev.preventDefault();
+        var cell = btn.closest('.sch-cell');
+        if (!cell) return;
+        openFor(cell);
+    });
+
+    // Warn if user navigates away with unsaved changes.
+    window.addEventListener('beforeunload', function(ev) {
+        if (!grid.querySelector('.sch-cell.is-dirty')) return;
+        ev.preventDefault();
+        ev.returnValue = '';
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}
