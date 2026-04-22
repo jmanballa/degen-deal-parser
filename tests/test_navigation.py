@@ -42,6 +42,12 @@ def make_request(path: str, role: str = "admin") -> Request:
     return request
 
 
+def make_request_with_query_string(path: str, query_string: str, role: str = "admin") -> Request:
+    request = make_request(path, role=role)
+    request.scope["query_string"] = query_string.encode("latin-1")
+    return request
+
+
 def read_template(name: str) -> str:
     return Path("app/templates", name).read_text(encoding="utf-8")
 
@@ -365,6 +371,105 @@ class NavigationValidationTests(unittest.TestCase):
             finally:
                 for p in patches:
                     p.stop()
+
+    def test_review_and_deals_default_after_ignores_unrelated_query_params(self) -> None:
+        with Session(self.engine) as session, patch("app.routers.messages.require_role_response", return_value=None), patch(
+            "app.routers.deals.require_role_response",
+            return_value=None,
+        ), patch("app.routers.messages.get_available_channel_choices", return_value=([], False)):
+            review_response = reviewer_queue_page(
+                make_request_with_query_string("/review?page=2", "page=2", role="reviewer"),
+                channel_id=None,
+                expense_category=None,
+                after=None,
+                before=None,
+                sort_by="time",
+                sort_dir="desc",
+                page=2,
+                limit=25,
+                success=None,
+                error=None,
+                session=session,
+            )
+            deals_response = deals_page(
+                make_request_with_query_string("/deals?page=2", "page=2", role="viewer"),
+                channel_id=None,
+                entry_kind=None,
+                after=None,
+                before=None,
+                page=2,
+                limit=25,
+                session=session,
+            )
+
+        self.assertRegex(review_response.context["selected_after"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(deals_response.context["selected_after"], r"^\d{4}-\d{2}-\d{2}$")
+
+    def test_review_and_deals_respect_empty_date_filters_from_query_string(self) -> None:
+        with Session(self.engine) as session, patch("app.routers.messages.require_role_response", return_value=None), patch(
+            "app.routers.deals.require_role_response",
+            return_value=None,
+        ), patch("app.routers.messages.get_available_channel_choices", return_value=([], False)):
+            review_response = reviewer_queue_page(
+                make_request_with_query_string("/review?after=&page=1", "after=&page=1", role="reviewer"),
+                channel_id=None,
+                expense_category=None,
+                after=None,
+                before=None,
+                sort_by="time",
+                sort_dir="desc",
+                page=1,
+                limit=25,
+                success=None,
+                error=None,
+                session=session,
+            )
+            deals_response = deals_page(
+                make_request_with_query_string("/deals?before=&page=1", "before=&page=1", role="viewer"),
+                channel_id=None,
+                entry_kind=None,
+                after=None,
+                before=None,
+                page=1,
+                limit=25,
+                session=session,
+            )
+
+        self.assertEqual(review_response.context["selected_after"], "")
+        self.assertEqual(deals_response.context["selected_after"], "")
+
+    def test_review_and_deals_ignore_similar_param_names_when_defaulting_after(self) -> None:
+        with Session(self.engine) as session, patch("app.routers.messages.require_role_response", return_value=None), patch(
+            "app.routers.deals.require_role_response",
+            return_value=None,
+        ), patch("app.routers.messages.get_available_channel_choices", return_value=([], False)):
+            review_response = reviewer_queue_page(
+                make_request_with_query_string("/review?notafter=1", "notafter=1", role="reviewer"),
+                channel_id=None,
+                expense_category=None,
+                after=None,
+                before=None,
+                sort_by="time",
+                sort_dir="desc",
+                page=1,
+                limit=25,
+                success=None,
+                error=None,
+                session=session,
+            )
+            deals_response = deals_page(
+                make_request_with_query_string("/deals?notbefore=1", "notbefore=1", role="viewer"),
+                channel_id=None,
+                entry_kind=None,
+                after=None,
+                before=None,
+                page=1,
+                limit=25,
+                session=session,
+            )
+
+        self.assertRegex(review_response.context["selected_after"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(deals_response.context["selected_after"], r"^\d{4}-\d{2}-\d{2}$")
 
     def test_status_page_surfaces_background_task_failures(self) -> None:
         with Session(self.engine) as session, patch("app.routers.dashboard.require_role_response", return_value=None), patch(

@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -41,7 +41,16 @@ def deals_page(
     # Default `after` to today in PT (midnight-to-now) only when no date params
     # are present in the URL. Once the user touches the filter — including
     # clearing it to an empty string — we respect their choice.
-    if "after" not in request.query_params and "before" not in request.query_params:
+    scope_query_string = request.scope.get("query_string")
+    has_scope_query_string = scope_query_string is not None
+    if has_scope_query_string:
+        query_pairs = parse_qsl(scope_query_string.decode("latin-1"), keep_blank_values=True)
+        explicit_after = any(key == "after" for key, _ in query_pairs)
+        explicit_before = any(key == "before" for key, _ in query_pairs)
+    else:
+        explicit_after = after is not None
+        explicit_before = before is not None
+    if not explicit_after and not explicit_before and after is None and before is None:
         after = datetime.now(_DEALS_DEFAULT_TZ).strftime("%Y-%m-%d")
 
     rows, total_rows = get_partner_deal_rows(

@@ -92,10 +92,10 @@
             </div>
         </div>
 
-        <details class="lx-details">
+        <details class="card tech-details">
             <summary>Technical Details (Operator)</summary>
             <div class="lx-details-body">
-                <p class="lx-note" style="margin-bottom:14px;">Operator-only parser context and correction controls.</p>
+                <p class="lx-note" style="margin-bottom:14px;">Operator-only review context and correction controls.</p>
 
                 <div class="lx-detail-grid">
                     <div class="lx-detail-card"><div class="lx-detail-lbl">Parse Status</div><div class="lx-detail-val">{{ (deal["parse_status"] or "unknown")|replace("_", " ") }}</div></div>
@@ -123,7 +123,7 @@
                         <h3 class="lx-sh-title">Correction Memory</h3>
                     </div>
                     <p class="lx-note" style="margin-bottom:12px;">
-                        {% if learning_signal["promoted_rule"] %}This deal already matches a promoted rule pattern.{% elif learning_signal["exact_match"] %}This deal already has an exact correction-memory match.{% elif learning_signal["similar_count"] %}This deal has {{ learning_signal["similar_count"] }} similar correction pattern(s) the parser can use as hints.{% else %}No learned correction patterns match this deal yet.{% endif %}
+                        {% if learning_signal["promoted_rule"] %}This deal already matches a promoted rule pattern.{% elif learning_signal["exact_match"] %}This deal already has an exact correction-memory match.{% elif learning_signal["similar_count"] %}This deal has {{ learning_signal["similar_count"] }} similar correction pattern(s) the system can use as hints.{% else %}No learned correction patterns match this deal yet.{% endif %}
                     </p>
                     <div class="lx-detail-grid">
                         {% for pattern in correction_patterns %}
@@ -154,7 +154,7 @@
                     <div class="lx-sh" style="margin-bottom:12px;">
                         <h3 class="lx-sh-title">Edit Parsed Values</h3>
                     </div>
-                    <p class="lx-note" style="margin-bottom:14px;">Use this full form when inline review fields are not enough and you need to correct item flow or parser detail.</p>
+                    <p class="lx-note" style="margin-bottom:14px;">Use this full form when inline review fields are not enough and you need to correct item flow or detail.</p>
                     <form method="post" action="/messages/{{ deal['id'] }}/edit-form" id="edit-form">
                         <input type="hidden" name="return_path" value="/deals/{{ deal['id'] }}">
                         <input type="hidden" name="stay_on_detail" value="true">
