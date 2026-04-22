@@ -192,6 +192,7 @@ SQLITE_ADDITIVE_MIGRATIONS = {
     },
     "invitetoken": {
         "token_lookup_hmac": "BLOB",
+        "target_user_id": "INTEGER",
     },
     "passwordresettoken": {
         "token_lookup_hmac": "BLOB",
@@ -258,6 +259,7 @@ SQLITE_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_updated_at ON tiktok_auth (updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_token_lookup_hmac ON invitetoken (token_lookup_hmac)",
+    "CREATE INDEX IF NOT EXISTS idx_invitetoken_target_user_id ON invitetoken (target_user_id)",
     "CREATE INDEX IF NOT EXISTS idx_passwordresettoken_token_lookup_hmac ON passwordresettoken (token_lookup_hmac)",
 ]
 
@@ -381,6 +383,7 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
     },
     "invitetoken": {
         "token_lookup_hmac": "BYTEA",
+        "target_user_id": "INTEGER",
     },
     "passwordresettoken": {
         "token_lookup_hmac": "BYTEA",
@@ -447,6 +450,7 @@ POSTGRES_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_updated_at ON tiktok_auth (updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_token_lookup_hmac ON invitetoken (token_lookup_hmac)",
+    "CREATE INDEX IF NOT EXISTS idx_invitetoken_target_user_id ON invitetoken (target_user_id)",
     "CREATE INDEX IF NOT EXISTS idx_passwordresettoken_token_lookup_hmac ON passwordresettoken (token_lookup_hmac)",
 ]
 

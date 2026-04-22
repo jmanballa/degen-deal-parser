@@ -392,7 +392,36 @@ def generate_invite_token(
     created_by_user_id: int,
     email_hint: Optional[str] = None,
     ttl_hours: int = 24,
+    target_user_id: Optional[int] = None,
 ) -> str:
+    """Issue a one-time invite link.
+
+    If `target_user_id` is provided, the invite is bound to an existing
+    (draft) User row — when consumed, it will hydrate that user/profile
+    instead of creating a brand new one. This lets an admin create a
+    placeholder employee (legal name + role) and schedule them BEFORE
+    they've gone through onboarding.
+
+    Also invalidates any prior outstanding invite for the same target so
+    only one live link exists per draft.
+    """
+    now = utcnow()
+    if target_user_id is not None:
+        target = session.get(User, target_user_id)
+        if target is None:
+            raise ValueError("invite_target_user_not_found")
+        if target.is_active and (target.password_hash or ""):
+            raise ValueError("invite_target_already_registered")
+        prior_rows = session.exec(
+            select(InviteToken).where(
+                InviteToken.target_user_id == target_user_id,
+                InviteToken.used_at.is_(None),
+            )
+        ).all()
+        for prior in prior_rows:
+            prior.used_at = now
+            session.add(prior)
+
     raw = secrets.token_urlsafe(32)
     row = InviteToken(
         token_hash=_hash_token(raw),
@@ -400,11 +429,110 @@ def generate_invite_token(
         role=role,
         created_by_user_id=created_by_user_id,
         email_hint=email_hint,
-        expires_at=utcnow() + timedelta(hours=ttl_hours),
+        expires_at=now + timedelta(hours=ttl_hours),
+        target_user_id=target_user_id,
     )
     session.add(row)
     session.commit()
     return raw
+
+
+def create_draft_employee(
+    session: Session,
+    *,
+    created_by_user_id: int,
+    legal_name: str,
+    preferred_name: Optional[str] = None,
+    role: str = "employee",
+    hire_date: Optional["date"] = None,
+    email: Optional[str] = None,
+) -> User:
+    """Create a pre-registered ("draft") employee.
+
+    The employee exists as an INACTIVE User row with an empty password,
+    plus an EmployeeProfile pre-seeded with whatever info the admin
+    supplies (at minimum, legal_name). The User gets a real, stable
+    primary key — scheduling / supply / audit code can reference it
+    immediately. When the employee later accepts their invite, the same
+    row is hydrated (username + password + is_active=True + any PII
+    they fill in themselves).
+    """
+    normalized_legal = (legal_name or "").strip()
+    if not normalized_legal:
+        raise ValueError("draft_legal_name_required")
+    role_clean = (role or "employee").strip().lower() or "employee"
+
+    from .pii import email_lookup_hash as _email_hash, encrypt_pii as _encrypt
+
+    email_clean = (email or "").strip().lower() or None
+    email_hash: Optional[str] = None
+    if email_clean:
+        email_hash = _email_hash(email_clean)
+        clash = session.exec(
+            select(EmployeeProfile).where(EmployeeProfile.email_lookup_hash == email_hash)
+        ).first()
+        if clash is not None:
+            raise ValueError("draft_email_taken")
+
+    now = utcnow()
+    # Synthetic username so nothing collides; gets replaced when the
+    # employee picks their real one during onboarding. The prefix is
+    # intentionally ugly so it's obvious in admin UI / logs that this
+    # isn't a real account yet.
+    suffix = secrets.token_hex(6)
+    placeholder_username = f"__draft_{suffix}__"
+    display = (preferred_name or "").strip() or normalized_legal
+
+    user = User(
+        username=placeholder_username,
+        password_hash="",
+        password_salt="",
+        display_name=display,
+        role=role_clean,
+        is_active=False,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(user)
+    session.flush()
+
+    profile = EmployeeProfile(
+        user_id=user.id,
+        legal_name_enc=_encrypt(normalized_legal),
+        hire_date=hire_date,
+        created_at=now,
+        updated_at=now,
+    )
+    if email_clean:
+        profile.email_ciphertext = _encrypt(email_clean)
+        profile.email_lookup_hash = email_hash
+    session.add(profile)
+    session.add(
+        AuditLog(
+            actor_user_id=created_by_user_id,
+            target_user_id=user.id,
+            action="employee.draft_created",
+            resource_key="admin.employees.edit",
+            details_json=json.dumps(
+                {
+                    "role": role_clean,
+                    "has_email": bool(email_clean),
+                    "has_preferred_name": bool(preferred_name),
+                }
+            ),
+        )
+    )
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def is_draft_user(user: Optional[User]) -> bool:
+    """A draft is an inactive user with no password set — i.e. still
+    waiting for an invite to be accepted."""
+    if user is None:
+        return False
+    return (not user.is_active) and not (user.password_hash or "")
 
 
 def consume_invite_token(
@@ -430,8 +558,15 @@ def consume_invite_token(
     problems = validate_password_strength(new_password)
     if problems:
         raise WeakPasswordError(problems)
-    existing = session.exec(select(User).where(User.username == normalized_username)).first()
-    if existing is not None:
+
+    # Username uniqueness: for the draft/target flow, the target's existing
+    # placeholder username (__draft_xxx__) is expected to be present and
+    # must NOT trigger a "taken" error — it's the same row we're about to
+    # rename.
+    existing = session.exec(
+        select(User).where(User.username == normalized_username)
+    ).first()
+    if existing is not None and existing.id != row.target_user_id:
         raise ValueError("invite_username_taken")
 
     # Lazy-import pii so auth.py stays importable when the portal is disabled
@@ -445,26 +580,60 @@ def consume_invite_token(
         clash = session.exec(
             select(EmployeeProfile).where(EmployeeProfile.email_lookup_hash == email_hash)
         ).first()
-        if clash is not None:
+        # For the draft flow, the admin may have seeded the same email at
+        # draft-creation time. That's the SAME profile we're about to
+        # update, not a real clash.
+        if clash is not None and clash.user_id != row.target_user_id:
             raise ValueError("invite_email_taken")
 
     pwd_hash, pwd_salt = hash_password(new_password)
     now = utcnow()
     display = (preferred_name or "").strip() or normalized_username
-    user = User(
-        username=normalized_username,
-        password_hash=pwd_hash,
-        password_salt=pwd_salt,
-        display_name=display,
-        role=row.role or "employee",
-        is_active=True,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(user)
-    session.flush()  # populate user.id
 
-    profile = EmployeeProfile(user_id=user.id, created_at=now, updated_at=now)
+    # ---- Two paths: hydrate-existing (draft) vs create-new (classic) ----
+    if row.target_user_id is not None:
+        user = session.get(User, row.target_user_id)
+        if user is None:
+            raise ValueError("invite_target_user_missing")
+        if user.is_active and (user.password_hash or ""):
+            # Belt and suspenders — generate_invite_token already checks,
+            # but make sure a second acceptance can't steal the account.
+            raise ValueError("invite_target_already_registered")
+        user.username = normalized_username
+        user.password_hash = pwd_hash
+        user.password_salt = pwd_salt
+        user.display_name = display
+        # Keep the role the admin chose at draft-time unless the invite
+        # itself carries an override role (current issuance keeps these in
+        # sync, but be defensive).
+        user.role = row.role or user.role or "employee"
+        user.is_active = True
+        user.updated_at = now
+        session.add(user)
+
+        profile = session.get(EmployeeProfile, user.id)
+        if profile is None:
+            profile = EmployeeProfile(user_id=user.id, created_at=now)
+            session.add(profile)
+    else:
+        user = User(
+            username=normalized_username,
+            password_hash=pwd_hash,
+            password_salt=pwd_salt,
+            display_name=display,
+            role=row.role or "employee",
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(user)
+        session.flush()  # populate user.id
+        profile = EmployeeProfile(user_id=user.id, created_at=now, updated_at=now)
+        session.add(profile)
+
+    # Apply PII — "only overwrite if caller provided something" so an
+    # admin-entered legal_name at draft creation survives the employee
+    # leaving it blank during onboarding.
     if legal_name and legal_name.strip():
         profile.legal_name_enc = _encrypt(legal_name.strip())
     if phone and phone.strip():
@@ -481,6 +650,7 @@ def consume_invite_token(
         profile.email_ciphertext = _encrypt(email_clean)
         profile.email_lookup_hash = email_hash
     profile.onboarding_completed_at = now
+    profile.updated_at = now
     session.add(profile)
 
     row.used_at = now

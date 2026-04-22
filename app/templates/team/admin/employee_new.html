@@ -1,0 +1,77 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'employees' %}
+{% block content %}
+<div style="margin-bottom:14px;">
+    <a href="/team/admin/employees" style="color:var(--lx-muted); font-size:13px; text-decoration:underline;">← back to employees</a>
+</div>
+
+<div class="ta-card" style="max-width:640px;">
+    <h2>Add an employee</h2>
+    <p style="font-size:13px; color:var(--lx-muted); margin:-4px 0 14px;">
+        Start with just a legal name. You can add them to the schedule, assign them a role, and update their hire date right after.
+        Send them an invite whenever you're ready — they'll pick their own username + password and fill in the rest during onboarding.
+    </p>
+
+    {% if error %}
+    <div class="ta-flash" style="background:rgba(239,68,68,0.08); border-color:rgba(239,68,68,0.35); color:#fca5a5; padding:10px 12px; border-radius:8px; margin-bottom:14px;">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/team/admin/employees/new">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+
+        <div style="margin-bottom:14px;">
+            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Legal name <span style="color:#fca5a5;">*</span></label>
+            <input type="text" name="legal_name" required autofocus autocapitalize="words"
+                   placeholder="Jane Doe"
+                   style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); font-size:14px;"/>
+            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">Stored encrypted. Only revealed via an audited click later.</div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Preferred name <span style="color:var(--lx-muted); font-weight:400;">(optional)</span></label>
+            <input type="text" name="preferred_name" autocapitalize="words"
+                   placeholder="Jane"
+                   style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); font-size:14px;"/>
+            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">What they go by on screen. Defaults to their legal name if blank.</div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+            <div>
+                <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Role</label>
+                <select name="role" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); font-size:14px;">
+                    {% for r in roles %}<option value="{{ r }}" {% if r == 'employee' %}selected{% endif %}>{{ r }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Hire date <span style="color:var(--lx-muted); font-weight:400;">(optional)</span></label>
+                <input type="date" name="hire_date"
+                       style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); font-size:14px;"/>
+            </div>
+        </div>
+
+        <div style="margin-bottom:20px;">
+            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Email <span style="color:var(--lx-muted); font-weight:400;">(optional)</span></label>
+            <input type="email" name="email" inputmode="email" autocomplete="off"
+                   placeholder="jane@example.com"
+                   style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); font-size:14px;"/>
+            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">
+                If you have it, we'll tie the future invite to this email. The employee can confirm or change it during onboarding.
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+            <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
+                Create draft employee
+            </button>
+            <a class="ta-btn" href="/team/admin/employees">Cancel</a>
+        </div>
+
+        <p style="font-size:11px; color:var(--lx-muted); margin-top:16px; padding-top:12px; border-top:1px solid var(--lx-br);">
+            <strong>What happens next?</strong> They show up as a <span style="color:#93c5fd;">draft</span> in the employee list with a real ID.
+            You can assign them to shifts immediately. When you click <strong>Send invite link</strong>, you'll get a one-time URL to share with them.
+        </p>
+    </form>
+</div>
+{% endblock %}

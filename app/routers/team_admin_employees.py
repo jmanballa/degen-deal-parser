@@ -14,10 +14,16 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
-from ..auth import generate_password_reset_token, has_permission
+from ..auth import (
+    create_draft_employee,
+    generate_invite_token,
+    generate_password_reset_token,
+    has_permission,
+    is_draft_user,
+)
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
-from ..models import AuditLog, EmployeeProfile, User, utcnow
+from ..models import AuditLog, EmployeeProfile, InviteToken, User, utcnow
 from ..pii import decrypt_pii
 from ..shared import templates
 from .team_admin import _admin_gate, _permission_gate
@@ -85,6 +91,16 @@ def _detail_context(
 ) -> dict:
     """Context for employee_detail.html, including per-action permission flags
     so the template renders only the buttons this user can actually submit."""
+    now = utcnow()
+    outstanding = session.exec(
+        select(InviteToken)
+        .where(
+            InviteToken.target_user_id == employee.id,
+            InviteToken.used_at.is_(None),
+            InviteToken.expires_at > now,
+        )
+        .order_by(InviteToken.created_at.desc())
+    ).first()
     return {
         "request": request,
         "title": f"Employee · {employee.username}",
@@ -97,6 +113,8 @@ def _detail_context(
         "reveal_error": None,
         "flash": None,
         "csrf_token": issue_token(request),
+        "is_draft": is_draft_user(employee),
+        "outstanding_invite": outstanding,
         "can_reveal_pii": has_permission(
             session, current, "admin.employees.reveal_pii"
         ),
@@ -112,6 +130,9 @@ def _detail_context(
         "can_edit_profile": has_permission(
             session, current, "admin.employees.edit"
         ),
+        "can_issue_invite": has_permission(
+            session, current, "admin.invites.issue"
+        ),
     }
 
 
@@ -119,17 +140,24 @@ def _detail_context(
 def admin_employees_list(
     request: Request,
     q: Optional[str] = Query(default=None),
+    flash: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
     denial, user = _permission_gate(request, session, "admin.employees.view")
     if denial:
         return denial
-    stmt = select(User).order_by(User.username)
+    stmt = select(User).order_by(User.is_active.desc(), User.username)
     if q:
         like = f"%{q.strip().lower()}%"
-        stmt = select(User).where(User.username.like(like)).order_by(User.username)
+        stmt = (
+            select(User)
+            .where(User.username.like(like))
+            .order_by(User.is_active.desc(), User.username)
+        )
     rows = list(session.exec(stmt).all())[:200]
     profiles: dict[int, EmployeeProfile] = {}
+    outstanding_invite_ids: set[int] = set()
+    draft_legal_names: dict[int, str] = {}
     if rows:
         ids = [r.id for r in rows if r.id is not None]
         if ids:
@@ -141,6 +169,34 @@ def admin_employees_list(
                     )
                 ).all()
             }
+            # Which drafts currently have a live invite? Used for the status
+            # pill ("Invite pending" vs "Draft").
+            now = utcnow()
+            outstanding_invite_ids = {
+                inv.target_user_id
+                for inv in session.exec(
+                    select(InviteToken).where(
+                        InviteToken.target_user_id.in_(ids),
+                        InviteToken.used_at.is_(None),
+                        InviteToken.expires_at > now,
+                    )
+                ).all()
+                if inv.target_user_id is not None
+            }
+            # Decrypt legal_name for drafts so admin sees a real name in the
+            # list (the placeholder username is intentionally ugly). Classic
+            # users keep showing username + display_name; we never decrypt
+            # their legal name without an audited reveal.
+            for uid, prof in profiles.items():
+                usr = next((r for r in rows if r.id == uid), None)
+                if usr is None or not is_draft_user(usr):
+                    continue
+                if not prof.legal_name_enc:
+                    continue
+                try:
+                    draft_legal_names[uid] = decrypt_pii(prof.legal_name_enc) or ""
+                except ValueError:
+                    draft_legal_names[uid] = ""
     return templates.TemplateResponse(
         request,
         "team/admin/employees_list.html",
@@ -150,7 +206,138 @@ def admin_employees_list(
             "current_user": user,
             "users": rows,
             "profiles": profiles,
+            "outstanding_invite_ids": outstanding_invite_ids,
+            "draft_legal_names": draft_legal_names,
+            "is_draft_user": is_draft_user,
             "q": q or "",
+            "flash": flash,
+            "csrf_token": issue_token(request),
+        },
+    )
+
+
+@router.get("/team/admin/employees/new", response_class=HTMLResponse)
+def admin_employee_new_page(
+    request: Request,
+    error: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    denial, current = _permission_gate(request, session, "admin.employees.edit")
+    if denial:
+        return denial
+    return templates.TemplateResponse(
+        request,
+        "team/admin/employee_new.html",
+        {
+            "request": request,
+            "title": "Add employee",
+            "current_user": current,
+            "roles": ROLES,
+            "error": error,
+            "csrf_token": issue_token(request),
+        },
+    )
+
+
+@router.post(
+    "/team/admin/employees/new",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_employee_new_post(
+    request: Request,
+    legal_name: str = Form(...),
+    preferred_name: str = Form(default=""),
+    role: str = Form(default="employee"),
+    email: str = Form(default=""),
+    hire_date: str = Form(default=""),
+    session: Session = Depends(get_session),
+):
+    denial, current = _admin_gate(request, session, "admin.employees.edit")
+    if denial:
+        return denial
+    role_clean = (role or "").strip().lower()
+    if role_clean not in ROLES:
+        role_clean = "employee"
+    try:
+        user = create_draft_employee(
+            session,
+            created_by_user_id=current.id,
+            legal_name=legal_name,
+            preferred_name=preferred_name,
+            role=role_clean,
+            hire_date=_parse_date(hire_date),
+            email=email or None,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        message = {
+            "draft_legal_name_required": "Legal name is required.",
+            "draft_email_taken": "That email already belongs to another employee.",
+        }.get(code, code)
+        return RedirectResponse(
+            f"/team/admin/employees/new?error={message}", status_code=303
+        )
+    return RedirectResponse(
+        f"/team/admin/employees/{user.id}?flash=Employee+added.+Send+them+an+invite+when+you%27re+ready.",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/team/admin/employees/{user_id}/send-invite",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_employee_send_invite(
+    request: Request,
+    user_id: int,
+    session: Session = Depends(get_session),
+):
+    denial, current = _admin_gate(request, session, "admin.invites.issue")
+    if denial:
+        return denial
+    employee = session.get(User, user_id)
+    if employee is None:
+        return HTMLResponse("Employee not found", status_code=404)
+    if not is_draft_user(employee):
+        return RedirectResponse(
+            f"/team/admin/employees/{user_id}?flash=This+employee+already+has+an+active+account.",
+            status_code=303,
+        )
+    try:
+        raw = generate_invite_token(
+            session,
+            role=employee.role or "employee",
+            created_by_user_id=current.id,
+            email_hint=(employee.display_name or "").strip() or None,
+            target_user_id=user_id,
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/team/admin/employees/{user_id}?flash=Could+not+issue+invite:+{exc}",
+            status_code=303,
+        )
+    session.add(
+        AuditLog(
+            actor_user_id=current.id,
+            target_user_id=user_id,
+            action="invite.issued_for_draft",
+            resource_key="admin.invites.issue",
+            details_json=json.dumps({"role": employee.role}),
+            ip_address=(request.client.host if request.client else None),
+        )
+    )
+    session.commit()
+    invite_url = f"{_base_url(request)}/team/invite/accept/{raw}"
+    return templates.TemplateResponse(
+        request,
+        "team/admin/invite_issued.html",
+        {
+            "request": request,
+            "title": "Invite issued",
+            "current_user": current,
+            "invite_url": invite_url,
+            "role": employee.role,
+            "email_hint": employee.display_name or "",
             "csrf_token": issue_token(request),
         },
     )

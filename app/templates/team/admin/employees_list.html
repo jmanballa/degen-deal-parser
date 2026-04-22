@@ -1,24 +1,32 @@
 {% extends "team/admin/base.html" %}
 {% set active = 'employees' %}
 {% block content %}
-<form method="get" action="/team/admin/employees" style="margin-bottom:18px;">
-    <input
-        type="text"
-        name="q"
-        value="{{ q }}"
-        placeholder="Search username..."
-        style="padding:7px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); min-width:260px;"
-    />
-    <button class="ta-btn" type="submit" style="margin-left:6px;">Search</button>
-    {% if q %}<a class="ta-btn" href="/team/admin/employees" style="margin-left:4px;">Clear</a>{% endif %}
-</form>
+{% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+
+<div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; flex-wrap:wrap;">
+    <form method="get" action="/team/admin/employees" style="margin:0;">
+        <input
+            type="text"
+            name="q"
+            value="{{ q }}"
+            placeholder="Search username..."
+            style="padding:7px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); min-width:260px;"
+        />
+        <button class="ta-btn" type="submit" style="margin-left:6px;">Search</button>
+        {% if q %}<a class="ta-btn" href="/team/admin/employees" style="margin-left:4px;">Clear</a>{% endif %}
+    </form>
+    <a class="ta-btn" href="/team/admin/employees/new"
+       style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
+        + Add employee
+    </a>
+</div>
 
 <div class="ta-card" style="padding:0;">
     <table style="width:100%; border-collapse:collapse; font-size:13px;">
         <thead>
             <tr style="text-align:left; color:var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Name</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Username</th>
-                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Display name</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Role</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Hire date</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Status</th>
@@ -27,20 +35,40 @@
         <tbody>
             {% for u in users %}
             {% set profile = profiles.get(u.id) %}
+            {% set draft = is_draft_user(u) %}
+            {% set pending_invite = u.id in outstanding_invite_ids %}
             <tr>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
-                    <a href="/team/admin/employees/{{ u.id }}" style="color:#ff8a3d;">{{ u.username }}</a>
+                    <a href="/team/admin/employees/{{ u.id }}" style="color:#ff8a3d;">
+                        {% if draft and draft_legal_names.get(u.id) %}
+                            {{ draft_legal_names[u.id] }}
+                        {% elif u.display_name %}
+                            {{ u.display_name }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </a>
                 </td>
-                <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">{{ u.display_name or '—' }}</td>
+                <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br); color:{% if draft %}var(--lx-muted){% else %}var(--lx-text){% endif %};">
+                    {% if draft %}
+                        <span style="font-family:ui-monospace, Menlo, monospace; font-size:12px;">(pending)</span>
+                    {% else %}
+                        {{ u.username }}
+                    {% endif %}
+                </td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">{{ u.role }}</td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
                     {% if profile and profile.hire_date %}{{ profile.hire_date }}{% else %}—{% endif %}
                 </td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
-                    {% if u.is_active %}
-                        <span style="color:#86efac;">active</span>
+                    {% if draft and pending_invite %}
+                        <span style="padding:2px 8px; border-radius:999px; background:rgba(251,191,36,0.15); color:#fcd34d; font-size:11px; font-weight:500; letter-spacing:0.03em;">invite pending</span>
+                    {% elif draft %}
+                        <span style="padding:2px 8px; border-radius:999px; background:rgba(96,165,250,0.15); color:#93c5fd; font-size:11px; font-weight:500; letter-spacing:0.03em;">draft</span>
+                    {% elif u.is_active %}
+                        <span style="padding:2px 8px; border-radius:999px; background:rgba(134,239,172,0.15); color:#86efac; font-size:11px; font-weight:500; letter-spacing:0.03em;">active</span>
                     {% else %}
-                        <span style="color:#fca5a5;">inactive</span>
+                        <span style="padding:2px 8px; border-radius:999px; background:rgba(252,165,165,0.15); color:#fca5a5; font-size:11px; font-weight:500; letter-spacing:0.03em;">inactive</span>
                     {% endif %}
                 </td>
             </tr>
@@ -51,4 +79,10 @@
         </tbody>
     </table>
 </div>
+
+<p style="font-size:12px; color:var(--lx-muted); margin-top:14px;">
+    <strong>Draft</strong> — added to the roster but hasn't accepted their invite yet. You can schedule them right now.<br>
+    <strong>Invite pending</strong> — draft with a live, un-used invite link.<br>
+    <strong>Active / inactive</strong> — fully onboarded (active = can log in).
+</p>
 {% endblock %}

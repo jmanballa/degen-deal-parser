@@ -3,6 +3,43 @@
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
 
+{% if is_draft %}
+<div class="ta-card" style="background:rgba(96,165,250,0.08); border-color:rgba(96,165,250,0.3);">
+    <h2 style="color:#93c5fd; display:flex; align-items:center; gap:10px;">
+        Draft employee
+        <span style="font-size:11px; font-weight:500; padding:2px 8px; border-radius:999px; background:rgba(96,165,250,0.2); color:#bfdbfe; letter-spacing:0.05em; text-transform:uppercase;">not yet onboarded</span>
+    </h2>
+    <p style="font-size:13px; color:var(--lx-muted); margin:4px 0 12px;">
+        You can schedule this person, assign them to tasks, and update their role right now.
+        When you're ready, send them an invite link — they'll pick their own username and password and fill in the rest of their info during onboarding.
+    </p>
+    {% if outstanding_invite %}
+    <div style="padding:10px 12px; border-radius:8px; background:var(--lx-bg); border:1px solid var(--lx-br); font-size:13px;">
+        <strong>Invite already issued.</strong>
+        Expires <span style="color:var(--lx-muted);">{{ outstanding_invite.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>.
+        {% if can_issue_invite %}
+        <form method="post" action="/team/admin/employees/{{ employee.id }}/send-invite" style="display:inline; margin-left:8px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+            <button class="ta-btn" type="submit">Issue a fresh link</button>
+        </form>
+        {% endif %}
+        <p style="font-size:11px; color:var(--lx-muted); margin:6px 0 0;">
+            For security, each link is only shown once. Issuing a new link invalidates the old one.
+        </p>
+    </div>
+    {% elif can_issue_invite %}
+    <form method="post" action="/team/admin/employees/{{ employee.id }}/send-invite" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6;">
+            Send invite link →
+        </button>
+    </form>
+    {% else %}
+    <p style="font-size:12px; color:var(--lx-muted);">An admin with invite permissions needs to send the link.</p>
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="ta-card" style="background:rgba(234,179,8,0.08); border-color:rgba(234,179,8,0.3);">
     <strong style="font-size:12px; letter-spacing:0.05em; text-transform:uppercase; color:#fcd34d;">
         PII access is audit-logged.
@@ -93,7 +130,7 @@
 {% if can_reset_password or can_terminate or can_purge %}
 <div class="ta-card" style="border-color:rgba(239,68,68,0.35);">
     <h2 style="color:#fca5a5;">Lifecycle actions</h2>
-    {% if can_reset_password %}
+    {% if can_reset_password and not is_draft %}
     <form method="post" action="/team/admin/employees/{{ employee.id }}/reset-password" style="display:inline-block; margin-right:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <button class="ta-btn" type="submit">Issue password reset link</button>

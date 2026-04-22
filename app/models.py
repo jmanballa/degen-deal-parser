@@ -488,6 +488,11 @@ class InviteToken(SQLModel, table=True):
     used_at: Optional[datetime] = Field(default=None, index=True)
     used_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow, index=True)
+    # Wave 4.6: draft-employee flow. When set, consume_invite_token hydrates
+    # this User (and their EmployeeProfile) instead of creating a new one.
+    # Lets Jeffrey add a legal name + role up front and schedule them BEFORE
+    # they accept the invite.
+    target_user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
 
 
 class PasswordResetToken(SQLModel, table=True):
