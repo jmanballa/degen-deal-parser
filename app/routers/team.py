@@ -11,6 +11,7 @@ Admin employee-management pages live under /team/admin/* (Wave 2 + Wave 4).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any, Optional, Tuple
 
@@ -78,19 +79,16 @@ def _require_employee(
     *,
     resource_key: Optional[str] = None,
 ) -> Tuple[Optional[Response], Optional[User]]:
-    """Portal on + session present + role==employee + optional resource check.
+    """Portal on + session present + optional resource check.
 
-    Returns (Response | None, User | None). If Response is not None it is the
-    denial — bail immediately.
+    Access is governed entirely by `has_permission` against the matrix; any
+    role (employee, manager, reviewer, admin) that holds the required
+    resource flag may view the page. Anonymous users are redirected to login.
     """
     _portal_or_404()
     user: Optional[User] = getattr(request.state, "current_user", None)
     if user is None:
         return RedirectResponse("/team/login", status_code=303), None
-    # Employee-only surface. Managers / reviewers / viewers / admins have
-    # their own landing pages. Admins can still reach /team/admin/* directly.
-    if user.role != "employee":
-        return RedirectResponse("/dashboard", status_code=303), None
     if resource_key is not None and not has_permission(session, user, resource_key):
         return HTMLResponse(
             "You do not have permission to view this page.", status_code=403
@@ -136,9 +134,18 @@ async def team_login_post(
     session: Session = Depends(get_session),
 ):
     _portal_or_404()
+    ip = request.client.host if request.client else None
     if limited := rate_limited_or_429(
         request, key_prefix="team:login", max_requests=5, window_seconds=900.0
     ):
+        session.add(
+            AuditLog(
+                action="login.rate_limited",
+                details_json=json.dumps({"ip": ip}),
+                ip_address=ip,
+            )
+        )
+        session.commit()
         return limited
     # CSRF is enforced manually here so we can also render the login form
     # with a fresh token on a failure without breaking the flow.
@@ -150,7 +157,7 @@ async def team_login_post(
             status_code=303,
         )
 
-    user = authenticate_user(session, username, password)
+    user = authenticate_user(session, username, password, ip_address=ip)
     if not user:
         return RedirectResponse(
             "/team/login?error=Invalid+username+or+password", status_code=303
@@ -163,7 +170,7 @@ async def team_login_post(
     return RedirectResponse("/dashboard", status_code=303)
 
 
-@router.get("/team/logout")
+@router.post("/team/logout", dependencies=[Depends(require_csrf)])
 def team_logout(request: Request):
     _portal_or_404()
     request.session.clear()
@@ -260,19 +267,25 @@ async def team_password_forgot_post(
         request, key_prefix="team:forgot", max_requests=3, window_seconds=900.0
     ):
         return limited
-    # No enumeration: always log request + return generic success. Since
-    # there is no SMTP, the admin surfaces the link out-of-band (Wave 4 UI).
+    # No enumeration: target_user_id is always None so admins reading the
+    # audit log cannot trivially distinguish exists-vs-not. A hashed probe
+    # goes into details_json for investigation without revealing structure.
     probe = (identifier or "").strip().lower()
-    target_id: Optional[int] = None
+    matched = False
     if probe:
         existing = session.exec(select(User).where(User.username == probe)).first()
         if existing is not None and existing.is_active:
-            target_id = existing.id
+            matched = True
+    probe_hash = (
+        hashlib.sha256(probe.encode("utf-8")).hexdigest() if probe else ""
+    )
     session.add(
         AuditLog(
             action="password.reset_requested",
-            target_user_id=target_id,
-            details_json=json.dumps({"probe_kind": "username_or_email"}),
+            target_user_id=None,
+            details_json=json.dumps(
+                {"username_hash": probe_hash, "matched": matched, "source": "http_forgot"}
+            ),
             ip_address=(request.client.host if request.client else None),
         )
     )
@@ -610,6 +623,7 @@ def team_hours(
             "active": "hours",
             "current_user": user,
             "clockify_ready": clockify_ready,
+            "csrf_token": issue_token(request),
             **_nav_context(session, user),
         },
     )
@@ -631,6 +645,7 @@ def team_schedule(
             "title": "My Schedule",
             "active": "schedule",
             "current_user": user,
+            "csrf_token": issue_token(request),
             **_nav_context(session, user),
         },
     )

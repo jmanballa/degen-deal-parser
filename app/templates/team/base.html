@@ -78,7 +78,13 @@
           <a class="tp-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">{{ item.name|capitalize }}</a>
         {% endfor %}
         <div class="tp-logout">
-            <a href="/team/logout" style="text-decoration: underline;">Sign out</a>
+            <form method="POST" action="/team/logout" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+                <button type="submit"
+                        style="background:none;border:none;padding:0;color:inherit;cursor:pointer;text-decoration:underline;font:inherit;">
+                    Sign out
+                </button>
+            </form>
         </div>
     </aside>
     <main class="tp-main">

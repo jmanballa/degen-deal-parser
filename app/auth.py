@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import hashlib
 from hashlib import pbkdf2_hmac
 import hmac
+import json
 import secrets
 from typing import Optional
 
@@ -12,6 +13,7 @@ from sqlmodel import Session, select
 
 from .config import get_settings
 from .models import (
+    AuditLog,
     EmployeeProfile,
     InviteToken,
     PasswordResetToken,
@@ -54,24 +56,89 @@ def verify_password(
     return hmac.compare_digest(digest.hex(), password_hash)
 
 
-def authenticate_user(session: Session, username: str, password: str) -> Optional[User]:
+def authenticate_user(
+    session: Session,
+    username: str,
+    password: str,
+    *,
+    ip_address: Optional[str] = None,
+) -> Optional[User]:
     normalized_username = (username or "").strip().lower()
     if not normalized_username or not password:
+        _audit_login(
+            session,
+            target_user_id=None,
+            action="login.failed",
+            details={"username": normalized_username, "reason": "missing_fields"},
+            ip_address=ip_address,
+        )
         return None
 
     user = session.exec(
         select(User).where(User.username == normalized_username)
     ).first()
-    if not user or not user.is_active:
+    if not user:
+        _audit_login(
+            session,
+            target_user_id=None,
+            action="login.failed",
+            details={"username": normalized_username, "reason": "unknown_user"},
+            ip_address=ip_address,
+        )
+        return None
+    if not user.is_active:
+        _audit_login(
+            session,
+            target_user_id=user.id,
+            action="login.failed",
+            details={"username": normalized_username, "reason": "inactive"},
+            ip_address=ip_address,
+        )
         return None
     stored_salt = (user.password_salt or "").strip()
     if stored_salt:
-        if not verify_password(password, user.password_hash, salt=stored_salt):
-            return None
+        ok = verify_password(password, user.password_hash, salt=stored_salt)
     else:
-        if not verify_password(password, user.password_hash):
-            return None
+        ok = verify_password(password, user.password_hash)
+    if not ok:
+        _audit_login(
+            session,
+            target_user_id=user.id,
+            action="login.failed",
+            details={"username": normalized_username, "reason": "bad_password"},
+            ip_address=ip_address,
+        )
+        return None
+    _audit_login(
+        session,
+        actor_user_id=user.id,
+        target_user_id=user.id,
+        action="login.succeeded",
+        details={"username": normalized_username},
+        ip_address=ip_address,
+    )
     return user
+
+
+def _audit_login(
+    session: Session,
+    *,
+    action: str,
+    details: dict,
+    target_user_id: Optional[int] = None,
+    actor_user_id: Optional[int] = None,
+    ip_address: Optional[str] = None,
+) -> None:
+    session.add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            target_user_id=target_user_id,
+            action=action,
+            details_json=json.dumps(details),
+            ip_address=ip_address,
+        )
+    )
+    session.commit()
 
 
 def upsert_seed_user(
@@ -196,16 +263,24 @@ class WeakPasswordError(ValueError):
         self.problems = list(problems)
 
 
+SYMBOL_CHARS: frozenset[str] = frozenset(
+    "!@#$%^&*()-_=+[]{}|;:',.<>/?~`\"\\"
+)
+
+
 def validate_password_strength(password: str) -> list[str]:
     """Return a list of policy failures. Empty list means OK.
 
     Policy: min 12 chars AND at least 3 of 4 character classes
-    (upper / lower / digit / symbol).
+    (upper / lower / digit / symbol). Whitespace is rejected outright;
+    "symbol" is restricted to printable ASCII punctuation.
     """
     problems: list[str] = []
     pwd = password or ""
     if len(pwd) < 12:
         problems.append("Password must be at least 12 characters.")
+    if any(c.isspace() for c in pwd):
+        problems.append("Password must not contain spaces or whitespace.")
     classes = 0
     if any(c.islower() for c in pwd):
         classes += 1
@@ -213,7 +288,7 @@ def validate_password_strength(password: str) -> list[str]:
         classes += 1
     if any(c.isdigit() for c in pwd):
         classes += 1
-    if any(not c.isalnum() for c in pwd):
+    if any(c in SYMBOL_CHARS for c in pwd):
         classes += 1
     if classes < 3:
         problems.append(
@@ -233,6 +308,16 @@ def has_permission(
     *,
     cache: Optional[dict] = None,
 ) -> bool:
+    """Check whether `user` is allowed to access `resource_key`.
+
+    Rules:
+      * Inactive / anonymous → denied.
+      * Admin short-circuit: allowed unless an explicit
+        `RolePermission(role='admin', resource_key=X, is_allowed=False)` row
+        exists. This keeps admin accounts from accidentally self-locking via
+        the matrix UI but still honors explicit admin denies.
+      * Non-admin: row.is_allowed if a row exists, else default-deny.
+    """
     if user is None or not user.is_active:
         return False
     if cache is not None:
@@ -245,10 +330,12 @@ def has_permission(
             RolePermission.resource_key == resource_key,
         )
     ).first()
-    if row is not None:
+    if user.role == "admin":
+        result = True if row is None else bool(row.is_allowed)
+    elif row is not None:
         result = bool(row.is_allowed)
     else:
-        result = has_role(user, "admin")
+        result = False
     if cache is not None:
         cache[(user.role, resource_key)] = result
     return result
@@ -359,6 +446,14 @@ def consume_invite_token(
     row.used_at = now
     row.used_by_user_id = user.id
     session.add(row)
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            target_user_id=user.id,
+            action="account.invite_accepted",
+            details_json=json.dumps({"email_hint": row.email_hint}),
+        )
+    )
     session.commit()
     session.refresh(user)
     return user
@@ -392,6 +487,14 @@ def generate_password_reset_token(
         issued_by_user_id=issued_by_user_id,
     )
     session.add(row)
+    session.add(
+        AuditLog(
+            actor_user_id=issued_by_user_id or user_id,
+            target_user_id=user_id,
+            action="password.reset_requested",
+            details_json=json.dumps({"source": "generate"}),
+        )
+    )
     session.commit()
     return raw
 
@@ -421,6 +524,14 @@ def consume_password_reset_token(
     row.used_at = now
     session.add(user)
     session.add(row)
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            target_user_id=user.id,
+            action="password.reset_consumed",
+            details_json="{}",
+        )
+    )
     session.commit()
     session.refresh(user)
     return user

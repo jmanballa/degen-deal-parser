@@ -187,11 +187,23 @@ class AuthGatingTests(unittest.TestCase, _PortalHarness):
         self.assertEqual(r.status_code, 303)
         self.assertTrue(r.headers["location"].endswith("/team/login"))
 
-    def test_team_root_with_viewer_redirects_to_dashboard(self):
+    def test_team_root_with_viewer_no_permission_returns_403(self):
+        # Revoke viewer's page.dashboard so the matrix denies the page.
+        from app.models import RolePermission
+
+        row = self.session.exec(
+            select(RolePermission).where(
+                RolePermission.role == "viewer",
+                RolePermission.resource_key == "page.dashboard",
+            )
+        ).first()
+        if row is not None:
+            row.is_allowed = False
+            self.session.add(row)
+            self.session.commit()
         self._login_as("viewer", user_id=20, username="v_t")
         r = self.client.get("/team/", follow_redirects=False)
-        self.assertEqual(r.status_code, 303)
-        self.assertEqual(r.headers["location"], "/dashboard")
+        self.assertEqual(r.status_code, 403)
 
     def test_team_root_with_employee_renders_dashboard(self):
         self._login_as("employee", user_id=30, username="e_t")
