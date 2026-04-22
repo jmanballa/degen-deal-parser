@@ -1,16 +1,35 @@
 {% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">Read each one, then hit "agree" so we have it on file.</div>
+{% endblock %}
 {% block content %}
+{% if not policies %}
+<div class="pt-card pt-hero" style="text-align:center; padding:56px 32px;">
+    <div style="font-size:48px; margin-bottom:16px;">☰</div>
+    <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">No policies yet.</h2>
+    <p class="pt-card-sub" style="max-width:420px; margin:0 auto;">
+        When your admins publish a policy, it'll land here and we'll ask you to acknowledge it.
+    </p>
+</div>
+{% endif %}
+
 {% for p in policies %}
-  <div class="tp-card">
-    <h2>{{ p.title }} <span style="text-transform:none;font-size:11px;color:var(--lx-muted);">· {{ p.version }}</span></h2>
-    <div style="font-size:13px; line-height:1.55;">{{ p.body_md }}</div>
-    <div style="margin-top:14px; display:flex; align-items:center; gap:10px;">
+  <div class="pt-card">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+        <h2 style="margin:0; text-transform:none; letter-spacing:-0.01em; font-size:18px; font-weight:600; color:var(--pt-text);">{{ p.title }}</h2>
+        <span class="pt-chip">{{ p.version }}</span>
+    </div>
+    <div style="font-size:14px; line-height:1.7; color:var(--pt-text); white-space:pre-wrap;">{{ p.body_md }}</div>
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--pt-border); display:flex; align-items:center; gap:10px;">
       {% if p.id in acknowledged %}
-        <span style="font-size:12px;color:#86efac;">Acknowledged</span>
+        <span style="font-size:13px; color:var(--pt-ok); display:inline-flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Acknowledged
+        </span>
       {% else %}
         <form method="post" action="/team/policies/acknowledge/{{ p.id }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="tp-btn primary" type="submit">I have read and agree</button>
+          <button class="pt-btn primary" type="submit">I have read and agree</button>
         </form>
       {% endif %}
     </div>

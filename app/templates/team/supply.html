@@ -1,46 +1,57 @@
 {% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">Running low on something? Let us know.</div>
+{% endblock %}
 {% block content %}
-<div class="tp-card">
-    <h2>Submit a request</h2>
-    <form method="post" action="/team/supply">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="tp-field">
-            <label for="title">Title</label>
-            <input class="tp-input" type="text" id="title" name="title" required maxlength="200">
-        </div>
-        <div class="tp-field">
-            <label for="description">Description</label>
-            <textarea class="tp-textarea" id="description" name="description" rows="3" maxlength="4000"></textarea>
-        </div>
-        <div class="tp-field">
-            <label for="urgency">Urgency</label>
-            <select class="tp-select" id="urgency" name="urgency">
-                <option value="low">Low</option>
-                <option value="normal" selected>Normal</option>
-                <option value="high">High</option>
-            </select>
-        </div>
-        <button class="tp-btn primary" type="submit">Submit</button>
-    </form>
-</div>
-<div class="tp-card">
-    <h2>My requests</h2>
-    {% if requests %}
-      <table class="tp-table">
-        <thead><tr><th>Title</th><th>Urgency</th><th>Status</th><th>Submitted</th></tr></thead>
-        <tbody>
-        {% for r in requests %}
-          <tr>
-            <td>{{ r.title }}</td>
-            <td>{{ r.urgency }}</td>
-            <td>{{ r.status }}</td>
-            <td>{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '' }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <div style="font-size:13px;color:var(--lx-muted);">No requests yet.</div>
-    {% endif %}
+<div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:16px;">
+  <div>
+    <div class="pt-card">
+        <h2>New request</h2>
+        <form method="post" action="/team/supply">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="pt-field">
+                <label class="pt-field-label" for="title">What do you need?</label>
+                <input class="pt-input" type="text" id="title" name="title" required maxlength="200" placeholder="e.g. 100 top-loaders, penny sleeves">
+            </div>
+            <div class="pt-field">
+                <label class="pt-field-label" for="description">Any details?</label>
+                <textarea class="pt-textarea" id="description" name="description" rows="4" maxlength="4000" placeholder="Quantity, preferred brand, where to order from…"></textarea>
+            </div>
+            <div class="pt-field">
+                <label class="pt-field-label" for="urgency">How urgent?</label>
+                <select class="pt-select" id="urgency" name="urgency">
+                    <option value="low">Low — whenever</option>
+                    <option value="normal" selected>Normal — this week</option>
+                    <option value="high">High — ASAP</option>
+                </select>
+            </div>
+            <button class="pt-btn primary lg" type="submit">Send request</button>
+        </form>
+    </div>
+  </div>
+  <div>
+    <div class="pt-card">
+        <h2>My recent requests</h2>
+        {% if requests %}
+          <table class="pt-table">
+            <thead><tr><th>What</th><th>Urgency</th><th>Status</th><th>Sent</th></tr></thead>
+            <tbody>
+            {% for r in requests %}
+              <tr>
+                <td>{{ r.title }}</td>
+                <td><span class="pt-pill {{ r.urgency }}">{{ r.urgency }}</span></td>
+                <td><span class="pt-pill {{ r.status }}">{{ r.status }}</span></td>
+                <td style="color:var(--pt-muted); font-size:12px;">{{ r.created_at.strftime('%b %d') if r.created_at else '' }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div style="padding:20px 0; text-align:center; color:var(--pt-muted); font-size:14px;">
+            No requests yet. When you send one, it shows up here.
+          </div>
+        {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

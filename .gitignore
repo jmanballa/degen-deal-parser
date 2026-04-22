@@ -11,6 +11,7 @@ data/*.db-wal
 data/*.sqlite
 data/*.sqlite3
 data/attachments/
+data/scraper/
 
 logs/
 
@@ -35,3 +36,6 @@ Thumbs.db
 # Temp test artifacts
 tests/.tmp_*/
 .forge-scratch/
+
+# Employee portal secrets (never commit)
+EMPLOYEE_PORTAL_SECRETS.txt

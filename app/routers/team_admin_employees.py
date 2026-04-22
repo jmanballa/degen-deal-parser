@@ -191,7 +191,7 @@ async def admin_employee_reveal(
     denial, current = _admin_gate(request, session, "admin.employees.reveal_pii")
     if denial:
         return denial
-    if field not in ("phone", "address", "legal_name", "emergency_contact_name", "emergency_contact_phone"):
+    if field not in ("phone", "address", "legal_name", "email", "emergency_contact_name", "emergency_contact_phone"):
         return HTMLResponse("Unknown field", status_code=400)
     employee = session.get(User, user_id)
     if employee is None:
@@ -224,6 +224,8 @@ async def admin_employee_reveal(
                 value = _safe_decrypt(profile.phone_enc)
             elif field == "legal_name":
                 value = _safe_decrypt(profile.legal_name_enc)
+            elif field == "email":
+                value = _safe_decrypt(profile.email_ciphertext)
             elif field == "emergency_contact_name":
                 value = _safe_decrypt(profile.emergency_contact_name_enc)
             elif field == "emergency_contact_phone":

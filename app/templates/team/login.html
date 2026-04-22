@@ -1,16 +1,19 @@
 {% extends "team/_auth_shell.html" %}
+{% block auth_sub %}
+<p class="pt-auth-sub">Welcome back. Sign in to your Degen portal.</p>
+{% endblock %}
 {% block content %}
 <form method="post" action="/team/login" autocomplete="on">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div class="auth-field">
-        <label for="username">Username</label>
-        <input class="auth-input" type="text" name="username" id="username" required autofocus autocomplete="username">
+    <div class="pt-field">
+        <label class="pt-field-label" for="username">Username</label>
+        <input class="pt-input" type="text" name="username" id="username" required autofocus autocomplete="username" placeholder="jane.doe">
     </div>
-    <div class="auth-field">
-        <label for="password">Password</label>
-        <input class="auth-input" type="password" name="password" id="password" required autocomplete="current-password">
+    <div class="pt-field">
+        <label class="pt-field-label" for="password">Password</label>
+        <input class="pt-input" type="password" name="password" id="password" required autocomplete="current-password" placeholder="••••••••••••">
     </div>
-    <button class="auth-btn" type="submit">Sign in</button>
+    <button class="pt-btn primary lg" type="submit" style="width:100%; margin-top:6px;">Sign in</button>
 </form>
-<div class="auth-hint"><a href="/team/password/forgot">Forgot password?</a></div>
+<div class="pt-auth-hint"><a href="/team/password/forgot">Trouble signing in?</a></div>
 {% endblock %}

@@ -209,6 +209,16 @@ async def team_invite_accept_post(
     token: str,
     new_username: str = Form(...),
     new_password: str = Form(...),
+    preferred_name: str = Form(default=""),
+    legal_name: str = Form(default=""),
+    email: str = Form(default=""),
+    phone: str = Form(default=""),
+    address_street: str = Form(default=""),
+    address_city: str = Form(default=""),
+    address_state: str = Form(default=""),
+    address_zip: str = Form(default=""),
+    emergency_contact_name: str = Form(default=""),
+    emergency_contact_phone: str = Form(default=""),
     session: Session = Depends(get_session),
 ):
     _portal_or_404()
@@ -216,12 +226,25 @@ async def team_invite_accept_post(
         request, key_prefix="team:invite", max_requests=3, window_seconds=900.0
     ):
         return limited
+    address_payload = {
+        "street": (address_street or "").strip(),
+        "city": (address_city or "").strip(),
+        "state": (address_state or "").strip(),
+        "zip": (address_zip or "").strip(),
+    }
     try:
         user = consume_invite_token(
             session,
             token,
             new_username=new_username,
             new_password=new_password,
+            preferred_name=preferred_name,
+            legal_name=legal_name,
+            email=email,
+            phone=phone,
+            address=address_payload if any(address_payload.values()) else None,
+            emergency_contact_name=emergency_contact_name,
+            emergency_contact_phone=emergency_contact_phone,
         )
     except WeakPasswordError as exc:
         qs = "problems=" + "|".join(p.replace(" ", "+") for p in exc.problems)
@@ -235,7 +258,7 @@ async def team_invite_accept_post(
         )
     request.session["user_id"] = user.id
     rotate_token(request)
-    return RedirectResponse("/team/", status_code=303)
+    return RedirectResponse("/team/?flash=Welcome+to+the+team!", status_code=303)
 
 
 @router.get("/team/password/forgot", response_class=HTMLResponse)
@@ -388,6 +411,7 @@ def team_dashboard(
             "current_user": user,
             "widgets": widgets,
             "clockify_ready": clockify_ready,
+            "now_hour": utcnow().hour,
             "csrf_token": issue_token(request),
             **_nav_context(session, user),
         },
@@ -428,6 +452,8 @@ def team_profile(
     profile = _profile_for(session, user.id)
     # Self-view of own PII is not audited per spec.
     phone = decrypt_pii(profile.phone_enc) or ""
+    email = decrypt_pii(profile.email_ciphertext) or ""
+    legal_name = decrypt_pii(profile.legal_name_enc) or ""
     emergency_contact_name = decrypt_pii(profile.emergency_contact_name_enc) or ""
     emergency_contact_phone = decrypt_pii(profile.emergency_contact_phone_enc) or ""
     address = _decode_address(profile.address_enc)
@@ -441,6 +467,8 @@ def team_profile(
             "current_user": user,
             "profile": profile,
             "preferred_name": user.display_name or "",
+            "legal_name": legal_name,
+            "email": email,
             "phone": phone,
             "emergency_contact_name": emergency_contact_name,
             "emergency_contact_phone": emergency_contact_phone,
@@ -456,6 +484,8 @@ def team_profile(
 async def team_profile_post(
     request: Request,
     preferred_name: str = Form(default=""),
+    legal_name: str = Form(default=""),
+    email: str = Form(default=""),
     phone: str = Form(default=""),
     emergency_contact_name: str = Form(default=""),
     emergency_contact_phone: str = Form(default=""),
@@ -489,6 +519,7 @@ async def team_profile_post(
             setattr(profile, attr, encrypt_pii(raw_s) if raw_s else None)
             changed.append(label)
 
+    _maybe_set_enc("legal_name_enc", legal_name, "legal_name")
     _maybe_set_enc("phone_enc", phone, "phone")
     _maybe_set_enc(
         "emergency_contact_name_enc",
@@ -500,6 +531,30 @@ async def team_profile_post(
         emergency_contact_phone,
         "emergency_contact_phone",
     )
+
+    # Email needs both the ciphertext AND the lookup hash kept in sync.
+    from ..pii import email_lookup_hash as _email_hash
+    new_email = (email or "").strip().lower()
+    current_email = decrypt_pii(profile.email_ciphertext) or ""
+    if new_email != current_email:
+        if new_email:
+            new_hash = _email_hash(new_email)
+            clash = session.exec(
+                select(EmployeeProfile).where(
+                    EmployeeProfile.email_lookup_hash == new_hash,
+                    EmployeeProfile.user_id != user.id,
+                )
+            ).first()
+            if clash is not None:
+                return RedirectResponse(
+                    "/team/profile?flash=That+email+is+already+taken.", status_code=303
+                )
+            profile.email_ciphertext = encrypt_pii(new_email)
+            profile.email_lookup_hash = new_hash
+        else:
+            profile.email_ciphertext = None
+            profile.email_lookup_hash = None
+        changed.append("email")
 
     address_payload = {
         "street": (address_street or "").strip(),

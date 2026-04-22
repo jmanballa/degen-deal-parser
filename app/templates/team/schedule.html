@@ -1,7 +1,17 @@
 {% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">Your upcoming shifts, once they're published.</div>
+{% endblock %}
 {% block content %}
-<div class="tp-card">
-    <h2>My schedule</h2>
-    <div style="font-size:13px;color:var(--lx-muted);">Shift schedule is coming in a future phase.</div>
+<div class="pt-card pt-hero" style="text-align:center; padding:56px 32px;">
+    <div style="font-size:48px; margin-bottom:16px;">◷</div>
+    <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">No shifts on the board yet.</h2>
+    <p class="pt-card-sub" style="max-width:440px; margin:0 auto 8px;">
+        Once your manager publishes the schedule, it'll show up here — week by week, with the times,
+        who you're working with, and any notes pinned up top.
+    </p>
+    <p style="font-size:13px; color:var(--pt-muted); margin-top:18px;">
+        In the meantime, check the store group chat for this week's plan.
+    </p>
 </div>
 {% endblock %}

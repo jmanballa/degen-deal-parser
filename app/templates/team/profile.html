@@ -1,44 +1,83 @@
 {% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">Keep this up to date so we can reach you. Everything sensitive is encrypted.</div>
+{% endblock %}
 {% block content %}
-<div class="tp-card">
-    <h2>Editable</h2>
-    <form method="post" action="/team/profile">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="tp-field">
-            <label for="preferred_name">Preferred name</label>
-            <input class="tp-input" type="text" id="preferred_name" name="preferred_name" value="{{ preferred_name }}">
-        </div>
-        <div class="tp-field">
-            <label for="phone">Phone</label>
-            <input class="tp-input" type="tel" id="phone" name="phone" value="{{ phone }}" autocomplete="tel">
-        </div>
-        <div class="tp-field">
-            <label for="emergency_contact_name">Emergency contact name</label>
-            <input class="tp-input" type="text" id="emergency_contact_name" name="emergency_contact_name" value="{{ emergency_contact_name }}">
-        </div>
-        <div class="tp-field">
-            <label for="emergency_contact_phone">Emergency contact phone</label>
-            <input class="tp-input" type="tel" id="emergency_contact_phone" name="emergency_contact_phone" value="{{ emergency_contact_phone }}">
-        </div>
-        <div class="tp-field">
-            <label>Address</label>
-            <input class="tp-input" type="text" name="address_street" value="{{ address.street or '' }}" placeholder="Street" style="margin-bottom:6px;">
-            <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:6px;">
-                <input class="tp-input" type="text" name="address_city" value="{{ address.city or '' }}" placeholder="City">
-                <input class="tp-input" type="text" name="address_state" value="{{ address.state or '' }}" placeholder="State">
-                <input class="tp-input" type="text" name="address_zip" value="{{ address.zip or '' }}" placeholder="ZIP">
+<div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px;">
+  <div>
+    <div class="pt-card">
+      <h2>Your info</h2>
+      <form method="post" action="/team/profile">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+          <div class="pt-field">
+              <label class="pt-field-label" for="preferred_name">Preferred name</label>
+              <input class="pt-input" type="text" id="preferred_name" name="preferred_name" value="{{ preferred_name }}" placeholder="What we call you on screen">
+          </div>
+          <div class="pt-field">
+              <label class="pt-field-label" for="legal_name">Legal name</label>
+              <input class="pt-input" type="text" id="legal_name" name="legal_name" value="{{ legal_name }}" autocomplete="name" placeholder="For payroll">
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="pt-field">
+                <label class="pt-field-label" for="email">Email</label>
+                <input class="pt-input" type="email" id="email" name="email" value="{{ email }}" autocomplete="email" placeholder="you@example.com">
             </div>
-        </div>
-        <button class="tp-btn primary" type="submit">Save</button>
-    </form>
-</div>
-<div class="tp-card">
-    <h2>Managed by admin</h2>
-    <div style="font-size:13px;">
-        <div><span style="color:var(--lx-muted);">Username:</span> {{ current_user.username }}</div>
-        <div><span style="color:var(--lx-muted);">Role:</span> {{ current_user.role }}</div>
-        <div><span style="color:var(--lx-muted);">Hire date:</span> {{ profile.hire_date or '—' }}</div>
+            <div class="pt-field">
+                <label class="pt-field-label" for="phone">Phone</label>
+                <input class="pt-input" type="tel" id="phone" name="phone" value="{{ phone }}" autocomplete="tel" placeholder="(555) 123-4567">
+            </div>
+          </div>
+
+          <div class="pt-field">
+              <label class="pt-field-label">Mailing address</label>
+              <input class="pt-input" type="text" name="address_street" value="{{ address.street or '' }}" placeholder="Street address" style="margin-bottom:8px;" autocomplete="street-address">
+              <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:8px;">
+                  <input class="pt-input" type="text" name="address_city" value="{{ address.city or '' }}" placeholder="City" autocomplete="address-level2">
+                  <input class="pt-input" type="text" name="address_state" value="{{ address.state or '' }}" placeholder="State" autocomplete="address-level1" maxlength="4">
+                  <input class="pt-input" type="text" name="address_zip" value="{{ address.zip or '' }}" placeholder="ZIP" autocomplete="postal-code" maxlength="10">
+              </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="pt-field">
+                <label class="pt-field-label" for="emergency_contact_name">Emergency contact</label>
+                <input class="pt-input" type="text" id="emergency_contact_name" name="emergency_contact_name" value="{{ emergency_contact_name }}" placeholder="Name">
+            </div>
+            <div class="pt-field">
+                <label class="pt-field-label" for="emergency_contact_phone">Emergency phone</label>
+                <input class="pt-input" type="tel" id="emergency_contact_phone" name="emergency_contact_phone" value="{{ emergency_contact_phone }}">
+            </div>
+          </div>
+
+          <div style="margin-top:4px;">
+            <button class="pt-btn primary" type="submit">Save changes</button>
+          </div>
+      </form>
     </div>
-    <div style="font-size:12px;color:var(--lx-muted);margin-top:8px;">Changes to these fields must be made by an admin.</div>
+  </div>
+
+  <div>
+    <div class="pt-card">
+        <h2>Account</h2>
+        <div style="font-size:13px; line-height:1.9;">
+            <div><span style="color:var(--pt-muted);">Username</span> · <strong>{{ current_user.username }}</strong></div>
+            <div><span style="color:var(--pt-muted);">Role</span> · <span style="text-transform:capitalize;">{{ current_user.role }}</span></div>
+            <div><span style="color:var(--pt-muted);">Hire date</span> · {{ profile.hire_date or '—' }}</div>
+        </div>
+        <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--pt-border); font-size:12px; color:var(--pt-muted);">
+            Role and hire date are managed by admins. Need a change? Ask your manager.
+        </div>
+    </div>
+
+    <div class="pt-card">
+        <h2>Privacy</h2>
+        <div style="font-size:13px; color:var(--pt-muted); line-height:1.55;">
+            Every sensitive field on this page is encrypted at rest with a key only Degen admins hold.
+            Admins can reveal fields only through an audited button — every reveal is logged.
+        </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

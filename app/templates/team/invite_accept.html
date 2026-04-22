@@ -1,16 +1,351 @@
-{% extends "team/_auth_shell.html" %}
-{% block content %}
-<p style="font-size:13px;color:var(--lx-muted);margin-top:0">Create your username and password to finish onboarding.</p>
-<form method="post" action="/team/invite/accept/{{ token }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div class="auth-field">
-        <label for="new_username">Username</label>
-        <input class="auth-input" type="text" name="new_username" id="new_username" value="{{ username }}" required autocomplete="username">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Welcome to Degen · Onboarding</title>
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <link rel="stylesheet" href="/static/linear.css?v=2026042020">
+    <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042021">
+</head>
+<body class="onb-body">
+
+<header class="onb-topbar">
+    <div class="onb-brand">
+        <span class="pt-brand-dot"></span>
+        <span>Degen Collectibles</span>
     </div>
-    <div class="auth-field">
-        <label for="new_password">Password (min 12 chars, 3 of 4: upper / lower / digit / symbol)</label>
-        <input class="auth-input" type="password" name="new_password" id="new_password" required autocomplete="new-password">
+    <div class="onb-progress" id="onb-progress">
+        <span class="onb-progress-dot active"></span>
+        <span class="onb-progress-dot"></span>
+        <span class="onb-progress-dot"></span>
+        <span class="onb-progress-dot"></span>
+        <span class="onb-progress-dot"></span>
+        <span class="onb-progress-dot"></span>
     </div>
-    <button class="auth-btn" type="submit">Create account</button>
-</form>
-{% endblock %}
+</header>
+
+{% if error %}
+  <div style="max-width:560px; margin:0 auto 8px; padding:0 24px;">
+    <div class="pt-error">There was a problem: {{ error }}. Try again below.</div>
+  </div>
+{% endif %}
+{% if problems %}
+  <div style="max-width:560px; margin:0 auto 8px; padding:0 24px;">
+    <div class="pt-warn-banner">
+      <div>
+        <strong>Your password needs work:</strong>
+        <ul style="margin:6px 0 0 18px; padding:0;">
+          {% for p in problems %}{% if p %}<li>{{ p }}</li>{% endif %}{% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<main class="onb-stage">
+    <form method="post" action="/team/invite/accept/{{ token }}" id="onb-form" autocomplete="on">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <!-- Step 1: Welcome -->
+        <section class="onb-step active" data-step="0">
+            <div class="onb-eyebrow">Welcome, trainer</div>
+            <h1 class="onb-title">Let's get you set up.</h1>
+            <p class="onb-lede">
+                You're joining the Degen Collectibles crew. We'll ask a few quick things —
+                nothing sensitive leaves your device in the clear, and everything gets
+                encrypted before it's stored. Takes about two minutes.
+            </p>
+            <div class="onb-actions">
+                <div class="spacer"></div>
+                <button type="button" class="onb-btn" data-next>Start →</button>
+            </div>
+        </section>
+
+        <!-- Step 2: Account -->
+        <section class="onb-step" data-step="1">
+            <div class="onb-eyebrow">Step 1 of 5 · Account</div>
+            <h1 class="onb-title">Pick your sign-in.</h1>
+            <p class="onb-lede">Choose a username and a password. You'll use these every day.</p>
+
+            <div class="onb-form">
+                <div class="onb-field">
+                    <label for="new_username">Username</label>
+                    <input class="onb-input" type="text" name="new_username" id="new_username"
+                           value="{{ username or '' }}" required autocomplete="username"
+                           pattern="[a-zA-Z0-9._-]{3,40}"
+                           placeholder="e.g. jane.doe">
+                    <div class="hint">Lowercase, numbers, and . _ - · 3-40 characters</div>
+                </div>
+                <div class="onb-field">
+                    <label for="new_password">Password</label>
+                    <input class="onb-input" type="password" name="new_password" id="new_password"
+                           required autocomplete="new-password"
+                           placeholder="At least 12 characters">
+                    <div class="onb-strength" id="pw-strength" data-score="0">
+                        <span></span><span></span><span></span><span></span>
+                    </div>
+                    <div class="onb-strength-label" id="pw-strength-label">
+                        Use at least 12 characters with 3 of: lowercase, UPPERCASE, number, symbol.
+                    </div>
+                </div>
+            </div>
+
+            <div class="onb-actions">
+                <button type="button" class="onb-btn ghost" data-back>← Back</button>
+                <div class="spacer"></div>
+                <button type="button" class="onb-btn" data-next id="account-next" disabled>Continue →</button>
+            </div>
+        </section>
+
+        <!-- Step 3: Identity -->
+        <section class="onb-step" data-step="2">
+            <div class="onb-eyebrow">Step 2 of 5 · About you</div>
+            <h1 class="onb-title">Tell us who you are.</h1>
+            <p class="onb-lede">For payroll and to reach you when we need to.</p>
+
+            <div class="onb-form">
+                <div class="onb-field">
+                    <label for="legal_name">Legal name</label>
+                    <input class="onb-input" type="text" name="legal_name" id="legal_name"
+                           autocomplete="name" placeholder="Jane Doe">
+                </div>
+                <div class="onb-field">
+                    <label for="preferred_name">What should we call you?</label>
+                    <input class="onb-input" type="text" name="preferred_name" id="preferred_name"
+                           autocomplete="nickname" placeholder="Jane">
+                    <div class="hint">Shows up on your dashboard.</div>
+                </div>
+                <div class="onb-field">
+                    <label for="email">Email</label>
+                    <input class="onb-input" type="email" name="email" id="email"
+                           autocomplete="email" placeholder="you@example.com">
+                </div>
+                <div class="onb-field">
+                    <label for="phone">Phone</label>
+                    <input class="onb-input" type="tel" name="phone" id="phone"
+                           autocomplete="tel" placeholder="(555) 123-4567">
+                </div>
+            </div>
+
+            <div class="onb-actions">
+                <button type="button" class="onb-btn ghost" data-back>← Back</button>
+                <div class="spacer"></div>
+                <button type="button" class="onb-btn" data-next>Continue →</button>
+            </div>
+        </section>
+
+        <!-- Step 4: Address -->
+        <section class="onb-step" data-step="3">
+            <div class="onb-eyebrow">Step 3 of 5 · Address</div>
+            <h1 class="onb-title">Where do you live?</h1>
+            <p class="onb-lede">For tax forms and mail. Stays encrypted.</p>
+
+            <div class="onb-form">
+                <div class="onb-field">
+                    <label for="address_street">Street address</label>
+                    <input class="onb-input" type="text" name="address_street" id="address_street"
+                           autocomplete="street-address" placeholder="123 Main St">
+                </div>
+                <div class="onb-row cols-3">
+                    <div class="onb-field">
+                        <label for="address_city">City</label>
+                        <input class="onb-input" type="text" name="address_city" id="address_city" autocomplete="address-level2">
+                    </div>
+                    <div class="onb-field">
+                        <label for="address_state">State</label>
+                        <input class="onb-input" type="text" name="address_state" id="address_state" autocomplete="address-level1" maxlength="4">
+                    </div>
+                    <div class="onb-field">
+                        <label for="address_zip">ZIP</label>
+                        <input class="onb-input" type="text" name="address_zip" id="address_zip" autocomplete="postal-code" maxlength="10">
+                    </div>
+                </div>
+            </div>
+
+            <div class="onb-actions">
+                <button type="button" class="onb-btn ghost" data-back>← Back</button>
+                <div class="spacer"></div>
+                <button type="button" class="onb-btn ghost" data-next>Skip for now</button>
+                <button type="button" class="onb-btn" data-next>Continue →</button>
+            </div>
+        </section>
+
+        <!-- Step 5: Emergency contact -->
+        <section class="onb-step" data-step="4">
+            <div class="onb-eyebrow">Step 4 of 5 · Emergency contact</div>
+            <h1 class="onb-title">Who should we call if something happens?</h1>
+            <p class="onb-lede">Optional, but really nice to have.</p>
+
+            <div class="onb-form">
+                <div class="onb-field">
+                    <label for="emergency_contact_name">Name</label>
+                    <input class="onb-input" type="text" name="emergency_contact_name" id="emergency_contact_name" placeholder="Parent, partner, friend…">
+                </div>
+                <div class="onb-field">
+                    <label for="emergency_contact_phone">Phone</label>
+                    <input class="onb-input" type="tel" name="emergency_contact_phone" id="emergency_contact_phone" placeholder="(555) 123-4567">
+                </div>
+            </div>
+
+            <div class="onb-actions">
+                <button type="button" class="onb-btn ghost" data-back>← Back</button>
+                <div class="spacer"></div>
+                <button type="button" class="onb-btn ghost" data-next>Skip</button>
+                <button type="button" class="onb-btn" data-next>Continue →</button>
+            </div>
+        </section>
+
+        <!-- Step 6: Review + submit -->
+        <section class="onb-step" data-step="5">
+            <div class="onb-eyebrow">Step 5 of 5 · Review</div>
+            <h1 class="onb-title">Ready to roll?</h1>
+            <p class="onb-lede">Quick check. Everything sensitive is encrypted at rest.</p>
+
+            <div class="onb-review" id="review-card">
+                <div class="onb-review-row"><span class="k">Username</span><span class="v" data-review="new_username">—</span></div>
+                <div class="onb-review-row"><span class="k">Name</span><span class="v" data-review="preferred_name">—</span></div>
+                <div class="onb-review-row"><span class="k">Legal name</span><span class="v" data-review="legal_name">—</span></div>
+                <div class="onb-review-row"><span class="k">Email</span><span class="v" data-review="email">—</span></div>
+                <div class="onb-review-row"><span class="k">Phone</span><span class="v" data-review="phone">—</span></div>
+                <div class="onb-review-row"><span class="k">Address</span><span class="v" data-review="address">—</span></div>
+                <div class="onb-review-row"><span class="k">Emergency contact</span><span class="v" data-review="emergency">—</span></div>
+            </div>
+
+            <div class="onb-lock-note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Encrypted with a key only Degen admins control. Only admins can reveal it, and every reveal is logged.
+            </div>
+
+            <div class="onb-actions">
+                <button type="button" class="onb-btn ghost" data-back>← Back</button>
+                <div class="spacer"></div>
+                <button type="submit" class="onb-btn" id="finish-btn">Create my account →</button>
+            </div>
+        </section>
+    </form>
+</main>
+
+<script>
+(function(){
+    const steps = Array.from(document.querySelectorAll('.onb-step'));
+    const dots = Array.from(document.querySelectorAll('#onb-progress .onb-progress-dot'));
+    const form = document.getElementById('onb-form');
+
+    let current = 0;
+
+    function show(next) {
+        if (next < 0 || next >= steps.length) return;
+        const outgoing = steps[current];
+        const incoming = steps[next];
+        outgoing.classList.add('leaving');
+        setTimeout(() => {
+            outgoing.classList.remove('active', 'leaving');
+            incoming.classList.add('active');
+            current = next;
+            updateDots();
+            if (next === steps.length - 1) renderReview();
+            const firstInput = incoming.querySelector('input, select, textarea');
+            if (firstInput) setTimeout(() => firstInput.focus({ preventScroll: false }), 80);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 280);
+    }
+
+    function updateDots() {
+        dots.forEach((d, i) => {
+            d.classList.remove('active', 'done');
+            if (i < current) d.classList.add('done');
+            else if (i === current) d.classList.add('active');
+        });
+    }
+
+    function validateAccount() {
+        const u = document.getElementById('new_username').value.trim();
+        const p = document.getElementById('new_password').value;
+        const score = passwordScore(p);
+        const btn = document.getElementById('account-next');
+        const userOk = /^[a-zA-Z0-9._-]{3,40}$/.test(u);
+        const pwOk = score >= 3 && p.length >= 12 && !/\s/.test(p);
+        btn.disabled = !(userOk && pwOk);
+    }
+
+    function passwordScore(pw) {
+        if (!pw) return 0;
+        let classes = 0;
+        if (/[a-z]/.test(pw)) classes++;
+        if (/[A-Z]/.test(pw)) classes++;
+        if (/[0-9]/.test(pw)) classes++;
+        if (/[^A-Za-z0-9]/.test(pw)) classes++;
+        if (pw.length < 8) return Math.max(1, classes - 1);
+        if (pw.length < 12) return Math.min(2, classes);
+        return classes;
+    }
+
+    function updateStrength() {
+        const pw = document.getElementById('new_password').value;
+        const score = passwordScore(pw);
+        const el = document.getElementById('pw-strength');
+        const label = document.getElementById('pw-strength-label');
+        el.dataset.score = String(score);
+        const labels = [
+            "Use at least 12 characters with 3 of: lowercase, UPPERCASE, number, symbol.",
+            "Getting there…",
+            "Almost there.",
+            "Good password.",
+            "Strong password."
+        ];
+        label.textContent = labels[score];
+        validateAccount();
+    }
+
+    document.getElementById('new_username').addEventListener('input', validateAccount);
+    document.getElementById('new_password').addEventListener('input', updateStrength);
+    validateAccount();
+
+    document.querySelectorAll('[data-next]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (current === 1) {
+                validateAccount();
+                if (document.getElementById('account-next').disabled) return;
+            }
+            show(current + 1);
+        });
+    });
+    document.querySelectorAll('[data-back]').forEach(btn => {
+        btn.addEventListener('click', () => show(current - 1));
+    });
+
+    // Review rendering
+    function renderReview() {
+        const get = (id) => document.getElementById(id).value.trim();
+        const set = (k, v) => {
+            const el = document.querySelector('[data-review="'+k+'"]');
+            if (el) el.textContent = v || '—';
+        };
+        set('new_username', get('new_username'));
+        set('preferred_name', get('preferred_name'));
+        set('legal_name', get('legal_name'));
+        set('email', get('email'));
+        set('phone', get('phone'));
+        const addr = [get('address_street'), get('address_city'), get('address_state'), get('address_zip')]
+            .filter(Boolean).join(', ');
+        set('address', addr);
+        const ec = [get('emergency_contact_name'), get('emergency_contact_phone')].filter(Boolean).join(' · ');
+        set('emergency', ec);
+    }
+
+    // Enter key in inputs advances to next step (except on textarea / submit)
+    form.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && current < steps.length - 1) {
+            e.preventDefault();
+            const btn = steps[current].querySelector('[data-next]:not(.ghost)') || steps[current].querySelector('[data-next]');
+            if (btn && !btn.disabled) btn.click();
+        }
+    });
+})();
+</script>
+
+</body>
+</html>

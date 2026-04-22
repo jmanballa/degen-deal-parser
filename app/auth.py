@@ -413,6 +413,13 @@ def consume_invite_token(
     *,
     new_username: str,
     new_password: str,
+    email: Optional[str] = None,
+    legal_name: Optional[str] = None,
+    preferred_name: Optional[str] = None,
+    phone: Optional[str] = None,
+    address: Optional[dict] = None,
+    emergency_contact_name: Optional[str] = None,
+    emergency_contact_phone: Optional[str] = None,
 ) -> User:
     row = _find_token_row(session, InviteToken, raw_token)
     if row is None:
@@ -427,13 +434,28 @@ def consume_invite_token(
     if existing is not None:
         raise ValueError("invite_username_taken")
 
+    # Lazy-import pii so auth.py stays importable when the portal is disabled
+    # (pii module fails-closed at import time when EMPLOYEE_PORTAL_ENABLED=true).
+    from .pii import email_lookup_hash as _email_hash, encrypt_pii as _encrypt
+
+    email_clean = (email or "").strip().lower() or None
+    email_hash: Optional[str] = None
+    if email_clean:
+        email_hash = _email_hash(email_clean)
+        clash = session.exec(
+            select(EmployeeProfile).where(EmployeeProfile.email_lookup_hash == email_hash)
+        ).first()
+        if clash is not None:
+            raise ValueError("invite_email_taken")
+
     pwd_hash, pwd_salt = hash_password(new_password)
     now = utcnow()
+    display = (preferred_name or "").strip() or normalized_username
     user = User(
         username=normalized_username,
         password_hash=pwd_hash,
         password_salt=pwd_salt,
-        display_name=normalized_username,
+        display_name=display,
         role=row.role or "employee",
         is_active=True,
         created_at=now,
@@ -442,16 +464,45 @@ def consume_invite_token(
     session.add(user)
     session.flush()  # populate user.id
 
-    session.add(EmployeeProfile(user_id=user.id, created_at=now, updated_at=now))
+    profile = EmployeeProfile(user_id=user.id, created_at=now, updated_at=now)
+    if legal_name and legal_name.strip():
+        profile.legal_name_enc = _encrypt(legal_name.strip())
+    if phone and phone.strip():
+        profile.phone_enc = _encrypt(phone.strip())
+    if emergency_contact_name and emergency_contact_name.strip():
+        profile.emergency_contact_name_enc = _encrypt(emergency_contact_name.strip())
+    if emergency_contact_phone and emergency_contact_phone.strip():
+        profile.emergency_contact_phone_enc = _encrypt(emergency_contact_phone.strip())
+    if address and isinstance(address, dict):
+        cleaned = {k: str(v or "").strip() for k, v in address.items() if k in ("street", "city", "state", "zip")}
+        if any(cleaned.values()):
+            profile.address_enc = _encrypt(json.dumps(cleaned))
+    if email_clean:
+        profile.email_ciphertext = _encrypt(email_clean)
+        profile.email_lookup_hash = email_hash
+    profile.onboarding_completed_at = now
+    session.add(profile)
+
     row.used_at = now
     row.used_by_user_id = user.id
     session.add(row)
+
+    captured = [
+        label for label, present in (
+            ("legal_name", bool(legal_name and legal_name.strip())),
+            ("preferred_name", bool(preferred_name and preferred_name.strip())),
+            ("email", bool(email_clean)),
+            ("phone", bool(phone and phone.strip())),
+            ("address", bool(address and any((address or {}).values()))),
+            ("emergency_contact", bool(emergency_contact_name and emergency_contact_name.strip())),
+        ) if present
+    ]
     session.add(
         AuditLog(
             actor_user_id=user.id,
             target_user_id=user.id,
             action="account.invite_accepted",
-            details_json=json.dumps({"email_hint": row.email_hint}),
+            details_json=json.dumps({"email_hint": row.email_hint, "captured": captured}),
         )
     )
     session.commit()

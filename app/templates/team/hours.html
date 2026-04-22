@@ -1,11 +1,22 @@
 {% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">Your tracked time this week.</div>
+{% endblock %}
 {% block content %}
-<div class="tp-card">
-    <h2>My hours</h2>
+<div class="pt-card pt-hero" style="text-align:center; padding:56px 32px;">
     {% if not clockify_ready %}
-      <div class="tp-warn" style="margin:0;">Hours tracking isn't configured yet — ask your admin to connect Clockify.</div>
+        <div style="font-size:48px; margin-bottom:16px;">◴</div>
+        <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">Hours tracking isn't hooked up yet.</h2>
+        <p class="pt-card-sub" style="max-width:440px; margin:0 auto;">
+            Once an admin connects Clockify, you'll see your week-by-week hours right here — clock-ins,
+            clock-outs, totals, the works.
+        </p>
     {% else %}
-      <div style="font-size:13px;color:var(--lx-muted);">Coming soon in Wave 5. The integration will show time entries for the current week here.</div>
+        <div style="font-size:48px; margin-bottom:16px;">◴</div>
+        <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">Syncing up with Clockify.</h2>
+        <p class="pt-card-sub" style="max-width:440px; margin:0 auto;">
+            Live entries land here in the next release. Until then, Clockify is the source of truth.
+        </p>
     {% endif %}
 </div>
 {% endblock %}

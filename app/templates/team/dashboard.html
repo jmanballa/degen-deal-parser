@@ -1,31 +1,76 @@
 {% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">
+  {% set hour = now_hour if now_hour is defined else 12 %}
+  {% if hour < 12 %}Good morning{% elif hour < 17 %}Good afternoon{% else %}Good evening{% endif %},
+  {{ current_user.display_name or current_user.username }}.
+</div>
+{% endblock %}
 {% block content %}
+
+<div class="pt-card pt-hero" style="display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap;">
+    <div style="max-width:640px;">
+        <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--pt-accent); font-weight:600; margin-bottom:8px;">Welcome to the Degen team</div>
+        <h2 class="pt-card-title" style="font-size:22px;">Catch 'em all. One shift at a time.</h2>
+        <p class="pt-card-sub">
+            Your hub for schedules, hours, policies, and supply requests. Poke around —
+            everything is where you'd expect it. If something's missing, hit up your manager.
+        </p>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a class="pt-btn" href="/team/profile">Update my profile</a>
+        <a class="pt-btn primary" href="/team/supply">Request supplies</a>
+    </div>
+</div>
+
 {% if widgets %}
-  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+  <div class="pt-widget-grid" style="margin-top:20px;">
     {% for w in widgets %}
-      <div class="tp-card">
-        <h2>{{ w.title }}</h2>
+      <div class="pt-widget">
+        <div class="pt-widget-label">{{ w.title }}</div>
         {% if w.widget_key in ("dashboard.hours_this_week", "dashboard.estimated_pay") %}
           {% if clockify_ready %}
-            <div style="font-size:22px; font-weight:600;">—</div>
-            <div style="font-size:12px; color: var(--lx-muted);">Coming soon in Wave 5.</div>
+            <div class="pt-widget-value">—</div>
+            <div class="pt-widget-sub">Live numbers land in the next release.</div>
           {% else %}
-            <div class="tp-warn" style="margin:0;">Not configured yet — ask your admin.</div>
+            <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Not connected</div>
+            <div class="pt-widget-sub">Ask an admin to link Clockify.</div>
           {% endif %}
         {% elif w.widget_key == "dashboard.todays_tasks" %}
-          <div style="font-size:13px; color: var(--lx-muted);">No tasks assigned.</div>
+          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">All clear</div>
+          <div class="pt-widget-sub">No tasks assigned right now.</div>
         {% elif w.widget_key == "dashboard.upcoming_shifts" %}
-          <div style="font-size:13px; color: var(--lx-muted);">Schedule coming in a future phase.</div>
+          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">TBA</div>
+          <div class="pt-widget-sub">Schedule publishing lands soon.</div>
         {% else %}
-          <div style="font-size:13px; color: var(--lx-muted);">{{ w.description or '(coming soon)' }}</div>
+          <div class="pt-widget-empty">{{ w.description or 'Coming soon.' }}</div>
         {% endif %}
       </div>
     {% endfor %}
   </div>
 {% else %}
-  <div class="tp-card">
-    <h2>Welcome</h2>
-    <div>No widgets enabled for your role yet. Ask your admin.</div>
+  <div class="pt-card" style="margin-top:20px;">
+    <div class="pt-card-title">You're all set.</div>
+    <div class="pt-card-sub">Your admin hasn't enabled any dashboard widgets for your role yet. Everything you need is in the left sidebar.</div>
   </div>
 {% endif %}
+
+<div class="pt-widget-grid" style="margin-top:20px;">
+    <a class="pt-widget" href="/team/policies" style="display:block;">
+        <div class="pt-widget-label">Policies</div>
+        <div class="pt-widget-value" style="font-size:18px; font-weight:600;">Read & sign</div>
+        <div class="pt-widget-sub">Keep your acknowledgements up to date.</div>
+    </a>
+    <a class="pt-widget" href="/team/supply" style="display:block;">
+        <div class="pt-widget-label">Supplies</div>
+        <div class="pt-widget-value" style="font-size:18px; font-weight:600;">Need something?</div>
+        <div class="pt-widget-sub">Request cards, sleeves, top-loaders, anything.</div>
+    </a>
+    <a class="pt-widget" href="/team/profile" style="display:block;">
+        <div class="pt-widget-label">Profile</div>
+        <div class="pt-widget-value" style="font-size:18px; font-weight:600;">Your info</div>
+        <div class="pt-widget-sub">Update contact info, address, emergency contact.</div>
+    </a>
+</div>
+
 {% endblock %}
