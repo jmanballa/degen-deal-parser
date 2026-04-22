@@ -71,6 +71,12 @@
           </a>
         {% endfor %}
         <div class="pt-side-footer">
+            {% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
+              <a class="pt-link" href="/dashboard" style="margin-top:6px;">
+                <span class="pt-link-ico">←</span>
+                <span>Back to Ops</span>
+              </a>
+            {% endif %}
             {% if current_user %}
               <div style="padding: 6px 10px 10px;">
                 <div style="font-size:13px; color:var(--pt-text); font-weight:500;">{{ current_user.display_name or current_user.username }}</div>
