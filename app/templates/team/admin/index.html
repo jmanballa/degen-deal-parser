@@ -1,0 +1,32 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'overview' %}
+{% block content %}
+<div class="ta-card">
+    <h2>Permissions</h2>
+    <p style="margin:0 0 12px; font-size:13px; color: var(--lx-muted);">
+        Customize per-role access to pages, dashboard widgets, and actions.
+    </p>
+    <a class="ta-btn" href="/team/admin/permissions">Open permissions matrix →</a>
+</div>
+
+<div class="ta-card">
+    <h2>Employees</h2>
+    <p style="margin:0; font-size:13px; color: var(--lx-muted);">
+        Employee roster, profiles, and lifecycle actions land in Wave 4.
+    </p>
+</div>
+
+<div class="ta-card">
+    <h2>Invites</h2>
+    <p style="margin:0; font-size:13px; color: var(--lx-muted);">
+        Single-use invite links for onboarding new employees. Wave 4.
+    </p>
+</div>
+
+<div class="ta-card">
+    <h2>Supply queue</h2>
+    <p style="margin:0; font-size:13px; color: var(--lx-muted);">
+        Pending supply-request approvals. Wave 4.
+    </p>
+</div>
+{% endblock %}

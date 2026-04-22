@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include '_linear_base_head.html' %}
+    <title>{{ title }} · Degen Team Admin</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--lx-text);
+            background: var(--lx-bg);
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; text-decoration: none; }
+        .ta-layout {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            min-height: 100vh;
+        }
+        .ta-sidebar {
+            background: var(--lx-s1);
+            border-right: 1px solid var(--lx-br);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .ta-brand {
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--lx-muted);
+            padding: 0 10px 18px;
+        }
+        .ta-nav-link {
+            display: block;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--lx-text);
+            transition: background 0.12s ease;
+        }
+        .ta-nav-link:hover { background: var(--lx-s2); }
+        .ta-nav-link.active {
+            background: var(--lx-s2);
+            color: #ff8a3d;
+            font-weight: 600;
+        }
+        .ta-nav-link.disabled {
+            color: var(--lx-muted);
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .ta-nav-group {
+            margin-top: 18px;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--lx-muted);
+            padding: 0 12px 6px;
+        }
+        .ta-main {
+            padding: 32px 40px 80px;
+            max-width: 1200px;
+        }
+        .ta-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--lx-br);
+        }
+        .ta-h1 { font-size: 22px; font-weight: 700; margin: 0; }
+        .ta-chip {
+            font-size: 11px;
+            padding: 3px 8px;
+            border: 1px solid var(--lx-br);
+            border-radius: 999px;
+            color: var(--lx-muted);
+        }
+        .ta-card {
+            background: var(--lx-s1);
+            border: 1px solid var(--lx-br);
+            border-radius: 12px;
+            padding: 20px 22px;
+            margin-bottom: 16px;
+        }
+        .ta-card h2 {
+            margin: 0 0 10px;
+            font-size: 14px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--lx-muted);
+        }
+        .ta-footer {
+            margin-top: 40px;
+            padding-top: 16px;
+            border-top: 1px solid var(--lx-br);
+            font-size: 11px;
+            color: var(--lx-muted);
+        }
+        .ta-flash {
+            margin-bottom: 16px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .ta-flash.success {
+            background: rgba(34,197,94,0.12);
+            border: 1px solid rgba(34,197,94,0.3);
+            color: #86efac;
+        }
+        .ta-flash.warn {
+            background: rgba(234,179,8,0.12);
+            border: 1px solid rgba(234,179,8,0.3);
+            color: #fcd34d;
+        }
+        .ta-btn {
+            display: inline-block;
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            background: var(--lx-s2);
+            border: 1px solid var(--lx-br);
+            color: var(--lx-text);
+            cursor: pointer;
+        }
+        .ta-btn:hover { background: var(--lx-s1); }
+        .ta-btn.danger {
+            color: #fca5a5;
+            border-color: rgba(239,68,68,0.35);
+        }
+        @media (max-width: 860px) {
+            .ta-layout { grid-template-columns: 1fr; }
+            .ta-sidebar { border-right: none; border-bottom: 1px solid var(--lx-br); }
+            .ta-main { padding: 20px; }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="ta-layout">
+    <aside class="ta-sidebar">
+        <div class="ta-brand">Degen · Team Admin</div>
+        <a class="ta-nav-link {% if active == 'overview' %}active{% endif %}" href="/team/admin">Overview</a>
+        <a class="ta-nav-link {% if active == 'permissions' %}active{% endif %}" href="/team/admin/permissions">Permissions</a>
+        <div class="ta-nav-group">Wave 4 (coming soon)</div>
+        <span class="ta-nav-link disabled" title="Wave 4">Employees</span>
+        <span class="ta-nav-link disabled" title="Wave 4">Invites</span>
+        <span class="ta-nav-link disabled" title="Wave 4">Supply queue</span>
+        <div style="margin-top:auto; padding: 16px 10px 0; font-size: 11px; color: var(--lx-muted);">
+            <a href="/admin" style="text-decoration: underline;">← back to ops admin</a>
+        </div>
+    </aside>
+    <main class="ta-main">
+        <div class="ta-header">
+            <h1 class="ta-h1">{{ title }}</h1>
+            <span class="ta-chip">Employee Portal · Wave 2</span>
+        </div>
+        {% block content %}{% endblock %}
+        <div class="ta-footer">Degen Deal Parser · team admin</div>
+    </main>
+</div>
+</body>
+</html>

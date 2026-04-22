@@ -733,6 +733,8 @@ DEFAULT_ROLE_PERMISSIONS: tuple[tuple[str, str, bool], ...] = tuple(
         ("action.password.reset_issued", (False, False, False, False, True)),
         ("action.employee.terminate", (False, False, False, False, True)),
         ("action.employee.purge", (False, False, False, False, True)),
+        ("admin.permissions.view", (False, False, False, False, True)),
+        ("admin.permissions.edit", (False, False, False, False, True)),
     )
     for role, allowed in zip(
         ("employee", "viewer", "manager", "reviewer", "admin"), row

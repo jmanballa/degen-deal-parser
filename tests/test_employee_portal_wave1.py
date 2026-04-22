@@ -239,7 +239,7 @@ class SeedDefaultsTests(unittest.TestCase):
             seed_employee_portal_defaults(session)
             count_after_second = len(session.exec(select(RolePermission)).all())
         self.assertEqual(count_after_first, count_after_second)
-        self.assertEqual(count_after_first, 5 * 21)
+        self.assertEqual(count_after_first, 5 * 23)
 
 
 class AppBootTests(unittest.TestCase):

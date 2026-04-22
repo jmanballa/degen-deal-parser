@@ -1,0 +1,159 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'permissions' %}
+{% block extra_head %}
+<style>
+    .pm-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .pm-table th, .pm-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--lx-br);
+        text-align: center;
+        white-space: nowrap;
+    }
+    .pm-table th.pm-key,
+    .pm-table td.pm-key {
+        text-align: left;
+        width: 40%;
+        white-space: normal;
+    }
+    .pm-table tbody tr:nth-child(odd) { background: rgba(255,255,255,0.015); }
+    .pm-table th {
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--lx-muted);
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        background: var(--lx-s1);
+        z-index: 1;
+    }
+    .pm-key-code {
+        font-family: "SF Mono", ui-monospace, Menlo, monospace;
+        font-size: 11px;
+        color: var(--lx-muted);
+        display: block;
+        margin-top: 2px;
+    }
+    .pm-toggle {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
+        border: 1px solid var(--lx-br);
+        border-radius: 4px;
+        background: var(--lx-s2);
+        cursor: pointer;
+        vertical-align: middle;
+        position: relative;
+    }
+    .pm-toggle:checked {
+        background: #ff7a1a;
+        border-color: #ff7a1a;
+    }
+    .pm-toggle:checked::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        top: 1px;
+        width: 5px;
+        height: 10px;
+        border: solid #0a0a0a;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+    .pm-cell-form { display: inline; margin: 0; padding: 0; }
+    .pm-section-head {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--lx-muted);
+        padding: 16px 10px 8px;
+        font-weight: 600;
+    }
+    .pm-reset-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 20px;
+    }
+</style>
+{% endblock %}
+{% block content %}
+
+{% if success == 'saved' %}
+<div class="ta-flash success">Saved.</div>
+{% elif success == 'reset' %}
+<div class="ta-flash success">Permissions reset to defaults.</div>
+{% endif %}
+
+{% if locked_out_roles %}
+<div class="ta-flash warn">
+    Heads up: the following role(s) currently have zero allowed resources and
+    are effectively locked out — <b>{{ locked_out_roles | join(", ") }}</b>.
+</div>
+{% endif %}
+
+<div class="ta-card">
+    <h2>Role × resource matrix</h2>
+    <p style="margin:0 0 14px; font-size:13px; color: var(--lx-muted);">
+        Toggle any cell to grant or revoke that role's access. Each change is
+        saved immediately and recorded in the audit log. The <code>admin</code>
+        role keeps full access by default; if you revoke it, you may lock
+        yourself out.
+    </p>
+
+    <table class="pm-table">
+        <thead>
+            <tr>
+                <th class="pm-key">Resource</th>
+                {% for role in roles %}<th>{{ role }}</th>{% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for prefix, group_title, keys in groups %}
+            <tr>
+                <td colspan="{{ roles|length + 1 }}" class="pm-section-head">{{ group_title }}</td>
+            </tr>
+            {% for key in keys %}
+            <tr>
+                <td class="pm-key">
+                    {{ labels[key] }}
+                    <code class="pm-key-code">{{ key }}</code>
+                </td>
+                {% for role in roles %}
+                <td>
+                    <form class="pm-cell-form" method="post" action="/team/admin/permissions/set">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="role" value="{{ role }}">
+                        <input type="hidden" name="resource_key" value="{{ key }}">
+                        <input type="hidden" name="is_allowed" value="{{ '0' if matrix[role][key] else '1' }}">
+                        <input
+                            type="checkbox"
+                            class="pm-toggle"
+                            {% if matrix[role][key] %}checked{% endif %}
+                            onchange="this.form.submit()"
+                            aria-label="{{ role }} — {{ key }}"
+                        >
+                        <noscript><button type="submit" class="ta-btn" style="padding:3px 8px; font-size:11px;">toggle</button></noscript>
+                    </form>
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="pm-reset-row">
+        <form method="post" action="/team/admin/permissions/reset"
+              onsubmit="return confirm('Reset all role permissions to defaults? This is audit-logged.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="ta-btn danger">Reset to defaults</button>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

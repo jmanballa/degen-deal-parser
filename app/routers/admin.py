@@ -44,6 +44,7 @@ def admin_home_page(
             "watched_channels": watched_channels,
             "enabled_channel_count": len(enabled_channels),
             "backfill_channel_count": len(backfill_channels),
+            "employee_portal_enabled": settings.employee_portal_enabled,
         },
     )
 

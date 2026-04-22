@@ -168,6 +168,13 @@
                         <p class="small">Create and manage user accounts for the stream team. Set roles and enable/disable access.</p>
                         <div class="action-card-footer"><span class="small">Account management</span><span class="pill">users</span></div>
                     </a>
+                    {% if employee_portal_enabled %}
+                    <a class="action-card" href="/team/admin">
+                        <h3>Team Admin</h3>
+                        <p class="small">Employee Portal: permissions matrix, invites, and supply queue (Wave 2).</p>
+                        <div class="action-card-footer"><span class="small">Portal administration</span><span class="pill">portal</span></div>
+                    </a>
+                    {% endif %}
                 </div>
             </div>
 
