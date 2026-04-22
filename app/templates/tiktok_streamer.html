@@ -1609,7 +1609,15 @@
                         <div class="nav-menu-wrap">
                             <button class="nav-menu-btn" id="nav-menu-btn" title="Navigation">&#x2630;</button>
                             <div class="nav-dropdown" id="nav-dropdown">
+                                {# Role gating: rank-and-file employees only get the employee portal
+                                   + Degen Eye. Anything that shows cost basis / profit / ops internals
+                                   is hidden unless the viewer is at least role=viewer. #}
+                                {% set _is_ops = current_user and current_user.role in ("viewer", "manager", "reviewer", "admin") %}
+                                {% set _is_admin_like = current_user and current_user.role in ("reviewer", "admin") %}
                                 <div class="nav-dropdown-label">Workspace</div>
+                                <a href="/team/">Team Portal</a>
+                                <a href="/degen_eye">Degen Eye</a>
+                                {% if _is_ops %}
                                 <a href="/dashboard">Dashboard</a>
                                 <a href="/tiktok/orders">TikTok Orders</a>
                                 <a href="/shopify/orders">Shopify Orders</a>
@@ -1626,7 +1634,10 @@
                                 <div class="nav-dropdown-label">Operators</div>
                                 <a href="/table">Table</a>
                                 <a href="/status">Status</a>
+                                {% endif %}
+                                {% if _is_admin_like %}
                                 <a href="/admin">Admin</a>
+                                {% endif %}
                             </div>
                         </div>
                     </div>

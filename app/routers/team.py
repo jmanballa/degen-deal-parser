@@ -403,7 +403,23 @@ def _nav_context(session: Session, user: User) -> dict:
         if has_permission(session, user, key, cache=cache):
             admin_nav.append({"name": name, "href": href})
 
-    return {"nav_items": nav, "admin_nav_items": admin_nav}
+    # "Tools" section — ops pages selectively exposed to rank-and-file staff.
+    # These are pages where TikTok numbers / public market prices are OK but
+    # internal cost basis / margins / P&L are NOT present. Gated against the
+    # user's role rather than the perms matrix so every authenticated employee
+    # gets them out of the box (matches the role drops in inventory.py +
+    # tiktok_streamer.py).
+    tools_nav = []
+    role = (user.role or "").lower()
+    if role in ("employee", "viewer", "manager", "reviewer", "admin"):
+        tools_nav.append({"name": "live-stream", "href": "/tiktok/streamer"})
+        tools_nav.append({"name": "degen-eye", "href": "/degen_eye"})
+
+    return {
+        "nav_items": nav,
+        "admin_nav_items": admin_nav,
+        "tools_nav_items": tools_nav,
+    }
 
 
 @router.get("/team/", response_class=HTMLResponse)

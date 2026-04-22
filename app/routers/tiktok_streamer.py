@@ -503,7 +503,10 @@ def tiktok_streamer_page(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    if denial := require_role_response(request, "viewer"):
+    # Employees can see the live stream dashboard (TikTok GMV + goal bar +
+    # order feed). TikTok numbers are explicitly visible to floor staff so
+    # they can chase goals during the stream.
+    if denial := require_role_response(request, "employee"):
         return denial
 
     orders = session.exec(
@@ -575,7 +578,7 @@ def tiktok_streamer_poll(
     since: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    if denial := require_role_response(request, "viewer"):
+    if denial := require_role_response(request, "employee"):
         return denial
     created_at_floor = datetime.now(timezone.utc) - timedelta(hours=24)
 
@@ -652,7 +655,7 @@ def tiktok_streamer_poll(
 
 @router.get("/tiktok/streamer/goal")
 def get_streamer_goal(request: Request, session: Session = Depends(get_session)):
-    if denial := require_role_response(request, "viewer"):
+    if denial := require_role_response(request, "employee"):
         return denial
     return {
         "gmv_goal": float(_get_app_setting(session, "stream_gmv_goal", "0") or "0"),
@@ -910,7 +913,7 @@ def tiktok_streamer_chat_poll(
     since: int = Query(default=0),
     session: Session = Depends(get_session),
 ):
-    if denial := require_role_response(request, "viewer"):
+    if denial := require_role_response(request, "employee"):
         return denial
     messages = get_live_chat_messages(since_idx=since)
     status_info = get_chat_status()
@@ -976,7 +979,7 @@ async def tiktok_giveaway_start(request: Request, body: dict = None):
 
 @router.get("/tiktok/streamer/giveaway/status")
 def tiktok_giveaway_status(request: Request):
-    if denial := require_role_response(request, "viewer"):
+    if denial := require_role_response(request, "employee"):
         return denial
 
     from ..tiktok_giveaway import get_giveaway_state

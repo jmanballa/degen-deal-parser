@@ -95,6 +95,13 @@ def _require_viewer(request: Request) -> Optional[Response]:
     return _check_role(request, "viewer")
 
 
+def _require_employee(request: Request) -> Optional[Response]:
+    # Used for scanner / Degen Eye routes that are safe for rank-and-file
+    # employees to use on the buy counter. These routes show public market
+    # prices and buy-offer calculators but NOT internal cost basis / margins.
+    return _check_role(request, "employee")
+
+
 def _require_reviewer(request: Request) -> Optional[Response]:
     return _check_role(request, "reviewer")
 
@@ -177,7 +184,11 @@ async def inventory_lookup(
     barcode: str = Query(default=""),
     session: Session = Depends(get_session),
 ):
-    if denial := _require_viewer(request):
+    # Scanner barcode probe. Safe for employees — returns only whether a
+    # barcode exists + its internal id, not cost basis or price. The returned
+    # redirect URL points at /inventory/{id} which is still viewer-gated, so
+    # employees scanning a known barcode won't accidentally see cost data.
+    if denial := _require_employee(request):
         return denial
     if not barcode:
         return JSONResponse({"found": False})
@@ -195,7 +206,7 @@ async def inventory_lookup(
 
 @router.get("/inventory/scan", response_class=HTMLResponse)
 async def inventory_scan_page(request: Request):
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     return _templates.TemplateResponse(
         request,
@@ -603,7 +614,7 @@ async def inventory_barcode_svg(
 
 @router.get("/inventory/scan/singles", response_class=HTMLResponse)
 async def inventory_scan_singles_page(request: Request):
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     return _templates.TemplateResponse(
         request,
@@ -614,7 +625,7 @@ async def inventory_scan_singles_page(request: Request):
 
 @router.get("/inventory/scan/slabs", response_class=HTMLResponse)
 async def inventory_scan_slabs_page(request: Request):
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     return _templates.TemplateResponse(
         request,
@@ -628,7 +639,7 @@ async def inventory_scan_slabs_page(request: Request):
 
 @router.get("/inventory/scan/batch-review", response_class=HTMLResponse)
 async def inventory_batch_review_page(request: Request):
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     return _templates.TemplateResponse(
         request,
@@ -643,7 +654,7 @@ async def inventory_batch_review_page(request: Request):
 
 @router.get("/degen_eye", response_class=HTMLResponse)
 async def inventory_scan_pokemon_page(request: Request):
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     return _templates.TemplateResponse(
         request,
@@ -655,7 +666,7 @@ async def inventory_scan_pokemon_page(request: Request):
 @router.get("/degen_eye/categories")
 async def inventory_scan_categories(request: Request):
     """Return TCGTracking categories with preferred ordering."""
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     categories = await fetch_tcg_categories()
     return JSONResponse({"categories": categories})
@@ -669,7 +680,7 @@ async def inventory_scan_pokemon_identify(request: Request):
     Request body: {"image": "<base64 string>", "category_id": "3"}
     Response: ScanResult JSON with best_match, candidates, extracted_fields, debug.
     """
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
 
     try:
@@ -706,7 +717,7 @@ async def inventory_scan_pokemon_client_log(request: Request):
     - log file rotation at 5 MB → .log.1 (1 generation kept)
     - disk errors return 500 (no silent failures)
     """
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
 
     # Cap payload before parsing JSON.
@@ -771,7 +782,7 @@ async def inventory_scan_pokemon_client_log(request: Request):
 @router.post("/degen_eye/text-search")
 async def inventory_scan_pokemon_text_search(request: Request):
     """Search for cards by text query (name, set, number)."""
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     try:
         body = await request.json()
@@ -788,7 +799,7 @@ async def inventory_scan_pokemon_text_search(request: Request):
 @router.get("/degen_eye/history")
 async def inventory_scan_pokemon_history(request: Request):
     """Return recent scan results as JSON for debugging."""
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     return JSONResponse(get_scan_history())
 
@@ -796,7 +807,7 @@ async def inventory_scan_pokemon_history(request: Request):
 @router.get("/degen_eye/validate/{scan_id}")
 async def inventory_scan_pokemon_validate(request: Request, scan_id: str):
     """Poll for background OCR validation result."""
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     result = get_validation_result(scan_id)
     if result is None:
@@ -807,7 +818,7 @@ async def inventory_scan_pokemon_validate(request: Request, scan_id: str):
 @router.get("/degen_eye/debug", response_class=HTMLResponse)
 async def inventory_scan_pokemon_debug_page(request: Request):
     """Live debug page showing recent scan history — open on desktop while scanning on phone."""
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
     return HTMLResponse("""<!DOCTYPE html>
 <html><head>
@@ -882,7 +893,7 @@ async def inventory_scan_identify(request: Request):
     Request body: {"image": "<base64 string>"}
     Response: card info + image_url + market_price
     """
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
 
     try:
@@ -945,7 +956,7 @@ async def inventory_scan_cert(request: Request):
     Request body: {"cert_number": "...", "grading_company": "PSA"|"BGS"|"CGC"|"SGC"}
     Response: card details + last_solds + suggested_price
     """
-    if denial := _require_viewer(request):
+    if denial := _require_employee(request):
         return denial
 
     try:

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="/static/linear.css?v=2026042020">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042020">
-    <link rel="stylesheet" href="/static/portal.css?v=2026042022">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042023">
     {# Keep legacy .tp-* classes working as aliases — lets older templates coexist. #}
     <style>
         .tp-layout { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
@@ -62,7 +62,9 @@
             'employees': '◆',
             'invites': '→',
             'permissions': '◉',
-            'supply-queue': '⚑'
+            'supply-queue': '⚑',
+            'live-stream': '●',
+            'degen-eye': '◎'
         } %}
         {% for item in nav_items %}
           <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
@@ -70,6 +72,15 @@
             <span>{{ item.name|replace('-', ' ')|capitalize }}</span>
           </a>
         {% endfor %}
+        {% if tools_nav_items %}
+          <div class="pt-side-group">Tools</div>
+          {% for item in tools_nav_items %}
+            <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
+              <span class="pt-link-ico">{{ nav_icons.get(item.name, '·') }}</span>
+              <span>{{ item.name|replace('-', ' ')|capitalize }}</span>
+            </a>
+          {% endfor %}
+        {% endif %}
         {% if admin_nav_items %}
           <div class="pt-side-group">Admin</div>
           {% for item in admin_nav_items %}
