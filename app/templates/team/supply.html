@@ -1,0 +1,46 @@
+{% extends "team/base.html" %}
+{% block content %}
+<div class="tp-card">
+    <h2>Submit a request</h2>
+    <form method="post" action="/team/supply">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="tp-field">
+            <label for="title">Title</label>
+            <input class="tp-input" type="text" id="title" name="title" required maxlength="200">
+        </div>
+        <div class="tp-field">
+            <label for="description">Description</label>
+            <textarea class="tp-textarea" id="description" name="description" rows="3" maxlength="4000"></textarea>
+        </div>
+        <div class="tp-field">
+            <label for="urgency">Urgency</label>
+            <select class="tp-select" id="urgency" name="urgency">
+                <option value="low">Low</option>
+                <option value="normal" selected>Normal</option>
+                <option value="high">High</option>
+            </select>
+        </div>
+        <button class="tp-btn primary" type="submit">Submit</button>
+    </form>
+</div>
+<div class="tp-card">
+    <h2>My requests</h2>
+    {% if requests %}
+      <table class="tp-table">
+        <thead><tr><th>Title</th><th>Urgency</th><th>Status</th><th>Submitted</th></tr></thead>
+        <tbody>
+        {% for r in requests %}
+          <tr>
+            <td>{{ r.title }}</td>
+            <td>{{ r.urgency }}</td>
+            <td>{{ r.status }}</td>
+            <td>{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div style="font-size:13px;color:var(--lx-muted);">No requests yet.</div>
+    {% endif %}
+</div>
+{% endblock %}

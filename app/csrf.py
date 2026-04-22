@@ -18,6 +18,14 @@ def issue_token(request: Request) -> str:
     return token
 
 
+def rotate_token(request: Request) -> str:
+    """Discard any existing CSRF token and mint a fresh one. Call on auth
+    state changes (login, logout, password rotation) so a pre-login attacker
+    can't reuse a sniffed token post-auth."""
+    request.session.pop(SESSION_KEY, None)
+    return issue_token(request)
+
+
 def verify_token(request: Request, submitted: Optional[str]) -> bool:
     expected = request.session.get(SESSION_KEY)
     if not expected or not submitted:

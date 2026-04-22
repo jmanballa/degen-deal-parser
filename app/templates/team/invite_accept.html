@@ -1,0 +1,16 @@
+{% extends "team/_auth_shell.html" %}
+{% block content %}
+<p style="font-size:13px;color:var(--lx-muted);margin-top:0">Create your username and password to finish onboarding.</p>
+<form method="post" action="/team/invite/accept/{{ token }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="auth-field">
+        <label for="new_username">Username</label>
+        <input class="auth-input" type="text" name="new_username" id="new_username" value="{{ username }}" required autocomplete="username">
+    </div>
+    <div class="auth-field">
+        <label for="new_password">Password (min 12 chars, 3 of 4: upper / lower / digit / symbol)</label>
+        <input class="auth-input" type="password" name="new_password" id="new_password" required autocomplete="new-password">
+    </div>
+    <button class="auth-btn" type="submit">Create account</button>
+</form>
+{% endblock %}

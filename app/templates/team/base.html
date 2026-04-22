@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include '_linear_base_head.html' %}
+    <title>{{ title }} · Degen Team</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--lx-text);
+            background: var(--lx-bg);
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; text-decoration: none; }
+        .tp-layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+        .tp-side {
+            background: var(--lx-s1);
+            border-right: 1px solid var(--lx-br);
+            padding: 24px 14px;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .tp-brand {
+            font-weight: 700; font-size: 13px; letter-spacing: 0.05em;
+            text-transform: uppercase; color: var(--lx-muted);
+            padding: 0 10px 18px;
+        }
+        .tp-link {
+            display: block; padding: 8px 12px; border-radius: 8px; font-size: 14px;
+            color: var(--lx-text);
+        }
+        .tp-link:hover { background: var(--lx-s2); }
+        .tp-link.active { background: var(--lx-s2); color: #ff8a3d; font-weight: 600; }
+        .tp-logout { margin-top: auto; padding: 16px 10px 0; font-size: 12px; color: var(--lx-muted); }
+        .tp-main { padding: 28px 36px 80px; max-width: 1100px; }
+        .tp-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 22px; padding-bottom: 14px; border-bottom: 1px solid var(--lx-br);
+        }
+        .tp-h1 { font-size: 20px; font-weight: 700; margin: 0; }
+        .tp-chip { font-size: 11px; padding: 3px 8px; border: 1px solid var(--lx-br); border-radius: 999px; color: var(--lx-muted); }
+        .tp-card { background: var(--lx-s1); border: 1px solid var(--lx-br); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+        .tp-card h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--lx-muted); }
+        .tp-flash { margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+                    background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+        .tp-error { margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+                    background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); color: #fca5a5; }
+        .tp-warn { margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+                   background: rgba(234,179,8,0.12); border: 1px solid rgba(234,179,8,0.3); color: #fcd34d; }
+        .tp-btn {
+            display: inline-block; padding: 7px 14px; border-radius: 8px; font-size: 13px;
+            font-weight: 500; background: var(--lx-s2); border: 1px solid var(--lx-br);
+            color: var(--lx-text); cursor: pointer;
+        }
+        .tp-btn:hover { background: var(--lx-s1); }
+        .tp-btn.primary { background: #ff8a3d; border-color: #ff8a3d; color: #0a0a0a; }
+        .tp-input, .tp-select, .tp-textarea {
+            width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--lx-br);
+            background: var(--lx-bg); color: var(--lx-text); font-size: 14px;
+        }
+        .tp-field { margin-bottom: 12px; }
+        .tp-field label { display:block; font-size: 12px; color: var(--lx-muted); margin-bottom: 4px; }
+        .tp-table { width: 100%; border-collapse: collapse; }
+        .tp-table th, .tp-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--lx-br); font-size: 13px; }
+        @media (max-width: 820px) {
+            .tp-layout { grid-template-columns: 1fr; }
+            .tp-side { border-right: none; border-bottom: 1px solid var(--lx-br); }
+            .tp-main { padding: 18px; }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="tp-layout">
+    <aside class="tp-side">
+        <div class="tp-brand">Degen · Team</div>
+        {% for item in nav_items %}
+          <a class="tp-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">{{ item.name|capitalize }}</a>
+        {% endfor %}
+        <div class="tp-logout">
+            <a href="/team/logout" style="text-decoration: underline;">Sign out</a>
+        </div>
+    </aside>
+    <main class="tp-main">
+        <div class="tp-header">
+            <h1 class="tp-h1">{{ title }}</h1>
+            {% if current_user %}<span class="tp-chip">Signed in as {{ current_user.display_name or current_user.username }}</span>{% endif %}
+        </div>
+        {% if flash %}<div class="tp-flash">{{ flash }}</div>{% endif %}
+        {% if error %}<div class="tp-error">{{ error }}</div>{% endif %}
+        {% block content %}{% endblock %}
+    </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{% extends "team/base.html" %}
+{% block content %}
+<div class="tp-card">
+    <h2>Editable</h2>
+    <form method="post" action="/team/profile">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="tp-field">
+            <label for="preferred_name">Preferred name</label>
+            <input class="tp-input" type="text" id="preferred_name" name="preferred_name" value="{{ preferred_name }}">
+        </div>
+        <div class="tp-field">
+            <label for="phone">Phone</label>
+            <input class="tp-input" type="tel" id="phone" name="phone" value="{{ phone }}" autocomplete="tel">
+        </div>
+        <div class="tp-field">
+            <label for="emergency_contact_name">Emergency contact name</label>
+            <input class="tp-input" type="text" id="emergency_contact_name" name="emergency_contact_name" value="{{ emergency_contact_name }}">
+        </div>
+        <div class="tp-field">
+            <label for="emergency_contact_phone">Emergency contact phone</label>
+            <input class="tp-input" type="tel" id="emergency_contact_phone" name="emergency_contact_phone" value="{{ emergency_contact_phone }}">
+        </div>
+        <div class="tp-field">
+            <label>Address</label>
+            <input class="tp-input" type="text" name="address_street" value="{{ address.street or '' }}" placeholder="Street" style="margin-bottom:6px;">
+            <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:6px;">
+                <input class="tp-input" type="text" name="address_city" value="{{ address.city or '' }}" placeholder="City">
+                <input class="tp-input" type="text" name="address_state" value="{{ address.state or '' }}" placeholder="State">
+                <input class="tp-input" type="text" name="address_zip" value="{{ address.zip or '' }}" placeholder="ZIP">
+            </div>
+        </div>
+        <button class="tp-btn primary" type="submit">Save</button>
+    </form>
+</div>
+<div class="tp-card">
+    <h2>Managed by admin</h2>
+    <div style="font-size:13px;">
+        <div><span style="color:var(--lx-muted);">Username:</span> {{ current_user.username }}</div>
+        <div><span style="color:var(--lx-muted);">Role:</span> {{ current_user.role }}</div>
+        <div><span style="color:var(--lx-muted);">Hire date:</span> {{ profile.hire_date or '—' }}</div>
+    </div>
+    <div style="font-size:12px;color:var(--lx-muted);margin-top:8px;">Changes to these fields must be made by an admin.</div>
+</div>
+{% endblock %}

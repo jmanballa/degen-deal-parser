@@ -1,0 +1,16 @@
+{% extends "team/_auth_shell.html" %}
+{% block content %}
+<form method="post" action="/team/login" autocomplete="on">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="auth-field">
+        <label for="username">Username</label>
+        <input class="auth-input" type="text" name="username" id="username" required autofocus autocomplete="username">
+    </div>
+    <div class="auth-field">
+        <label for="password">Password</label>
+        <input class="auth-input" type="password" name="password" id="password" required autocomplete="current-password">
+    </div>
+    <button class="auth-btn" type="submit">Sign in</button>
+</form>
+<div class="auth-hint"><a href="/team/password/forgot">Forgot password?</a></div>
+{% endblock %}

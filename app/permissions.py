@@ -241,3 +241,59 @@ def all_widgets(session: Session) -> List[DashboardWidget]:
             )
         ).all()
     )
+
+
+def allowed_widgets_for(session: Session, user) -> List[DashboardWidget]:
+    """Return the DashboardWidget rows whose `widget.<widget_key>` permission
+    is allowed for the current user's role. Ordered by display_order.
+    """
+    from .auth import has_permission  # local import to avoid cycle
+
+    if user is None:
+        return []
+    widgets = all_widgets(session)
+    cache: Dict[tuple, bool] = {}
+    out: List[DashboardWidget] = []
+    for w in widgets:
+        if not w.is_registered:
+            continue
+        resource_key = f"widget.{w.widget_key}"
+        if has_permission(session, user, resource_key, cache=cache):
+            out.append(w)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Wave 3 widget registrations (in-process — DashboardWidget rows are seeded
+# by app/db.py on startup). These calls only populate the runtime registry
+# used by tests / fallback rendering.
+# ---------------------------------------------------------------------------
+
+register_widget(
+    "dashboard.hours_this_week",
+    title="Hours this week",
+    description="Clockify-sourced hours for the current week.",
+    default_roles=("employee", "manager", "reviewer", "admin"),
+    order=10,
+)
+register_widget(
+    "dashboard.estimated_pay",
+    title="Estimated pay",
+    description="Hours × hourly rate. Employee + admin only.",
+    default_roles=("employee", "admin"),
+    order=20,
+)
+register_widget(
+    "dashboard.upcoming_shifts",
+    title="Upcoming shifts",
+    description="Next scheduled shifts (schedule read-only).",
+    default_roles=("employee", "manager", "reviewer", "admin"),
+    order=30,
+)
+register_widget(
+    "dashboard.todays_tasks",
+    title="Today's tasks",
+    description="Tasks assigned to you.",
+    default_roles=("employee", "manager", "reviewer", "admin"),
+    order=40,
+)

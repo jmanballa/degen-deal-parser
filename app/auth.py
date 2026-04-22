@@ -182,6 +182,47 @@ def has_role(user: Optional[User], minimum_role: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Password strength (Wave 3, m4)
+# ---------------------------------------------------------------------------
+
+class WeakPasswordError(ValueError):
+    """Raised when a new password fails the strength policy.
+
+    `.problems` is a list of human-readable reasons (never empty).
+    """
+
+    def __init__(self, problems: list[str]):
+        super().__init__("password_weak")
+        self.problems = list(problems)
+
+
+def validate_password_strength(password: str) -> list[str]:
+    """Return a list of policy failures. Empty list means OK.
+
+    Policy: min 12 chars AND at least 3 of 4 character classes
+    (upper / lower / digit / symbol).
+    """
+    problems: list[str] = []
+    pwd = password or ""
+    if len(pwd) < 12:
+        problems.append("Password must be at least 12 characters.")
+    classes = 0
+    if any(c.islower() for c in pwd):
+        classes += 1
+    if any(c.isupper() for c in pwd):
+        classes += 1
+    if any(c.isdigit() for c in pwd):
+        classes += 1
+    if any(not c.isalnum() for c in pwd):
+        classes += 1
+    if classes < 3:
+        problems.append(
+            "Password must include at least 3 of: lowercase, uppercase, digit, symbol."
+        )
+    return problems
+
+
+# ---------------------------------------------------------------------------
 # Employee-portal auth extensions (Wave 1)
 # ---------------------------------------------------------------------------
 
@@ -292,6 +333,9 @@ def consume_invite_token(
     normalized_username = (new_username or "").strip().lower()
     if not normalized_username or not new_password:
         raise ValueError("invite_username_or_password_missing")
+    problems = validate_password_strength(new_password)
+    if problems:
+        raise WeakPasswordError(problems)
     existing = session.exec(select(User).where(User.username == normalized_username)).first()
     if existing is not None:
         raise ValueError("invite_username_taken")
@@ -363,6 +407,9 @@ def consume_password_reset_token(
         raise ValueError("reset_token_invalid")
     if not new_password:
         raise ValueError("reset_password_missing")
+    problems = validate_password_strength(new_password)
+    if problems:
+        raise WeakPasswordError(problems)
     user = session.get(User, row.user_id)
     if user is None or not user.is_active:
         raise ValueError("reset_user_inactive")

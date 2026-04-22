@@ -1,0 +1,11 @@
+{% extends "team/base.html" %}
+{% block content %}
+<div class="tp-card">
+    <h2>My hours</h2>
+    {% if not clockify_ready %}
+      <div class="tp-warn" style="margin:0;">Hours tracking isn't configured yet — ask your admin to connect Clockify.</div>
+    {% else %}
+      <div style="font-size:13px;color:var(--lx-muted);">Coming soon in Wave 5. The integration will show time entries for the current week here.</div>
+    {% endif %}
+</div>
+{% endblock %}
