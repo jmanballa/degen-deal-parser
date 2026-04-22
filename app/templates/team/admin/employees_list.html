@@ -4,22 +4,36 @@
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
 
 <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; flex-wrap:wrap;">
-    <form method="get" action="/team/admin/employees" style="margin:0;">
+    <form method="get" action="/team/admin/employees" style="margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <input
             type="text"
             name="q"
             value="{{ q }}"
             placeholder="Search username..."
-            style="padding:7px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); min-width:260px;"
+            style="padding:7px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); min-width:220px;"
         />
-        <button class="ta-btn" type="submit" style="margin-left:6px;">Search</button>
-        {% if q %}<a class="ta-btn" href="/team/admin/employees" style="margin-left:4px;">Clear</a>{% endif %}
+        <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--lx-muted); cursor:pointer; user-select:none;">
+            <input type="checkbox" name="show_inactive" value="1" {% if show_inactive %}checked{% endif %}
+                   onchange="this.form.submit()"
+                   style="accent-color:#3b82f6;"/>
+            Show inactive
+        </label>
+        <button class="ta-btn" type="submit">Search</button>
+        {% if q or show_inactive %}<a class="ta-btn" href="/team/admin/employees">Clear</a>{% endif %}
     </form>
     <a class="ta-btn" href="/team/admin/employees/new"
        style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
         + Add employee
     </a>
 </div>
+
+<p style="font-size:12px; color:var(--lx-muted); margin:-10px 0 16px;">
+    {% if show_inactive %}
+        Showing <strong style="color:var(--lx-text);">all</strong> employees (active + inactive).
+    {% else %}
+        Showing <strong style="color:var(--lx-text);">active</strong> employees only. Check <em>Show inactive</em> to see former staff.
+    {% endif %}
+</p>
 
 <div class="ta-card" style="padding:0;">
     <table style="width:100%; border-collapse:collapse; font-size:13px;">
@@ -40,14 +54,17 @@
             <tr>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
                     <a href="/team/admin/employees/{{ u.id }}" style="color:#ff8a3d;">
-                        {% if draft and draft_legal_names.get(u.id) %}
-                            {{ draft_legal_names[u.id] }}
-                        {% elif u.display_name %}
+                        {% if u.display_name %}
                             {{ u.display_name }}
+                        {% elif draft and draft_legal_names.get(u.id) %}
+                            {{ draft_legal_names[u.id] }}
                         {% else %}
                             —
                         {% endif %}
                     </a>
+                    {% if draft and draft_legal_names.get(u.id) and u.display_name and u.display_name != draft_legal_names[u.id] %}
+                        <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">legal: {{ draft_legal_names[u.id] }}</div>
+                    {% endif %}
                 </td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br); color:{% if draft %}var(--lx-muted){% else %}var(--lx-text){% endif %};">
                     {% if draft %}

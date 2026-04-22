@@ -21,8 +21,10 @@ from sqlmodel import Session, select
 
 from .. import permissions as perms
 from ..auth import (
+    BadCurrentPasswordError,
     WeakPasswordError,
     authenticate_user,
+    change_user_password,
     consume_invite_token,
     consume_password_reset_token,
     has_permission,
@@ -638,6 +640,105 @@ async def team_profile_post(
     return RedirectResponse("/team/profile?flash=Saved.", status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# Self-serve password change (authenticated)
+# ---------------------------------------------------------------------------
+# Sibling of /team/password/reset/<token>. That one is for people who forgot
+# their password (admin issues reset link). This one is for people who know
+# their current password and just want to rotate it — no admin in the loop,
+# but auditable. Lives here (not in the auth reset module) because it's
+# authenticated and nav-integrated.
+
+@router.get("/team/password/change", response_class=HTMLResponse)
+def team_password_change_page(
+    request: Request,
+    flash: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+    problems: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(request, session, resource_key="page.profile")
+    if denial:
+        return denial
+    return templates.TemplateResponse(
+        request,
+        "team/password_change.html",
+        {
+            "request": request,
+            "title": "Change password",
+            "active": "profile",
+            "current_user": user,
+            "flash": flash,
+            "error": error,
+            "problems": (problems or "").split("|") if problems else [],
+            "csrf_token": issue_token(request),
+            **_nav_context(session, user),
+        },
+    )
+
+
+@router.post("/team/password/change", dependencies=[Depends(require_csrf)])
+async def team_password_change_post(
+    request: Request,
+    current_password: str = Form(default=""),
+    new_password: str = Form(default=""),
+    confirm_password: str = Form(default=""),
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(request, session, resource_key="page.profile")
+    if denial:
+        return denial
+    if limited := rate_limited_or_429(
+        request, key_prefix=f"team:pwchange:{user.id}", max_requests=8, window_seconds=900.0
+    ):
+        return limited
+    if new_password != confirm_password:
+        return RedirectResponse(
+            "/team/password/change?error=New+password+and+confirmation+don%27t+match.",
+            status_code=303,
+        )
+    try:
+        change_user_password(
+            session,
+            user,
+            current_password=current_password,
+            new_password=new_password,
+            ip_address=(request.client.host if request.client else None),
+        )
+    except BadCurrentPasswordError as exc:
+        code = str(exc)
+        message = {
+            "current_password_required": "Enter your current password.",
+            "current_password_wrong": "That's not your current password.",
+        }.get(code, "Could not verify your current password.")
+        from urllib.parse import quote_plus
+        return RedirectResponse(
+            f"/team/password/change?error={quote_plus(message)}",
+            status_code=303,
+        )
+    except WeakPasswordError as exc:
+        qs = "problems=" + "|".join(p.replace(" ", "+") for p in exc.problems)
+        return RedirectResponse(
+            f"/team/password/change?{qs}",
+            status_code=303,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        message = {
+            "new_password_required": "Choose a new password.",
+            "new_password_same_as_current": "Your new password has to be different from the current one.",
+        }.get(code, "Could not update password.")
+        from urllib.parse import quote_plus
+        return RedirectResponse(
+            f"/team/password/change?error={quote_plus(message)}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        "/team/profile?flash=Password+updated.",
+        status_code=303,
+    )
+
+
 @router.get("/team/policies", response_class=HTMLResponse)
 def team_policies(
     request: Request,
@@ -739,20 +840,36 @@ def team_hours(
 @router.get("/team/schedule", response_class=HTMLResponse)
 def team_schedule(
     request: Request,
+    week: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
     denial, user = _require_employee(request, session, resource_key="page.schedule")
     if denial:
         return denial
+    # Reuse the admin grid builder so the employee view is literally the
+    # same visual — no translation layer, no "my shifts" fork. Everyone
+    # sees the published grid the same way; only the top-level wrapper
+    # differs (admin has inputs, employee has static cells).
+    from .team_admin_schedule import (
+        _build_cell_key,
+        _build_day_loc_key,
+        _grid_context,
+        _parse_week_start,
+    )
+
+    ctx = _grid_context(session, _parse_week_start(week))
     return templates.TemplateResponse(
         request,
         "team/schedule.html",
         {
             "request": request,
-            "title": "My Schedule",
+            "title": "Schedule",
             "active": "schedule",
             "current_user": user,
             "csrf_token": issue_token(request),
+            "build_cell_key": _build_cell_key,
+            "build_day_loc_key": _build_day_loc_key,
+            **ctx,
             **_nav_context(session, user),
         },
     )

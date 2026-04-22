@@ -8,8 +8,8 @@
 <div class="ta-card" style="max-width:640px;">
     <h2>Add an employee</h2>
     <p style="font-size:13px; color:var(--lx-muted); margin:-4px 0 14px;">
-        Start with just a legal name. You can add them to the schedule, assign them a role, and update their hire date right after.
-        Send them an invite whenever you're ready — they'll pick their own username + password and fill in the rest during onboarding.
+        Just the name you call them on the floor is enough. They show up as a draft with a real ID so you can put them on the schedule right away.
+        When you're ready, click <strong>Send invite link</strong> — they'll pick their own username &amp; password, add their legal name, phone, and address during onboarding.
     </p>
 
     {% if error %}
@@ -22,19 +22,19 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
 
         <div style="margin-bottom:14px;">
-            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Legal name <span style="color:#fca5a5;">*</span></label>
-            <input type="text" name="legal_name" required autofocus autocapitalize="words"
-                   placeholder="Jane Doe"
+            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Display name <span style="color:#fca5a5;">*</span></label>
+            <input type="text" name="display_name" required autofocus autocapitalize="words"
+                   placeholder="e.g. David, Emily, Big Chris"
                    style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); font-size:14px;"/>
-            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">Stored encrypted. Only revealed via an audited click later.</div>
+            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">What you call them on the schedule / in the group chat. The employee can change this during onboarding.</div>
         </div>
 
         <div style="margin-bottom:14px;">
-            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Preferred name <span style="color:var(--lx-muted); font-weight:400;">(optional)</span></label>
-            <input type="text" name="preferred_name" autocapitalize="words"
-                   placeholder="Jane"
+            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Legal name <span style="color:var(--lx-muted); font-weight:400;">(optional — for payroll)</span></label>
+            <input type="text" name="legal_name" autocapitalize="words"
+                   placeholder="Jane Doe"
                    style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s1); color:var(--lx-text); font-size:14px;"/>
-            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">What they go by on screen. Defaults to their legal name if blank.</div>
+            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">Leave blank if you don't have it yet — the employee fills it in during onboarding. Stored encrypted, revealed only via audited click.</div>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">

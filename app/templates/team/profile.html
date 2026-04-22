@@ -66,6 +66,9 @@
             <div><span style="color:var(--pt-muted);">Role</span> · <span style="text-transform:capitalize;">{{ current_user.role }}</span></div>
             <div><span style="color:var(--pt-muted);">Hire date</span> · {{ profile.hire_date or '—' }}</div>
         </div>
+        <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--pt-border);">
+            <a class="pt-btn" href="/team/password/change" style="display:inline-block;">Change password</a>
+        </div>
         <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--pt-border); font-size:12px; color:var(--pt-muted);">
             Role and hire date are managed by admins. Need a change? Ask your manager.
         </div>

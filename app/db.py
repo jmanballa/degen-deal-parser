@@ -767,6 +767,12 @@ DEFAULT_ROLE_PERMISSIONS: tuple[tuple[str, str, bool], ...] = tuple(
         ("admin.supply.approve", (False, False, True, True, True)),
         # Wave 4.5 — edit key distinct from view
         ("admin.employees.edit", (False, False, False, False, True)),
+        # Wave 4.7 — schedule admin surface. Managers can also view/edit
+        # since scheduling is typically a floor-manager responsibility;
+        # admin is the one required role.
+        ("admin.schedule.view", (False, False, True, False, True)),
+        ("admin.schedule.edit", (False, False, True, False, True)),
+        ("page.admin.schedule", (False, False, True, False, True)),
     )
     for role, allowed in zip(
         ("employee", "viewer", "manager", "reviewer", "admin"), row

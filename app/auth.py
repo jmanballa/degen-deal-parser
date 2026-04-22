@@ -441,7 +441,8 @@ def create_draft_employee(
     session: Session,
     *,
     created_by_user_id: int,
-    legal_name: str,
+    display_name: Optional[str] = None,
+    legal_name: Optional[str] = None,
     preferred_name: Optional[str] = None,
     role: str = "employee",
     hire_date: Optional["date"] = None,
@@ -450,16 +451,24 @@ def create_draft_employee(
     """Create a pre-registered ("draft") employee.
 
     The employee exists as an INACTIVE User row with an empty password,
-    plus an EmployeeProfile pre-seeded with whatever info the admin
-    supplies (at minimum, legal_name). The User gets a real, stable
-    primary key — scheduling / supply / audit code can reference it
-    immediately. When the employee later accepts their invite, the same
-    row is hydrated (username + password + is_active=True + any PII
-    they fill in themselves).
+    plus an EmployeeProfile. The only required field at draft time is a
+    *name Jeffrey knows them as* — whatever we call them on the floor.
+    That goes into `display_name`. Legal name can be added later by the
+    admin OR by the employee themselves during onboarding / profile
+    editing (which is how payroll catches up to nicknames).
+
+    The User gets a real, stable primary key — scheduling / supply /
+    audit code can reference it immediately. When the employee later
+    accepts their invite, the same row is hydrated (username + password
+    + is_active=True + any PII they fill in themselves).
     """
+    # Accept either `display_name` or `legal_name` for the required
+    # "who is this" field. Prefer display_name; fall back to legal_name
+    # for backward-compat with older callers and tests.
+    display = (display_name or preferred_name or legal_name or "").strip()
+    if not display:
+        raise ValueError("draft_display_name_required")
     normalized_legal = (legal_name or "").strip()
-    if not normalized_legal:
-        raise ValueError("draft_legal_name_required")
     role_clean = (role or "employee").strip().lower() or "employee"
 
     from .pii import email_lookup_hash as _email_hash, encrypt_pii as _encrypt
@@ -481,7 +490,6 @@ def create_draft_employee(
     # isn't a real account yet.
     suffix = secrets.token_hex(6)
     placeholder_username = f"__draft_{suffix}__"
-    display = (preferred_name or "").strip() or normalized_legal
 
     user = User(
         username=placeholder_username,
@@ -498,11 +506,12 @@ def create_draft_employee(
 
     profile = EmployeeProfile(
         user_id=user.id,
-        legal_name_enc=_encrypt(normalized_legal),
         hire_date=hire_date,
         created_at=now,
         updated_at=now,
     )
+    if normalized_legal:
+        profile.legal_name_enc = _encrypt(normalized_legal)
     if email_clean:
         profile.email_ciphertext = _encrypt(email_clean)
         profile.email_lookup_hash = email_hash
@@ -517,7 +526,7 @@ def create_draft_employee(
                 {
                     "role": role_clean,
                     "has_email": bool(email_clean),
-                    "has_preferred_name": bool(preferred_name),
+                    "has_legal_name": bool(normalized_legal),
                 }
             ),
         )
@@ -725,6 +734,80 @@ def generate_password_reset_token(
     )
     session.commit()
     return raw
+
+
+class BadCurrentPasswordError(ValueError):
+    """Raised when the user-supplied current password doesn't match."""
+
+
+def change_user_password(
+    session: Session,
+    user: User,
+    *,
+    current_password: str,
+    new_password: str,
+    ip_address: Optional[str] = None,
+) -> User:
+    """Rotate a logged-in user's password.
+
+    This is the self-serve flow (Profile → Change password). The user
+    MUST prove they know the current password — this isn't an admin
+    reset. We also refuse if the new password fails strength rules or
+    matches the current one (so the action actually improves security).
+    Every outcome — success, bad current, weak new, same-as-old — is
+    audited so an investigator can see the full story.
+    """
+    if not current_password:
+        _audit_pw_change(session, user.id, "password.self_change_failed", {"reason": "missing_current"}, ip_address)
+        raise BadCurrentPasswordError("current_password_required")
+    if not new_password:
+        _audit_pw_change(session, user.id, "password.self_change_failed", {"reason": "missing_new"}, ip_address)
+        raise ValueError("new_password_required")
+
+    if not verify_password(current_password, user.password_hash, salt=user.password_salt or None):
+        _audit_pw_change(session, user.id, "password.self_change_failed", {"reason": "wrong_current"}, ip_address)
+        raise BadCurrentPasswordError("current_password_wrong")
+
+    problems = validate_password_strength(new_password)
+    if problems:
+        _audit_pw_change(session, user.id, "password.self_change_failed", {"reason": "weak_new"}, ip_address)
+        raise WeakPasswordError(problems)
+
+    # Refuse a no-op. Cheapest way to know: try to verify the *new*
+    # password against the stored hash — if it matches, it's the same.
+    if verify_password(new_password, user.password_hash, salt=user.password_salt or None):
+        _audit_pw_change(session, user.id, "password.self_change_failed", {"reason": "same_as_current"}, ip_address)
+        raise ValueError("new_password_same_as_current")
+
+    pwd_hash, pwd_salt = hash_password(new_password)
+    now = utcnow()
+    user.password_hash = pwd_hash
+    user.password_salt = pwd_salt
+    user.updated_at = now
+    session.add(user)
+    _audit_pw_change(session, user.id, "password.self_change_succeeded", {}, ip_address)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def _audit_pw_change(
+    session: Session,
+    user_id: int,
+    action: str,
+    details: dict,
+    ip_address: Optional[str],
+) -> None:
+    session.add(
+        AuditLog(
+            actor_user_id=user_id,
+            target_user_id=user_id,
+            action=action,
+            resource_key="team.password.change",
+            details_json=json.dumps(details),
+            ip_address=ip_address,
+        )
+    )
 
 
 def consume_password_reset_token(

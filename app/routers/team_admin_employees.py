@@ -141,11 +141,22 @@ def admin_employees_list(
     request: Request,
     q: Optional[str] = Query(default=None),
     flash: Optional[str] = Query(default=None),
+    # Hide deactivated employees by default — the common case is "who's on
+    # payroll right now". Admins opt in to see everyone via the "Show
+    # inactive" toggle, which flips this flag.
+    show_inactive: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
     denial, user = _permission_gate(request, session, "admin.employees.view")
     if denial:
         return denial
+    include_inactive = show_inactive in ("1", "true", "yes", "on")
+    # Default filter: show people who are currently part of the team.
+    # That's active users PLUS drafts (pre-onboarding), which are
+    # inactive by design but are exactly the people Jeffrey wants to
+    # see so he can put them on the schedule before they register.
+    # The "Show inactive" toggle reveals TRUE inactives — terminated
+    # employees who have a real password but are switched off.
     stmt = select(User).order_by(User.is_active.desc(), User.username)
     if q:
         like = f"%{q.strip().lower()}%"
@@ -154,6 +165,10 @@ def admin_employees_list(
             .where(User.username.like(like))
             .order_by(User.is_active.desc(), User.username)
         )
+    if not include_inactive:
+        # Keep active OR draft (is_active=False AND password_hash=''). Drafts
+        # have an empty password_hash set by create_draft_employee.
+        stmt = stmt.where((User.is_active == True) | (User.password_hash == ""))  # noqa: E712
     rows = list(session.exec(stmt).all())[:200]
     profiles: dict[int, EmployeeProfile] = {}
     outstanding_invite_ids: set[int] = set()
@@ -211,6 +226,7 @@ def admin_employees_list(
             "is_draft_user": is_draft_user,
             "q": q or "",
             "flash": flash,
+            "show_inactive": include_inactive,
             "csrf_token": issue_token(request),
         },
     )
@@ -245,7 +261,8 @@ def admin_employee_new_page(
 )
 async def admin_employee_new_post(
     request: Request,
-    legal_name: str = Form(...),
+    display_name: str = Form(default=""),
+    legal_name: str = Form(default=""),
     preferred_name: str = Form(default=""),
     role: str = Form(default="employee"),
     email: str = Form(default=""),
@@ -262,8 +279,9 @@ async def admin_employee_new_post(
         user = create_draft_employee(
             session,
             created_by_user_id=current.id,
-            legal_name=legal_name,
-            preferred_name=preferred_name,
+            display_name=display_name,
+            legal_name=legal_name or None,
+            preferred_name=preferred_name or None,
             role=role_clean,
             hire_date=_parse_date(hire_date),
             email=email or None,
@@ -271,7 +289,8 @@ async def admin_employee_new_post(
     except ValueError as exc:
         code = str(exc)
         message = {
-            "draft_legal_name_required": "Legal name is required.",
+            "draft_display_name_required": "Display name is required — it's what you'll call them on the schedule.",
+            "draft_legal_name_required": "Display name is required.",
             "draft_email_taken": "That email already belongs to another employee.",
         }.get(code, code)
         return RedirectResponse(
@@ -556,6 +575,134 @@ async def admin_employee_profile_update(
         session.commit()
     return RedirectResponse(
         f"/team/admin/employees/{user_id}?flash=Saved.", status_code=303
+    )
+
+
+@router.post(
+    "/team/admin/employees/{user_id}/pii-update",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_employee_pii_update(
+    request: Request,
+    user_id: int,
+    legal_name: str = Form(default=""),
+    email: str = Form(default=""),
+    phone: str = Form(default=""),
+    emergency_contact_name: str = Form(default=""),
+    emergency_contact_phone: str = Form(default=""),
+    address_street: str = Form(default=""),
+    address_city: str = Form(default=""),
+    address_state: str = Form(default=""),
+    address_zip: str = Form(default=""),
+    session: Session = Depends(get_session),
+):
+    """Admin-side PII edit — mirror of the self-serve /team/profile save.
+
+    Kept deliberately audit-noisy: we log every field that actually
+    changed, which admin did it, and from what IP. Blank fields do NOT
+    clobber existing values — an empty input means "I didn't enter
+    anything for this one". To explicitly clear a field, the admin
+    should instead use the PII reveal + re-save workflow, or we could
+    add a per-field delete button later. This prevents accidentally
+    wiping an employee's emergency contact by saving an empty form.
+
+    Only admins with `admin.employees.edit` can call this; no reveal
+    permission is required (typing a new value is a blind overwrite).
+    """
+    denial, current = _admin_gate(request, session, "admin.employees.edit")
+    if denial:
+        return denial
+    employee = session.get(User, user_id)
+    if employee is None:
+        return HTMLResponse("Employee not found", status_code=404)
+    profile = session.get(EmployeeProfile, user_id)
+    if profile is None:
+        profile = EmployeeProfile(user_id=user_id)
+        session.add(profile)
+        session.flush()
+
+    from ..pii import encrypt_pii, email_lookup_hash as _email_hash
+
+    now = utcnow()
+    changed: list[str] = []
+
+    def _overwrite_if_set(attr: str, raw: str, label: str) -> None:
+        v = (raw or "").strip()
+        if not v:
+            return
+        # Read current so a no-op typo doesn't fire a bogus audit row.
+        try:
+            current_val = decrypt_pii(getattr(profile, attr)) or ""
+        except ValueError:
+            current_val = ""
+        if v != current_val:
+            setattr(profile, attr, encrypt_pii(v))
+            changed.append(label)
+
+    _overwrite_if_set("legal_name_enc", legal_name, "legal_name")
+    _overwrite_if_set("phone_enc", phone, "phone")
+    _overwrite_if_set("emergency_contact_name_enc", emergency_contact_name, "emergency_contact_name")
+    _overwrite_if_set("emergency_contact_phone_enc", emergency_contact_phone, "emergency_contact_phone")
+
+    new_email = (email or "").strip().lower()
+    if new_email:
+        try:
+            current_email = decrypt_pii(profile.email_ciphertext) or ""
+        except ValueError:
+            current_email = ""
+        if new_email != current_email:
+            new_hash = _email_hash(new_email)
+            clash = session.exec(
+                select(EmployeeProfile).where(
+                    EmployeeProfile.email_lookup_hash == new_hash,
+                    EmployeeProfile.user_id != user_id,
+                )
+            ).first()
+            if clash is not None:
+                return RedirectResponse(
+                    f"/team/admin/employees/{user_id}?flash=That+email+is+already+taken+by+another+employee.",
+                    status_code=303,
+                )
+            profile.email_ciphertext = encrypt_pii(new_email)
+            profile.email_lookup_hash = new_hash
+            changed.append("email")
+
+    new_address = {
+        "street": (address_street or "").strip(),
+        "city": (address_city or "").strip(),
+        "state": (address_state or "").strip(),
+        "zip": (address_zip or "").strip(),
+    }
+    # Only touch address if admin actually filled in at least one part.
+    # Same non-clobbering rule as above.
+    if any(new_address.values()):
+        current_addr = _decode_address(profile.address_enc)
+        if new_address != current_addr:
+            profile.address_enc = encrypt_pii(json.dumps(new_address))
+            changed.append("address")
+
+    if changed:
+        profile.updated_at = now
+        session.add(profile)
+        _audit_then_commit(
+            session,
+            AuditLog(
+                actor_user_id=current.id,
+                target_user_id=user_id,
+                action="admin.pii_update",
+                resource_key="admin.employees.edit",
+                details_json=json.dumps({"fields": changed}),
+                ip_address=(request.client.host if request.client else None),
+            ),
+        )
+        session.commit()
+        return RedirectResponse(
+            f"/team/admin/employees/{user_id}?flash=PII+updated+({len(changed)}+field{'s' if len(changed) != 1 else ''}).",
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"/team/admin/employees/{user_id}?flash=No+changes.",
+        status_code=303,
     )
 
 

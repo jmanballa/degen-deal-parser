@@ -1,17 +1,105 @@
 {% extends "team/base.html" %}
+
 {% block header_sub %}
-<div class="pt-h1-sub">Your upcoming shifts, once they're published.</div>
+<div class="pt-h1-sub">This week's schedule. If something's off, let your manager know.</div>
 {% endblock %}
+
+{% block extra_head %}
+<style>
+    .sch-wrap { overflow-x: auto; background: var(--pt-card); border: 1px solid var(--pt-border); border-radius: 12px; padding: 10px; }
+    .sch-table { border-collapse: collapse; min-width: 1000px; font-size: 12.5px; width: 100%; }
+    .sch-table th, .sch-table td { border: 1px solid var(--pt-border); padding: 0; vertical-align: middle; }
+    .sch-loc-row th { background: var(--pt-soft); height: 26px; padding: 4px 6px; text-align: center; font-weight: 500; color: #fca5a5; font-size: 11.5px; }
+    .sch-head-row th { background: #f6b37a; color: #111; font-weight: 600; padding: 6px 8px; text-align: left; }
+    .sch-name-col { background: #f6b37a; color: #111; font-weight: 600; padding: 8px 10px; white-space: nowrap; width: 120px; }
+    .sch-cell { padding: 8px 6px; height: 38px; text-align: center; font-size: 12.5px; }
+    .sch-k-work       { background: #86efac; color: #111; }
+    .sch-k-off        { background: #a8a29e; color: #1c1917; }
+    .sch-k-show       { background: #60a5fa; color: #0b1220; font-weight: 600; }
+    .sch-k-request    { background: #f87171; color: #1a0000; font-weight: 600; }
+    .sch-k-stream     { background: #bbf7d0; color: #0f1a10; }
+    .sch-k-if_needed  { background: #bbf7d0; color: #0f1a10; font-style: italic; }
+    .sch-k-all_day    { background: #86efac; color: #111; font-weight: 600; }
+    .sch-k-blank      { background: transparent; color: var(--pt-muted); }
+    .sch-me { outline: 2px solid #ff8a3d; outline-offset: -2px; }
+
+    .sch-toolbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+    .sch-week-btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .sch-wk-label { font-size: 14px; font-weight: 600; margin: 0 10px; }
+    .sch-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 11.5px; color: var(--pt-muted); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--pt-border); }
+    .sch-legend-chip { display: inline-flex; align-items: center; gap: 4px; }
+    .sch-legend-sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--pt-border); }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="pt-card pt-hero" style="text-align:center; padding:56px 32px;">
-    <div style="font-size:48px; margin-bottom:16px;">◷</div>
-    <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">No shifts on the board yet.</h2>
-    <p class="pt-card-sub" style="max-width:440px; margin:0 auto 8px;">
-        Once your manager publishes the schedule, it'll show up here — week by week, with the times,
-        who you're working with, and any notes pinned up top.
-    </p>
-    <p style="font-size:13px; color:var(--pt-muted); margin-top:18px;">
-        In the meantime, check the store group chat for this week's plan.
-    </p>
+<div class="sch-toolbar">
+    <div class="sch-week-btns">
+        <a class="pt-btn" href="/team/schedule?week={{ prev_week }}">← Prev week</a>
+        <span class="sch-wk-label">
+            Week of {{ week_start.strftime('%b') }} {{ week_start.day }}, {{ week_start.year }}
+            {% if is_current_week %}<span style="color:#86efac; font-weight:500; font-size:12px; margin-left:6px;">· this week</span>{% endif %}
+        </span>
+        <a class="pt-btn" href="/team/schedule?week={{ next_week }}">Next week →</a>
+        {% if not is_current_week %}
+        <a class="pt-btn" href="/team/schedule?week={{ this_week }}" style="margin-left:10px;">Jump to this week</a>
+        {% endif %}
+    </div>
 </div>
+
+<div class="sch-wrap">
+    <table class="sch-table">
+        <thead>
+            <tr class="sch-loc-row">
+                <th></th>
+                {% for d in week_days %}
+                {% set note = day_note_map.get(d.isoformat()) %}
+                <th>{{ note.location_label if note and note.location_label else '' }}</th>
+                {% endfor %}
+            </tr>
+            <tr class="sch-head-row">
+                <th>{{ week_start.strftime('%b') }} {{ week_start.day }}</th>
+                {% for d in week_days %}
+                <th style="text-align:center; min-width:120px;">
+                    <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }}-{{ d.strftime('%b') }}</div>
+                    <div style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            {% set is_me = (u.id == current_user.id) %}
+            <tr>
+                <td class="sch-name-col">
+                    {{ u.display_name or u.username }}{% if is_me %} <span style="color:#1a0000; font-size:10px; margin-left:4px;">(you)</span>{% endif %}
+                </td>
+                {% for d in week_days %}
+                {% set entry = entry_map.get((u.id, d.isoformat())) %}
+                {% set kind = (entry.kind if entry else 'blank') %}
+                {% set label = (entry.label if entry else '') %}
+                <td class="sch-cell sch-k-{{ kind }}{% if is_me and kind != 'blank' %} sch-me{% endif %}">{{ label }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            {% if not users %}
+            <tr><td colspan="{{ week_days|length + 1 }}" style="padding:24px; text-align:center; color:var(--pt-muted);">
+                Schedule hasn't been published for this week yet.
+            </td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div class="sch-legend">
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#86efac;"></span> Scheduled shift</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#a8a29e;"></span> OFF</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#60a5fa;"></span> SHOW</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#f87171;"></span> REQUEST (time off)</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#bbf7d0;"></span> Stream / IF NEEDED</span>
+</div>
+
+<p style="font-size:12px; color:var(--pt-muted); margin-top:14px;">
+    Your row is outlined in orange so you can spot yourself fast. If a cell looks wrong, message your manager — the schedule is the source of truth.
+</p>
 {% endblock %}

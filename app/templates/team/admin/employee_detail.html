@@ -127,6 +127,66 @@
     </table>
 </div>
 
+{% if can_edit_profile %}
+<div class="ta-card">
+    <h2>Edit PII</h2>
+    <p style="font-size:12px; color:var(--lx-muted); margin:-4px 0 14px;">
+        Type a new value to overwrite. <strong>Leaving a field blank keeps whatever's already there</strong> — you won't accidentally wipe anything by saving an empty form. Every saved change is audit-logged per-field.
+    </p>
+    <form method="post" action="/team/admin/employees/{{ employee.id }}/pii-update">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px 16px;">
+            <div>
+                <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Legal name</label>
+                <input type="text" name="legal_name" autocapitalize="words" placeholder="Jane Doe"
+                       style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+            </div>
+            <div>
+                <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Email</label>
+                <input type="email" name="email" inputmode="email" placeholder="jane@example.com"
+                       style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+            </div>
+            <div>
+                <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Phone</label>
+                <input type="tel" name="phone" placeholder="(555) 123-4567"
+                       style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+            </div>
+            <div>
+                <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Emergency contact</label>
+                <input type="text" name="emergency_contact_name" autocapitalize="words"
+                       style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+            </div>
+            <div>
+                <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Emergency phone</label>
+                <input type="tel" name="emergency_contact_phone"
+                       style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+            </div>
+        </div>
+
+        <div style="margin-top:14px;">
+            <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:4px;">Mailing address</label>
+            <input type="text" name="address_street" placeholder="Street address" autocapitalize="words"
+                   style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text); margin-bottom:8px;"/>
+            <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:8px;">
+                <input type="text" name="address_city" placeholder="City" autocapitalize="words"
+                       style="padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+                <input type="text" name="address_state" placeholder="State" maxlength="4"
+                       style="padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text); text-transform:uppercase;"/>
+                <input type="text" name="address_zip" placeholder="ZIP" maxlength="10" inputmode="numeric" pattern="[0-9\-]*"
+                       style="padding:7px 10px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+            </div>
+            <div style="font-size:11px; color:var(--lx-muted); margin-top:6px;">
+                Address is all-or-nothing — type the full address (street + city + state + zip) to update it.
+            </div>
+        </div>
+
+        <button class="ta-btn" type="submit" style="margin-top:14px; background:#3b82f6; color:white; border-color:#3b82f6;">
+            Save PII changes
+        </button>
+    </form>
+</div>
+{% endif %}
+
 {% if can_reset_password or can_terminate or can_purge %}
 <div class="ta-card" style="border-color:rgba(239,68,68,0.35);">
     <h2 style="color:#fca5a5;">Lifecycle actions</h2>

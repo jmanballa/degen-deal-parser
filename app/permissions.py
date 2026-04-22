@@ -59,6 +59,10 @@ RESOURCE_KEYS: List[str] = [
     "admin.invites.issue",
     "admin.supply.view",
     "admin.supply.approve",
+    # Wave 4.7 — schedule admin surface
+    "admin.schedule.view",
+    "admin.schedule.edit",
+    "page.admin.schedule",
 ]
 
 
@@ -96,6 +100,9 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "admin.invites.issue": "Admin · Issue invite",
     "admin.supply.view": "Admin · View supply queue",
     "admin.supply.approve": "Admin · Approve supply request",
+    "admin.schedule.view": "Admin · View schedule grid",
+    "admin.schedule.edit": "Admin · Edit schedule grid",
+    "page.admin.schedule": "Admin · Schedule",
 }
 
 

@@ -1,0 +1,214 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'schedule' %}
+
+{% block extra_head %}
+<style>
+    /* Colors inspired by the pasted screenshot: green = scheduled shift,
+       grey = OFF, blue = SHOW (convention shows), red = REQUEST (time off),
+       light-green = Stream / IF NEEDED / ALL. */
+    .sch-wrap { overflow-x: auto; }
+    .sch-table {
+        border-collapse: collapse;
+        min-width: 1000px;
+        font-size: 12.5px;
+    }
+    .sch-table th, .sch-table td {
+        border: 1px solid var(--lx-br);
+        padding: 0;
+        vertical-align: middle;
+    }
+    .sch-loc-row th { background: var(--lx-s1); height: 30px; padding: 4px 6px; }
+    .sch-loc-row .sch-loc-input {
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: #fca5a5;
+        font-size: 11.5px;
+        text-align: center;
+        padding: 4px 4px;
+        font-weight: 500;
+    }
+    .sch-loc-row .sch-loc-input::placeholder { color: var(--lx-muted); opacity: 0.5; }
+    .sch-head-row th {
+        background: #f6b37a; /* peach like the screenshot */
+        color: #111;
+        font-weight: 600;
+        padding: 6px 8px;
+        text-align: left;
+    }
+    .sch-head-row th.sch-name-head { background: #f6b37a; }
+    .sch-name-col {
+        background: #f6b37a;
+        color: #111;
+        font-weight: 600;
+        padding: 6px 10px;
+        white-space: nowrap;
+        width: 120px;
+    }
+    .sch-cell { padding: 0; height: 38px; }
+    .sch-cell input {
+        width: 100%;
+        height: 100%;
+        min-height: 38px;
+        background: transparent;
+        border: none;
+        font-size: 12.5px;
+        text-align: center;
+        color: inherit;
+        padding: 0 6px;
+        font-family: inherit;
+    }
+    .sch-cell input:focus {
+        outline: 2px solid #3b82f6;
+        outline-offset: -2px;
+        background: rgba(59,130,246,0.08);
+    }
+    /* kind → color */
+    .sch-k-work       { background: #86efac; color: #111; }       /* green */
+    .sch-k-off        { background: #a8a29e; color: #1c1917; }    /* warm grey */
+    .sch-k-show       { background: #60a5fa; color: #0b1220; font-weight: 600; }
+    .sch-k-request    { background: #f87171; color: #1a0000; font-weight: 600; }
+    .sch-k-stream     { background: #bbf7d0; color: #0f1a10; }
+    .sch-k-if_needed  { background: #bbf7d0; color: #0f1a10; font-style: italic; }
+    .sch-k-all_day    { background: #86efac; color: #111; font-weight: 600; }
+    .sch-k-blank      { background: var(--lx-bg); color: var(--lx-muted); }
+    .sch-k-blank input::placeholder { color: var(--lx-muted); opacity: 0.35; }
+
+    .sch-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+    }
+    .sch-week-btns { display: flex; gap: 6px; align-items: center; }
+    .sch-wk-label { font-size: 14px; font-weight: 600; margin: 0 10px; }
+
+    .sch-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        font-size: 11.5px;
+        color: var(--lx-muted);
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--lx-br);
+    }
+    .sch-legend-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+    .sch-legend-sw {
+        display: inline-block;
+        width: 14px; height: 14px; border-radius: 3px;
+        border: 1px solid var(--lx-br);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+
+<form method="post" action="/team/admin/schedule">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+    <input type="hidden" name="week" value="{{ week_start_iso }}"/>
+
+    <div class="sch-toolbar">
+        <div class="sch-week-btns">
+            <a class="ta-btn" href="/team/admin/schedule?week={{ prev_week }}">← Prev</a>
+            <span class="sch-wk-label">
+                Week of {{ week_start.strftime('%b') }} {{ week_start.day }}, {{ week_start.year }}
+                {% if is_current_week %}<span style="color:#86efac; font-weight:500; font-size:12px; margin-left:6px;">· this week</span>{% endif %}
+            </span>
+            <a class="ta-btn" href="/team/admin/schedule?week={{ next_week }}">Next →</a>
+            {% if not is_current_week %}
+            <a class="ta-btn" href="/team/admin/schedule?week={{ this_week }}" style="margin-left:10px;">Jump to this week</a>
+            {% endif %}
+        </div>
+
+        {% if can_edit %}
+        <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
+            Save schedule
+        </button>
+        {% else %}
+        <span style="font-size:12px; color:var(--lx-muted);">View-only — you do not have edit permissions.</span>
+        {% endif %}
+    </div>
+
+    <p style="font-size:12px; color:var(--lx-muted); margin:-4px 0 14px; max-width:820px;">
+        Type a shift time like <code style="background:var(--lx-s2); padding:1px 5px; border-radius:4px;">10:30 AM - 6:30 PM</code> in any cell.
+        Special words color themselves: <strong>OFF</strong>, <strong>SHOW</strong>, <strong>REQUEST</strong>, <strong>Stream</strong>, <strong>IF NEEDED</strong>, <strong>ALL</strong>.
+        The top "location" row is the header you see when the team works a show (e.g. <em>East Bay Santa Clara</em>).
+    </p>
+
+    <div class="ta-card sch-wrap" style="padding:10px;">
+        <table class="sch-table">
+            <thead>
+                <tr class="sch-loc-row">
+                    <th></th>
+                    {% for d in week_days %}
+                    {% set note = day_note_map.get(d.isoformat()) %}
+                    <th>
+                        {% if can_edit %}
+                        <input class="sch-loc-input"
+                               type="text"
+                               name="{{ build_day_loc_key(d) }}"
+                               value="{{ note.location_label if note else '' }}"
+                               placeholder="location / note"
+                               autocomplete="off"/>
+                        {% else %}
+                        {{ note.location_label if note and note.location_label else '' }}
+                        {% endif %}
+                    </th>
+                    {% endfor %}
+                </tr>
+                <tr class="sch-head-row">
+                    <th class="sch-name-head">{{ week_start.strftime('%b') }} {{ week_start.day }}</th>
+                    {% for d in week_days %}
+                    <th style="text-align:center; min-width:120px;">
+                        <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }}-{{ d.strftime('%b') }}</div>
+                        <div style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td class="sch-name-col">{{ u.display_name or u.username }}</td>
+                    {% for d in week_days %}
+                    {% set entry = entry_map.get((u.id, d.isoformat())) %}
+                    {% set kind = (entry.kind if entry else 'blank') %}
+                    {% set label = (entry.label if entry else '') %}
+                    <td class="sch-cell sch-k-{{ kind }}">
+                        {% if can_edit %}
+                        <input type="text"
+                               name="{{ build_cell_key(u.id, d) }}"
+                               value="{{ label }}"
+                               placeholder="—"
+                               autocomplete="off"/>
+                        {% else %}
+                        <div style="padding:8px 6px; text-align:center;">{{ label }}</div>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                {% if not users %}
+                <tr><td colspan="{{ week_days|length + 1 }}" style="padding:24px; text-align:center; color:var(--lx-muted);">
+                    No active employees to schedule yet. <a href="/team/admin/employees/new" style="color:#60a5fa;">Add someone →</a>
+                </td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="sch-legend">
+        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#86efac;"></span> Scheduled shift</span>
+        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#a8a29e;"></span> OFF</span>
+        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#60a5fa;"></span> SHOW</span>
+        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#f87171;"></span> REQUEST (time off)</span>
+        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#bbf7d0;"></span> Stream / IF NEEDED</span>
+    </div>
+</form>
+{% endblock %}

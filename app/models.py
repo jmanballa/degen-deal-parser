@@ -782,3 +782,99 @@ class PriceHistory(SQLModel, table=True):
     high_price: Optional[float] = Field(default=None)
     fetched_at: datetime = Field(default_factory=utcnow, index=True)
     raw_response_json: str = Field(default="{}")
+
+
+# ---------------------------------------------------------------------------
+# Employee schedule
+# ---------------------------------------------------------------------------
+# One row per (employee, date). `label` is the free-text cell content the admin
+# types in the grid — "10:30 AM - 6:30 PM", "OFF", "Stream", "IF NEEDED",
+# "REQUEST", "SHOW", "ALL", etc. `kind` is the semantic bucket derived from the
+# label at save time and drives the cell color in both the admin editor and the
+# read-only employee view. We store both so the cell renders deterministically
+# even if we tweak the label → kind heuristic later, and so filtering by kind
+# (e.g. "who's off this week") is cheap.
+
+SHIFT_KIND_WORK = "work"
+SHIFT_KIND_OFF = "off"
+SHIFT_KIND_SHOW = "show"
+SHIFT_KIND_REQUEST = "request"
+SHIFT_KIND_STREAM = "stream"
+SHIFT_KIND_IF_NEEDED = "if_needed"
+SHIFT_KIND_ALL = "all_day"
+SHIFT_KIND_BLANK = "blank"
+
+SHIFT_KINDS = (
+    SHIFT_KIND_WORK,
+    SHIFT_KIND_OFF,
+    SHIFT_KIND_SHOW,
+    SHIFT_KIND_REQUEST,
+    SHIFT_KIND_STREAM,
+    SHIFT_KIND_IF_NEEDED,
+    SHIFT_KIND_ALL,
+    SHIFT_KIND_BLANK,
+)
+
+
+def classify_shift_label(label: str) -> str:
+    """Heuristically derive a shift kind from the admin's free-text label.
+
+    Kept simple and deterministic; unit-tested. The rules mirror the
+    screenshot that started this feature — labels like "OFF", "SHOW",
+    "REQUEST", "Stream", "IF NEEDED", "ALL" get their dedicated colors;
+    anything with a time range in it (or anything else non-empty) falls
+    into "work".
+    """
+    s = (label or "").strip()
+    if not s:
+        return SHIFT_KIND_BLANK
+    u = s.upper()
+    if u == "OFF":
+        return SHIFT_KIND_OFF
+    if u == "SHOW":
+        return SHIFT_KIND_SHOW
+    if u == "REQUEST":
+        return SHIFT_KIND_REQUEST
+    if u == "ALL":
+        return SHIFT_KIND_ALL
+    if "STREAM" in u:
+        return SHIFT_KIND_STREAM
+    if "IF NEEDED" in u:
+        return SHIFT_KIND_IF_NEEDED
+    return SHIFT_KIND_WORK
+
+
+class ShiftEntry(SQLModel, table=True):
+    __tablename__ = "shift_entry"
+    __table_args__ = (
+        UniqueConstraint("user_id", "shift_date", name="uq_shift_entry_user_date"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    shift_date: date = Field(index=True)
+    label: str = Field(default="")
+    kind: str = Field(default=SHIFT_KIND_BLANK, index=True)
+    notes: str = Field(default="")
+    created_by_user_id: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class ScheduleDayNote(SQLModel, table=True):
+    """Per-date metadata for the schedule grid, independent of any one person.
+
+    Currently stores the location header (e.g. "East Bay Santa Clara" for
+    the weekend show days) and freeform notes. One row per date so the
+    grid can show the same header to everyone. Kept separate from
+    ShiftEntry because it's about the *column*, not any single person.
+    """
+    __tablename__ = "schedule_day_note"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    day_date: date = Field(index=True, unique=True)
+    location_label: str = Field(default="")
+    notes: str = Field(default="")
+    updated_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)

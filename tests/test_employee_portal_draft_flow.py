@@ -177,15 +177,22 @@ class CreateDraftEmployeeTests(unittest.TestCase, _DraftHarness):
         )
         self.assertEqual(decrypt_pii(profile.legal_name_enc), "Jane Elizabeth Doe")
 
-    def test_create_draft_requires_legal_name(self):
+    def test_create_draft_requires_name(self):
+        # Wave 4.7: display_name is now the canonical required field.
+        # legal_name is optional and can be added later by the employee
+        # during onboarding. We still accept legal_name as a fallback if
+        # no display_name is given, so passing just a legal_name works.
         from app.auth import create_draft_employee
 
         admin = self._login_as("admin")
         with self.assertRaises(ValueError) as cm:
             create_draft_employee(
-                self.session, created_by_user_id=admin.id, legal_name="   "
+                self.session,
+                created_by_user_id=admin.id,
+                display_name="",
+                legal_name="   ",
             )
-        self.assertEqual(str(cm.exception), "draft_legal_name_required")
+        self.assertEqual(str(cm.exception), "draft_display_name_required")
 
     def test_draft_cannot_log_in(self):
         from app.auth import authenticate_user, create_draft_employee
