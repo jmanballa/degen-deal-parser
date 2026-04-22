@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from collections.abc import Iterable
 from typing import Optional
-from sqlalchemy import Column, LargeBinary
+from sqlalchemy import Column, LargeBinary, UniqueConstraint
 from sqlmodel import SQLModel, Field
 
 PARSE_PENDING = "pending"
@@ -454,6 +454,93 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class EmployeeProfile(SQLModel, table=True):
+    user_id: int = Field(primary_key=True, foreign_key="user.id")
+    legal_name_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    phone_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    address_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    emergency_contact_name_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    emergency_contact_phone_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    email_ciphertext: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    email_lookup_hash: Optional[str] = Field(default=None, index=True, unique=True)
+    hire_date: Optional[date] = Field(default=None, index=True)
+    termination_date: Optional[date] = Field(default=None, index=True)
+    hourly_rate_cents_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    clockify_user_id: Optional[str] = Field(default=None, index=True)
+    onboarding_completed_at: Optional[datetime] = Field(default=None)
+    policies_acknowledged_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class InviteToken(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token_hash: str = Field(index=True, unique=True)
+    role: str = Field(default="employee", index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    email_hint: Optional[str] = Field(default=None)
+    expires_at: datetime = Field(index=True)
+    used_at: Optional[datetime] = Field(default=None, index=True)
+    used_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class PasswordResetToken(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token_hash: str = Field(index=True, unique=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    expires_at: datetime = Field(index=True)
+    used_at: Optional[datetime] = Field(default=None, index=True)
+    issued_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class RolePermission(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("role", "resource_key", name="uq_role_resource"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    role: str = Field(index=True)
+    resource_key: str = Field(index=True)
+    is_allowed: bool = Field(default=False)
+    updated_at: datetime = Field(default_factory=utcnow)
+    updated_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+
+
+class DashboardWidget(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    widget_key: str = Field(index=True, unique=True)
+    title: str = Field(default="")
+    description: str = Field(default="")
+    default_roles_csv: str = Field(default="")
+    display_order: int = Field(default=100, index=True)
+    is_registered: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class SupplyRequest(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    submitted_by_user_id: int = Field(foreign_key="user.id", index=True)
+    title: str
+    description: str = Field(default="")
+    urgency: str = Field(default="normal", index=True)
+    status: str = Field(default="submitted", index=True)
+    approved_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    status_changed_at: Optional[datetime] = Field(default=None, index=True)
+    notes: str = Field(default="")
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class AuditLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    actor_user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    target_user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    action: str = Field(index=True)
+    resource_key: Optional[str] = Field(default=None, index=True)
+    details_json: str = "{}"
+    ip_address: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
 
 
 class RuntimeHeartbeat(SQLModel, table=True):

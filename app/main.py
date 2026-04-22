@@ -244,6 +244,12 @@ settings = get_settings()
 setup_runtime_file_logging("app.log")
 
 async def lifespan(app: FastAPI):
+    if settings.employee_portal_enabled:
+        # Imported for side-effect: fail-closed key validation at startup.
+        from . import pii as _pii  # noqa: F401
+        print("[main] employee portal: enabled")
+    else:
+        print("[main] employee portal: disabled")
     init_db()
     _load_stream_range()
     _load_tiktok_state_from_db()

@@ -17,3 +17,5 @@ python-barcode
 firecrawl-py
 browser-use
 playwright
+bcrypt
+cryptography

@@ -1,15 +1,23 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import pbkdf2_hmac
 import hmac
 import secrets
 from typing import Optional
 
+import bcrypt
 from sqlmodel import Session, select
 
 from .config import get_settings
-from .models import User, utcnow
+from .models import (
+    EmployeeProfile,
+    InviteToken,
+    PasswordResetToken,
+    RolePermission,
+    User,
+    utcnow,
+)
 
 
 settings = get_settings()
@@ -160,11 +168,176 @@ def seed_default_users(session: Session) -> None:
 
 def role_rank(role: Optional[str]) -> int:
     return {
-        "viewer": 1,
-        "reviewer": 2,
-        "admin": 3,
+        "employee": 1,
+        "viewer": 2,
+        "manager": 3,
+        "reviewer": 4,
+        "admin": 5,
     }.get(role or "", 0)
 
 
 def has_role(user: Optional[User], minimum_role: str) -> bool:
     return role_rank(user.role if user else None) >= role_rank(minimum_role)
+
+
+# ---------------------------------------------------------------------------
+# Employee-portal auth extensions (Wave 1)
+# ---------------------------------------------------------------------------
+
+def has_permission(
+    session: Session,
+    user: Optional[User],
+    resource_key: str,
+    *,
+    cache: Optional[dict] = None,
+) -> bool:
+    if user is None or not user.is_active:
+        return False
+    if cache is not None:
+        cache_key = (user.role, resource_key)
+        if cache_key in cache:
+            return cache[cache_key]
+    row = session.exec(
+        select(RolePermission).where(
+            RolePermission.role == user.role,
+            RolePermission.resource_key == resource_key,
+        )
+    ).first()
+    if row is not None:
+        result = bool(row.is_allowed)
+    else:
+        result = has_role(user, "admin")
+    if cache is not None:
+        cache[(user.role, resource_key)] = result
+    return result
+
+
+def _hash_token(raw_token: str) -> str:
+    return bcrypt.hashpw(raw_token.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
+
+
+def _verify_token(raw_token: str, token_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(raw_token.encode("utf-8"), token_hash.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
+
+
+def _find_token_row(session: Session, model, raw_token: str):
+    # bcrypt hashes are not deterministic, so we must scan un-used + un-expired rows.
+    now = utcnow()
+    rows = session.exec(
+        select(model).where(model.used_at.is_(None), model.expires_at > now)
+    ).all()
+    for row in rows:
+        if _verify_token(raw_token, row.token_hash):
+            return row
+    return None
+
+
+def generate_invite_token(
+    session: Session,
+    *,
+    role: str,
+    created_by_user_id: int,
+    email_hint: Optional[str] = None,
+    ttl_hours: int = 24,
+) -> str:
+    raw = secrets.token_urlsafe(32)
+    row = InviteToken(
+        token_hash=_hash_token(raw),
+        role=role,
+        created_by_user_id=created_by_user_id,
+        email_hint=email_hint,
+        expires_at=utcnow() + timedelta(hours=ttl_hours),
+    )
+    session.add(row)
+    session.commit()
+    return raw
+
+
+def consume_invite_token(
+    session: Session,
+    raw_token: str,
+    *,
+    new_username: str,
+    new_password: str,
+) -> User:
+    row = _find_token_row(session, InviteToken, raw_token)
+    if row is None:
+        raise ValueError("invite_token_invalid")
+    normalized_username = (new_username or "").strip().lower()
+    if not normalized_username or not new_password:
+        raise ValueError("invite_username_or_password_missing")
+    existing = session.exec(select(User).where(User.username == normalized_username)).first()
+    if existing is not None:
+        raise ValueError("invite_username_taken")
+
+    pwd_hash, pwd_salt = hash_password(new_password)
+    now = utcnow()
+    user = User(
+        username=normalized_username,
+        password_hash=pwd_hash,
+        password_salt=pwd_salt,
+        display_name=normalized_username,
+        role=row.role or "employee",
+        is_active=True,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(user)
+    session.flush()  # populate user.id
+
+    session.add(EmployeeProfile(user_id=user.id, created_at=now, updated_at=now))
+    row.used_at = now
+    row.used_by_user_id = user.id
+    session.add(row)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def generate_password_reset_token(
+    session: Session,
+    *,
+    user_id: int,
+    issued_by_user_id: Optional[int] = None,
+    ttl_minutes: int = 60,
+) -> str:
+    raw = secrets.token_urlsafe(32)
+    row = PasswordResetToken(
+        token_hash=_hash_token(raw),
+        user_id=user_id,
+        expires_at=utcnow() + timedelta(minutes=ttl_minutes),
+        issued_by_user_id=issued_by_user_id,
+    )
+    session.add(row)
+    session.commit()
+    return raw
+
+
+def consume_password_reset_token(
+    session: Session,
+    raw_token: str,
+    *,
+    new_password: str,
+) -> User:
+    row = _find_token_row(session, PasswordResetToken, raw_token)
+    if row is None:
+        raise ValueError("reset_token_invalid")
+    if not new_password:
+        raise ValueError("reset_password_missing")
+    user = session.get(User, row.user_id)
+    if user is None or not user.is_active:
+        raise ValueError("reset_user_inactive")
+    pwd_hash, pwd_salt = hash_password(new_password)
+    now = utcnow()
+    user.password_hash = pwd_hash
+    user.password_salt = pwd_salt
+    user.updated_at = now
+    row.used_at = now
+    session.add(user)
+    session.add(row)
+    session.commit()
+    session.refresh(user)
+    return user

@@ -709,6 +709,115 @@ def postgres_schema_ready() -> bool:
         return False
 
 
+DEFAULT_ROLE_PERMISSIONS: tuple[tuple[str, str, bool], ...] = tuple(
+    (role, key, allowed)
+    for key, row in (
+        ("page.dashboard", (True, True, True, True, True)),
+        ("page.profile", (True, True, True, True, True)),
+        ("page.policies", (True, True, True, True, True)),
+        ("page.hours", (True, False, True, True, True)),
+        ("page.schedule", (True, False, True, True, True)),
+        ("page.supply_requests", (True, False, True, True, True)),
+        ("page.admin.employees", (False, False, False, False, True)),
+        ("page.admin.invites", (False, False, False, False, True)),
+        ("page.admin.permissions", (False, False, False, False, True)),
+        ("page.admin.supply", (False, False, True, True, True)),
+        ("widget.dashboard.hours_this_week", (True, False, True, True, True)),
+        ("widget.dashboard.estimated_pay", (True, False, False, False, True)),
+        ("widget.dashboard.todays_tasks", (True, False, True, True, True)),
+        ("widget.dashboard.upcoming_shifts", (True, False, True, True, True)),
+        ("widget.dashboard.supply_queue_count", (False, False, True, True, True)),
+        ("action.supply_request.submit", (True, False, True, True, True)),
+        ("action.supply_request.approve", (False, False, True, True, True)),
+        ("action.pii.reveal", (False, False, False, False, True)),
+        ("action.password.reset_issued", (False, False, False, False, True)),
+        ("action.employee.terminate", (False, False, False, False, True)),
+        ("action.employee.purge", (False, False, False, False, True)),
+    )
+    for role, allowed in zip(
+        ("employee", "viewer", "manager", "reviewer", "admin"), row
+    )
+)
+
+
+DEFAULT_DASHBOARD_WIDGETS: tuple[dict, ...] = (
+    {
+        "widget_key": "dashboard.hours_this_week",
+        "title": "Hours This Week",
+        "description": "Clockify hours for the current week.",
+        "default_roles_csv": "employee,manager,reviewer,admin",
+        "display_order": 10,
+    },
+    {
+        "widget_key": "dashboard.estimated_pay",
+        "title": "Estimated Pay",
+        "description": "Hours × hourly rate (current week).",
+        "default_roles_csv": "employee,admin",
+        "display_order": 20,
+    },
+    {
+        "widget_key": "dashboard.todays_tasks",
+        "title": "Today's Tasks",
+        "description": "Policies to acknowledge, reminders, etc.",
+        "default_roles_csv": "employee,manager,reviewer,admin",
+        "display_order": 30,
+    },
+    {
+        "widget_key": "dashboard.upcoming_shifts",
+        "title": "Upcoming Shifts",
+        "description": "Read-only upcoming schedule.",
+        "default_roles_csv": "employee,manager,reviewer,admin",
+        "display_order": 40,
+    },
+    {
+        "widget_key": "dashboard.supply_queue_count",
+        "title": "Supply Queue",
+        "description": "Count of pending supply approvals.",
+        "default_roles_csv": "manager,reviewer,admin",
+        "display_order": 50,
+    },
+)
+
+
+def seed_employee_portal_defaults(session: Session) -> None:
+    """Idempotent seed for RolePermission grid + DashboardWidget registry."""
+    from datetime import datetime as _dt, timezone as _tz
+    from sqlmodel import select as _select
+
+    from .models import DashboardWidget, RolePermission
+
+    now = _dt.now(_tz.utc)
+    existing_perms = {
+        (row.role, row.resource_key)
+        for row in session.exec(_select(RolePermission)).all()
+    }
+    added_any = False
+    for role, resource_key, is_allowed in DEFAULT_ROLE_PERMISSIONS:
+        if (role, resource_key) in existing_perms:
+            continue
+        session.add(
+            RolePermission(
+                role=role,
+                resource_key=resource_key,
+                is_allowed=is_allowed,
+                updated_at=now,
+            )
+        )
+        added_any = True
+
+    existing_widgets = {
+        row.widget_key for row in session.exec(_select(DashboardWidget)).all()
+    }
+    for spec in DEFAULT_DASHBOARD_WIDGETS:
+        if spec["widget_key"] in existing_widgets:
+            continue
+        session.add(DashboardWidget(created_at=now, **spec))
+        added_any = True
+
+    if added_any:
+        session.commit()
+
+
 def init_db() -> None:
     attempts = 1 if database_url.startswith("sqlite") else 6
     delay_seconds = 1.0
@@ -737,6 +846,13 @@ def init_db() -> None:
             repair_backfill_request_state_rows(session)
     except Exception as exc:
         print(f"[db] backfill request state repair skipped: {exc}")
+    if settings.employee_portal_enabled:
+        try:
+            with Session(engine) as session:
+                seed_employee_portal_defaults(session)
+        except Exception as exc:
+            print(f"[db] employee portal seed skipped: {exc}")
+
     try:
         from .shopify_ingest import repair_shopify_tax_fields
         from .shopify_ingest import repair_shopify_line_item_summaries
