@@ -593,6 +593,7 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
                 display_name=name,
                 role="employee",
                 is_active=True,
+                is_schedulable=True,
             )
             self.session.add(u)
             rows.append(u)
@@ -630,7 +631,8 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
         self.assertEqual(r.status_code, 200)
         for e in emps:
             self.assertIn(e.display_name, r.text)
-        self.assertIn("Save schedule", r.text)
+        self.assertIn("Save storefront schedule", r.text)
+        self.assertIn("Save stream schedule", r.text)
         self.assertIn("Prev", r.text)
         self.assertIn("Next", r.text)
 
@@ -646,8 +648,9 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
         self._active_employees()
         r = self.client.get("/team/admin/schedule")
         self.assertEqual(r.status_code, 200)
-        self.assertIn("Nobody on this week yet", r.text)
-        self.assertIn("Add employee", r.text)
+        # Dual-grid layout renders two empty-state messages, one per kind.
+        self.assertIn("No storefront employees on this week yet", r.text)
+        self.assertIn("No stream employees on this week yet", r.text)
         # No employee rows in the body — the sch-name-col cells should
         # not exist yet.
         self.assertNotIn('class="sch-name-col"', r.text)
@@ -676,8 +679,8 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
         # Roster count reflects 1 on this week.
         self.assertIn("1 on this week", page.text)
         # Emily and Chris still addable in the picker, but no Emily row.
-        self.assertNotIn("sch-remove-{}".format(emps[1].id), page.text)
-        self.assertNotIn("sch-remove-{}".format(emps[2].id), page.text)
+        self.assertNotIn("sch-remove-storefront-{}".format(emps[1].id), page.text)
+        self.assertNotIn("sch-remove-storefront-{}".format(emps[2].id), page.text)
 
     def test_roster_add_rejects_terminated_user(self):
         from app.models import User
@@ -717,7 +720,7 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
         draft = User(
             id=777, username="newhire", password_hash="",  # draft
             password_salt="", display_name="Newbie", role="employee",
-            is_active=False,
+            is_active=False, is_schedulable=True,
         )
         self.session.add(draft)
         self.session.commit()
@@ -790,9 +793,9 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
         # Other employees still on the grid; David does not have a row
         # anymore (no remove-form for him).
         page = self.client.get(f"/team/admin/schedule?week={monday.isoformat()}")
-        self.assertNotIn(f'id="sch-remove-{emps[0].id}"', page.text)
-        self.assertIn(f'id="sch-remove-{emps[1].id}"', page.text)
-        self.assertIn(f'id="sch-remove-{emps[2].id}"', page.text)
+        self.assertNotIn(f'id="sch-remove-storefront-{emps[0].id}"', page.text)
+        self.assertIn(f'id="sch-remove-storefront-{emps[1].id}"', page.text)
+        self.assertIn(f'id="sch-remove-storefront-{emps[2].id}"', page.text)
 
     def test_roster_copy_previous_carries_forward(self):
         from app.models import ScheduleRosterMember
@@ -828,9 +831,9 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
         self.assertEqual(now_on, {emps[0].id, emps[2].id})
 
         page = self.client.get(f"/team/admin/schedule?week={monday.isoformat()}")
-        self.assertIn(f'id="sch-remove-{emps[0].id}"', page.text)  # David
-        self.assertIn(f'id="sch-remove-{emps[2].id}"', page.text)  # Chris
-        self.assertNotIn(f'id="sch-remove-{emps[1].id}"', page.text)  # Emily not copied
+        self.assertIn(f'id="sch-remove-storefront-{emps[0].id}"', page.text)  # David
+        self.assertIn(f'id="sch-remove-storefront-{emps[2].id}"', page.text)  # Chris
+        self.assertNotIn(f'id="sch-remove-storefront-{emps[1].id}"', page.text)  # Emily not copied
 
     def test_save_creates_updates_and_clears_cells(self):
         from app.models import ShiftEntry, classify_shift_label

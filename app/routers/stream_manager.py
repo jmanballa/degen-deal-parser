@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
+from ..models import STAFF_KIND_STREAM, User
 from ..shared import (
     STREAMER_COLORS,
     StreamAccount,
@@ -40,6 +41,52 @@ def _format_time_12h(t24: str) -> str:
         return f"{h12}:{m} {suffix}"
     except Exception:
         return t24
+
+
+def _refresh_streamer_user_links(session: Session, streamers) -> dict[int, int]:
+    """Resolve Streamer.user_id -> User.id by name for any that are still None.
+
+    Called cheaply on /stream-manager page load. Only fills NULLs; it
+    never overwrites an existing link so an admin can manually break
+    an incorrect auto-match by clearing and re-setting the field
+    directly in the DB if ever needed. Returns a map of
+    streamer.id -> user.id for the rendered page.
+    """
+    unresolved = [s for s in streamers if s.user_id is None]
+    if unresolved:
+        users = list(session.exec(select(User)).all())
+        name_to_user: dict[str, User] = {}
+        for u in users:
+            for candidate in (u.display_name, u.username):
+                key = (candidate or "").strip().lower()
+                if key and key not in name_to_user:
+                    name_to_user[key] = u
+        changed = False
+        now = utcnow()
+        for s in unresolved:
+            for candidate in (s.display_name, s.name):
+                key = (candidate or "").strip().lower()
+                if not key:
+                    continue
+                match = name_to_user.get(key)
+                if match and match.id:
+                    s.user_id = match.id
+                    s.updated_at = now
+                    session.add(s)
+                    changed = True
+                    break
+        if changed:
+            session.commit()
+    return {s.id: s.user_id for s in streamers if s.user_id is not None}
+
+
+def _streamer_user_kind_map(session: Session, user_ids) -> dict[int, str]:
+    """user_id -> staff_kind for the subset we care about."""
+    ids = {uid for uid in user_ids if uid is not None}
+    if not ids:
+        return {}
+    users = list(session.exec(select(User).where(User.id.in_(ids))).all())  # type: ignore[attr-defined]
+    return {u.id: (u.staff_kind or "") for u in users if u.id is not None}
 
 
 def _ensure_default_stream_account(session: Session) -> None:
@@ -97,9 +144,32 @@ def stream_manager_page(
 
     _ensure_default_stream_account(session)
 
-    streamers = session.exec(
-        select(Streamer).where(Streamer.is_active == True).order_by(Streamer.name)
-    ).all()
+    streamers = list(
+        session.exec(
+            select(Streamer).where(Streamer.is_active == True).order_by(Streamer.name)
+        ).all()
+    )
+
+    # Resolve Streamer -> User links so we can deep-link names to
+    # employee profiles, and filter the "add shift" picker to staff
+    # whose Type is actually Stream.
+    streamer_user_id_map = _refresh_streamer_user_links(session, streamers)
+    user_kind_map = _streamer_user_kind_map(
+        session, streamer_user_id_map.values()
+    )
+    # A streamer is "pickable" for a new shift if either they're not
+    # linked to any employee yet (still legit — independent content
+    # creator or unlinked alias), OR they're linked to an employee
+    # whose Type is Stream. A streamer linked to a Storefront-only
+    # employee is hidden from the dropdown so a misclick can't put a
+    # Storefront-only person onto a stream shift.
+    def _is_pickable(s) -> bool:
+        uid = streamer_user_id_map.get(s.id)
+        if uid is None:
+            return True
+        return user_kind_map.get(uid, "") == STAFF_KIND_STREAM
+
+    pickable_streamers = [s for s in streamers if _is_pickable(s)]
 
     stream_accounts = session.exec(
         select(StreamAccount)
@@ -150,6 +220,8 @@ def stream_manager_page(
         "title": "Stream Manager",
         "current_user": getattr(request.state, "current_user", None),
         "streamers": streamers,
+        "pickable_streamers": pickable_streamers,
+        "streamer_user_id_map": streamer_user_id_map,
         "streamer_colors": STREAMER_COLORS,
         "stream_accounts": stream_accounts,
         "schedule_by_account": schedule_by_account,

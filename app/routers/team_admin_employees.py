@@ -23,7 +23,14 @@ from ..auth import (
 )
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
-from ..models import AuditLog, EmployeeProfile, InviteToken, User, utcnow
+from ..models import (
+    AuditLog,
+    EmployeeProfile,
+    InviteToken,
+    STAFF_KINDS,
+    User,
+    utcnow,
+)
 from ..pii import decrypt_pii
 from ..shared import templates
 from .team_admin import _admin_gate, _permission_gate
@@ -230,6 +237,60 @@ def admin_employees_list(
             "csrf_token": issue_token(request),
         },
     )
+
+
+@router.post(
+    "/team/admin/employees/{user_id}/schedulable-toggle",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_employee_schedulable_toggle(
+    request: Request,
+    user_id: int,
+    is_schedulable: str = Form(default=""),
+    return_show_inactive: str = Form(default=""),
+    return_q: str = Form(default=""),
+    session: Session = Depends(get_session),
+):
+    """Flip the per-user 'can this person be put on the schedule' flag.
+
+    The checkbox submits its value (`1`) only when checked, so an
+    absent field means "unchecked". This is the same pattern the rest
+    of the portal uses for toggles.
+    """
+    denial, current = _admin_gate(request, session, "admin.employees.edit")
+    if denial:
+        return denial
+    employee = session.get(User, user_id)
+    if employee is None:
+        return HTMLResponse("Employee not found", status_code=404)
+
+    new_value = is_schedulable in ("1", "true", "yes", "on")
+    if employee.is_schedulable != new_value:
+        employee.is_schedulable = new_value
+        employee.updated_at = utcnow()
+        session.add(employee)
+        _audit_then_commit(
+            session,
+            AuditLog(
+                actor_user_id=current.id,
+                target_user_id=user_id,
+                action="admin.employee.schedulable_toggle",
+                resource_key="admin.employees.edit",
+                details_json=json.dumps({"is_schedulable": new_value}),
+                ip_address=(request.client.host if request.client else None),
+            ),
+        )
+        session.commit()
+
+    from urllib.parse import urlencode
+
+    qs = {}
+    if return_q:
+        qs["q"] = return_q
+    if return_show_inactive in ("1", "true", "yes", "on"):
+        qs["show_inactive"] = "1"
+    tail = f"?{urlencode(qs)}" if qs else ""
+    return RedirectResponse(f"/team/admin/employees{tail}", status_code=303)
 
 
 @router.get("/team/admin/employees/new", response_class=HTMLResponse)
@@ -496,6 +557,7 @@ async def admin_employee_profile_update(
     user_id: int,
     role: str = Form(default=""),
     display_name: str = Form(default=""),
+    staff_kind: str = Form(default=""),
     hourly_rate_cents: str = Form(default=""),
     hire_date: str = Form(default=""),
     termination_date: str = Form(default=""),
@@ -530,6 +592,13 @@ async def admin_employee_profile_update(
         employee.updated_at = now
         session.add(employee)
         changed.append("display_name")
+
+    new_kind = (staff_kind or "").strip().lower()
+    if new_kind in STAFF_KINDS and new_kind != (employee.staff_kind or ""):
+        employee.staff_kind = new_kind
+        employee.updated_at = now
+        session.add(employee)
+        changed.append("staff_kind")
 
     rate_raw = (hourly_rate_cents or "").strip()
     if rate_raw:

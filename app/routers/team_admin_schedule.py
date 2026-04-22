@@ -27,6 +27,9 @@ from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import (
     AuditLog,
+    STAFF_KIND_STOREFRONT,
+    STAFF_KIND_STREAM,
+    STAFF_KINDS,
     ScheduleDayNote,
     ScheduleRosterMember,
     SHIFT_KIND_BLANK,
@@ -73,6 +76,7 @@ def _grid_context(
     session: Session,
     week_start: date,
     *,
+    staff_kind: Optional[str] = None,
     flash: Optional[str] = None,
 ) -> dict:
     """Collect all the data the schedule grid template needs.
@@ -147,6 +151,16 @@ def _grid_context(
     already_on_grid = {u.id for u in users}
     addable_users = [u for u in schedulable if u.id not in already_on_grid]
 
+    # Optional staff_kind filter splits one roster+shift pool into two
+    # grids: Storefront floor staff vs Stream room staff. Users default
+    # to "storefront" if unset so existing rows render on the
+    # Storefront grid as before.
+    if staff_kind in STAFF_KINDS:
+        def _kind(u: User) -> str:
+            return (u.staff_kind or STAFF_KIND_STOREFRONT)
+        users = [u for u in users if _kind(u) == staff_kind]
+        addable_users = [u for u in addable_users if _kind(u) == staff_kind]
+
     day_notes = list(
         session.exec(
             select(ScheduleDayNote).where(
@@ -165,15 +179,26 @@ def _grid_context(
     this_week = _monday_of(date.today()).isoformat()
 
     # Is there a previous-week roster we could copy in one click?
-    prev_roster_count = len(
-        list(
-            session.exec(
-                select(ScheduleRosterMember.user_id).where(
-                    ScheduleRosterMember.week_start == prev_week_date
-                )
-            ).all()
-        )
+    # When a staff_kind filter is active, only count users of that
+    # kind so the button label ("Copy last week (3)") isn't misleading.
+    prev_roster_ids = list(
+        session.exec(
+            select(ScheduleRosterMember.user_id).where(
+                ScheduleRosterMember.week_start == prev_week_date
+            )
+        ).all()
     )
+    if staff_kind in STAFF_KINDS and prev_roster_ids:
+        prev_users = session.exec(
+            select(User).where(User.id.in_(prev_roster_ids))  # type: ignore[attr-defined]
+        ).all()
+        prev_roster_count = sum(
+            1
+            for u in prev_users
+            if (u.staff_kind or STAFF_KIND_STOREFRONT) == staff_kind
+        )
+    else:
+        prev_roster_count = len(prev_roster_ids)
 
     return {
         "week_start": week_start,
@@ -189,6 +214,7 @@ def _grid_context(
         "this_week": this_week,
         "prev_roster_count": prev_roster_count,
         "is_current_week": week_start == _monday_of(date.today()),
+        "staff_kind": staff_kind or "",
         "flash": flash,
     }
 
@@ -196,10 +222,31 @@ def _grid_context(
 def _schedulable_clause():
     """Users eligible to appear in the 'add to schedule' picker.
 
-    Active employees, plus draft employees (is_active=False AND empty
-    password_hash) so a new hire can be booked on the schedule before
-    they've finished onboarding. Terminated employees (is_active=False
-    AND password_hash set) are excluded.
+    Active OR draft employees (is_active=False AND empty password_hash)
+    AND explicitly opted-in via User.is_schedulable. The latter gate
+    was added in Wave 4.8 so admins can keep non-scheduling roles
+    (office admin, owner, etc.) out of the picker without having to
+    terminate them. Terminated employees (is_active=False AND
+    password_hash set) are excluded regardless.
+    """
+    from sqlalchemy import and_, or_
+
+    return and_(
+        or_(
+            User.is_active == True,  # noqa: E712
+            User.password_hash == "",
+        ),
+        User.is_schedulable == True,  # noqa: E712
+    )
+
+
+def _not_terminated_clause():
+    """Predicate for filtering ALREADY-SELECTED grid users.
+
+    Intentionally looser than `_schedulable_clause`: we still want to
+    render rows for someone who was rostered/shifted while
+    `is_schedulable` was True but got toggled off later, so historical
+    data isn't silently hidden. Only terminated employees are culled.
     """
     from sqlalchemy import or_
 
@@ -207,11 +254,6 @@ def _schedulable_clause():
         User.is_active == True,  # noqa: E712
         User.password_hash == "",
     )
-
-
-def _not_terminated_clause():
-    """Mirror of `_schedulable_clause` for filtering grid users."""
-    return _schedulable_clause()
 
 
 @router.get("/team/admin/schedule", response_class=HTMLResponse)
@@ -224,8 +266,16 @@ def admin_schedule_view(
     denial, user = _permission_gate(request, session, "admin.schedule.view")
     if denial:
         return denial
-    ctx = _grid_context(session, _parse_week_start(week), flash=flash)
+    week_start = _parse_week_start(week)
+    storefront_ctx = _grid_context(
+        session, week_start, staff_kind=STAFF_KIND_STOREFRONT, flash=flash
+    )
+    stream_ctx = _grid_context(
+        session, week_start, staff_kind=STAFF_KIND_STREAM
+    )
     can_edit = has_permission(session, user, "admin.schedule.edit")
+    # Top-level nav context (week_start / prev_week / etc.) mirrors the
+    # storefront grid so the week buttons still work.
     return templates.TemplateResponse(
         request,
         "team/admin/schedule.html",
@@ -238,7 +288,18 @@ def admin_schedule_view(
             "csrf_token": issue_token(request),
             "build_cell_key": _build_cell_key,
             "build_day_loc_key": _build_day_loc_key,
-            **ctx,
+            "storefront": storefront_ctx,
+            "stream": stream_ctx,
+            # Shared nav/week state (same across both grids).
+            "week_start": storefront_ctx["week_start"],
+            "week_start_iso": storefront_ctx["week_start_iso"],
+            "week_days": storefront_ctx["week_days"],
+            "day_note_map": storefront_ctx["day_note_map"],
+            "prev_week": storefront_ctx["prev_week"],
+            "next_week": storefront_ctx["next_week"],
+            "this_week": storefront_ctx["this_week"],
+            "is_current_week": storefront_ctx["is_current_week"],
+            "flash": flash,
         },
     )
 
@@ -459,10 +520,30 @@ async def admin_schedule_roster_add(
     target = session.get(User, user_id)
     if target is None:
         return _redirect_back(week_start, "Employee not found.")
-    # Schedulable = active OR draft. Terminated employees can't be scheduled.
+    # Schedulable = active OR draft, AND explicitly flagged is_schedulable.
+    # Terminated employees can't be scheduled; neither can employees an
+    # admin has opted out of the schedule picker.
     is_draft = (not target.is_active) and (target.password_hash or "") == ""
     if not (target.is_active or is_draft):
         return _redirect_back(week_start, "That employee is not schedulable.")
+    if not target.is_schedulable:
+        return _redirect_back(
+            week_start,
+            "That employee isn't marked 'on the schedule'. Turn it on from the Employees page first.",
+        )
+
+    # Enforce staff_kind match when a grid specifies it. This prevents
+    # a crafted request from adding a Stream user to the Storefront
+    # grid (or vice versa), and gives a clear error if the admin
+    # picks somebody whose Type has since changed.
+    form_kind = (form.get("staff_kind") or "").strip().lower()
+    if form_kind in STAFF_KINDS:
+        user_kind = (target.staff_kind or STAFF_KIND_STOREFRONT)
+        if user_kind != form_kind:
+            return _redirect_back(
+                week_start,
+                f"{target.display_name or target.username} is marked as {user_kind}, not {form_kind}. Change their Type first.",
+            )
 
     existing = session.exec(
         select(ScheduleRosterMember).where(
@@ -593,6 +674,9 @@ async def admin_schedule_roster_copy_previous(
     week_start = _parse_week_start(form.get("week") or "")
     prev_week = week_start - timedelta(days=7)
 
+    form_kind = (form.get("staff_kind") or "").strip().lower()
+    kind_filter = form_kind if form_kind in STAFF_KINDS else None
+
     existing_ids: set[int] = set(
         session.exec(
             select(ScheduleRosterMember.user_id).where(
@@ -616,13 +700,22 @@ async def admin_schedule_roster_copy_previous(
         if uid in existing_ids:
             continue
         # Skip users who got terminated since last week. Keep drafts in
-        # because they're still schedulable.
+        # because they're still schedulable. Also skip users whom an
+        # admin has since removed from the schedule picker.
         target = session.get(User, uid)
         if target is None:
             continue
         is_draft = (not target.is_active) and (target.password_hash or "") == ""
         if not (target.is_active or is_draft):
             continue
+        if not target.is_schedulable:
+            continue
+        # When the copy button was pressed on the Stream grid, only
+        # bring over stream-kind users (and vice versa).
+        if kind_filter is not None:
+            user_kind = (target.staff_kind or STAFF_KIND_STOREFRONT)
+            if user_kind != kind_filter:
+                continue
         session.add(
             ScheduleRosterMember(
                 week_start=week_start,

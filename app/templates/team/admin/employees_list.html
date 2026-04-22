@@ -42,6 +42,8 @@
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Name</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Username</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Role</th>
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Type</th>
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br); text-align:center;">On schedule</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Hire date</th>
                 <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Status</th>
             </tr>
@@ -75,6 +77,30 @@
                 </td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">{{ u.role }}</td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
+                    {% set kind = u.staff_kind or 'storefront' %}
+                    {% if kind == 'stream' %}
+                        <span style="padding:2px 8px; border-radius:999px; background:rgba(96,165,250,0.15); color:#93c5fd; font-size:11px; font-weight:500;">Stream</span>
+                    {% else %}
+                        <span style="padding:2px 8px; border-radius:999px; background:rgba(251,146,60,0.15); color:#fdba74; font-size:11px; font-weight:500;">Storefront</span>
+                    {% endif %}
+                </td>
+                <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br); text-align:center;">
+                    <form method="post" action="/team/admin/employees/{{ u.id }}/schedulable-toggle" style="display:inline; margin:0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                        <input type="hidden" name="return_show_inactive" value="{{ '1' if show_inactive else '' }}"/>
+                        <input type="hidden" name="return_q" value="{{ q }}"/>
+                        <label style="display:inline-flex; align-items:center; gap:0; cursor:pointer;">
+                            <input type="checkbox"
+                                   name="is_schedulable"
+                                   value="1"
+                                   {% if u.is_schedulable %}checked{% endif %}
+                                   onchange="this.form.submit()"
+                                   style="accent-color:#3b82f6; width:16px; height:16px; cursor:pointer;"
+                                   aria-label="Toggle schedulable for {{ u.display_name or u.username }}"/>
+                        </label>
+                    </form>
+                </td>
+                <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
                     {% if profile and profile.hire_date %}{{ profile.hire_date }}{% else %}—{% endif %}
                 </td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
@@ -91,14 +117,16 @@
             </tr>
             {% endfor %}
             {% if not users %}
-            <tr><td colspan="5" style="padding:20px 14px; text-align:center; color:var(--lx-muted);">No employees match.</td></tr>
+            <tr><td colspan="7" style="padding:20px 14px; text-align:center; color:var(--lx-muted);">No employees match.</td></tr>
             {% endif %}
         </tbody>
     </table>
 </div>
 
 <p style="font-size:12px; color:var(--lx-muted); margin-top:14px;">
-    <strong>Draft</strong> — added to the roster but hasn't accepted their invite yet. You can schedule them right now.<br>
+    <strong>Type</strong> — Storefront (floor) or Stream. Streamers linked to a matching user record default to Stream; everyone else is Storefront.<br>
+    <strong>On schedule</strong> — only checked employees appear in the schedule&rsquo;s &ldquo;add employee&rdquo; picker. Default is OFF so the list stays short.<br>
+    <strong>Draft</strong> — added to the roster but hasn&rsquo;t accepted their invite yet. You can schedule them right now.<br>
     <strong>Invite pending</strong> — draft with a live, un-used invite link.<br>
     <strong>Active / inactive</strong> — fully onboarded (active = can log in).
 </p>

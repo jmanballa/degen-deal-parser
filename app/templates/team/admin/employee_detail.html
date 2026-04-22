@@ -81,6 +81,18 @@
                     <select name="role" style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
                         {% for r in roles %}<option value="{{ r }}" {% if r == employee.role %}selected{% endif %}>{{ r }}</option>{% endfor %}
                     </select>
+                    <span style="font-size:11px; color:var(--lx-muted); margin-left:8px;">permission level (admin / manager / employee / viewer / reviewer)</span>
+                </td>
+            </tr>
+            <tr>
+                <td style="padding:6px 0; color:var(--lx-muted);">Type</td>
+                <td>
+                    {% set current_kind = employee.staff_kind or 'storefront' %}
+                    <select name="staff_kind" style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
+                        <option value="storefront" {% if current_kind == 'storefront' %}selected{% endif %}>Storefront</option>
+                        <option value="stream" {% if current_kind == 'stream' %}selected{% endif %}>Stream</option>
+                    </select>
+                    <span style="font-size:11px; color:var(--lx-muted); margin-left:8px;">which schedule they can be booked on</span>
                 </td>
             </tr>
             <tr>

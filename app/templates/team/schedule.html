@@ -11,7 +11,9 @@
     .sch-table th, .sch-table td { border: 1px solid var(--pt-border); padding: 0; vertical-align: middle; }
     .sch-loc-row th { background: var(--pt-soft); height: 26px; padding: 4px 6px; text-align: center; font-weight: 500; color: #fca5a5; font-size: 11.5px; }
     .sch-head-row th { background: #f6b37a; color: #111; font-weight: 600; padding: 6px 8px; text-align: left; }
-    .sch-name-col { background: #f6b37a; color: #111; font-weight: 600; padding: 8px 10px; white-space: nowrap; width: 120px; }
+    .sch-head-row.is-stream th { background: #8cbef7; }
+    .sch-name-col { background: #f6b37a; color: #111; font-weight: 600; padding: 8px 10px; white-space: nowrap; width: 140px; }
+    .sch-name-col.is-stream { background: #8cbef7; }
     .sch-cell { padding: 8px 6px; height: 38px; text-align: center; font-size: 12.5px; }
     .sch-k-work       { background: #86efac; color: #111; }
     .sch-k-off        { background: #a8a29e; color: #1c1917; }
@@ -29,8 +31,64 @@
     .sch-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 11.5px; color: var(--pt-muted); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--pt-border); }
     .sch-legend-chip { display: inline-flex; align-items: center; gap: 4px; }
     .sch-legend-sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--pt-border); }
+    .sch-grid-title { margin: 24px 0 10px; font-size: 15px; font-weight: 700; color: var(--pt-text); display:flex; align-items:center; gap:10px; }
+    .sch-kind-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+    .sch-kind-chip.is-storefront { background: rgba(251,146,60,0.18); color: #fdba74; }
+    .sch-kind-chip.is-stream     { background: rgba(96,165,250,0.18); color: #93c5fd; }
 </style>
 {% endblock %}
+
+{% macro render_grid(ctx, kind_label, kind_slug, include_day_headers) %}
+<div class="sch-grid-title">
+    <span>{{ kind_label }} schedule</span>
+    <span class="sch-kind-chip is-{{ kind_slug }}">{{ ctx.users|length }} on this week</span>
+</div>
+<div class="sch-wrap">
+    <table class="sch-table">
+        <thead>
+            {% if include_day_headers %}
+            <tr class="sch-loc-row">
+                <th></th>
+                {% for d in ctx.week_days %}
+                {% set note = ctx.day_note_map.get(d.isoformat()) %}
+                <th>{{ note.location_label if note and note.location_label else '' }}</th>
+                {% endfor %}
+            </tr>
+            {% endif %}
+            <tr class="sch-head-row {% if kind_slug == 'stream' %}is-stream{% endif %}">
+                <th>{{ ctx.week_start.strftime('%b') }} {{ ctx.week_start.day }}</th>
+                {% for d in ctx.week_days %}
+                <th style="text-align:center; min-width:120px;">
+                    <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }}-{{ d.strftime('%b') }}</div>
+                    <div style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in ctx.users %}
+            {% set is_me = (u.id == current_user.id) %}
+            <tr>
+                <td class="sch-name-col {% if kind_slug == 'stream' %}is-stream{% endif %}">
+                    {{ u.display_name or u.username }}{% if is_me %} <span style="color:#1a0000; font-size:10px; margin-left:4px;">(you)</span>{% endif %}
+                </td>
+                {% for d in ctx.week_days %}
+                {% set entry = ctx.entry_map.get((u.id, d.isoformat())) %}
+                {% set kind = (entry.kind if entry else 'blank') %}
+                {% set label = (entry.label if entry else '') %}
+                <td class="sch-cell sch-k-{{ kind }}{% if is_me and kind != 'blank' %} sch-me{% endif %}">{{ label }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            {% if not ctx.users %}
+            <tr><td colspan="{{ ctx.week_days|length + 1 }}" style="padding:20px; text-align:center; color:var(--pt-muted);">
+                Nothing on the {{ kind_label|lower }} schedule this week yet.
+            </td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
 
 {% block content %}
 <div class="sch-toolbar">
@@ -47,49 +105,9 @@
     </div>
 </div>
 
-<div class="sch-wrap">
-    <table class="sch-table">
-        <thead>
-            <tr class="sch-loc-row">
-                <th></th>
-                {% for d in week_days %}
-                {% set note = day_note_map.get(d.isoformat()) %}
-                <th>{{ note.location_label if note and note.location_label else '' }}</th>
-                {% endfor %}
-            </tr>
-            <tr class="sch-head-row">
-                <th>{{ week_start.strftime('%b') }} {{ week_start.day }}</th>
-                {% for d in week_days %}
-                <th style="text-align:center; min-width:120px;">
-                    <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }}-{{ d.strftime('%b') }}</div>
-                    <div style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
-                </th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for u in users %}
-            {% set is_me = (u.id == current_user.id) %}
-            <tr>
-                <td class="sch-name-col">
-                    {{ u.display_name or u.username }}{% if is_me %} <span style="color:#1a0000; font-size:10px; margin-left:4px;">(you)</span>{% endif %}
-                </td>
-                {% for d in week_days %}
-                {% set entry = entry_map.get((u.id, d.isoformat())) %}
-                {% set kind = (entry.kind if entry else 'blank') %}
-                {% set label = (entry.label if entry else '') %}
-                <td class="sch-cell sch-k-{{ kind }}{% if is_me and kind != 'blank' %} sch-me{% endif %}">{{ label }}</td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-            {% if not users %}
-            <tr><td colspan="{{ week_days|length + 1 }}" style="padding:24px; text-align:center; color:var(--pt-muted);">
-                Schedule hasn't been published for this week yet.
-            </td></tr>
-            {% endif %}
-        </tbody>
-    </table>
-</div>
+{{ render_grid(storefront, 'Storefront', 'storefront', True) }}
+
+{{ render_grid(stream, 'Stream', 'stream', False) }}
 
 <div class="sch-legend">
     <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#86efac;"></span> Scheduled shift</span>

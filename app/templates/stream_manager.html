@@ -415,7 +415,14 @@
                         {{ s.avatar_emoji or '🎮' }}
                     </div>
                     <div class="streamer-info">
-                        <div class="streamer-name">{{ s.display_name or s.name }}</div>
+                        {% set linked_uid = streamer_user_id_map.get(s.id) %}
+                        <div class="streamer-name">
+                            {% if linked_uid %}
+                            <a href="/team/admin/employees/{{ linked_uid }}" style="color:inherit; text-decoration:none; border-bottom:1px dashed rgba(255,255,255,0.35);">{{ s.display_name or s.name }}</a>
+                            {% else %}
+                            {{ s.display_name or s.name }}
+                            {% endif %}
+                        </div>
                         <div class="streamer-handle">@{{ s.name }}</div>
                     </div>
                     <div class="streamer-actions">
@@ -508,7 +515,7 @@
                             <label class="form-label">Who's streaming? *
                                 <select class="form-select" name="streamer_id" required>
                                     <option value="">— pick streamer —</option>
-                                    {% for s in streamers %}
+                                    {% for s in (pickable_streamers or streamers) %}
                                     <option value="{{ s.id }}">{{ s.display_name or s.name }}</option>
                                     {% endfor %}
                                 </select>
@@ -549,7 +556,14 @@
                             <div class="schedule-dot" style="background:{{ sched.streamer_color }};"></div>
                             <div style="font-size:18px;flex-shrink:0;">{{ sched.streamer_emoji }}</div>
                             <div class="schedule-info">
-                                <div class="schedule-who">{{ sched.streamer_name }}</div>
+                                {% set sched_linked_uid = streamer_user_id_map.get(sched.streamer_id) %}
+                                <div class="schedule-who">
+                                    {% if sched_linked_uid %}
+                                    <a href="/team/admin/employees/{{ sched_linked_uid }}" style="color:inherit; text-decoration:none; border-bottom:1px dashed rgba(255,255,255,0.35);">{{ sched.streamer_name }}</a>
+                                    {% else %}
+                                    {{ sched.streamer_name }}
+                                    {% endif %}
+                                </div>
                                 <div class="schedule-when">
                                     {{ sched.start_display }} — {{ sched.end_display }}
                                     {% if sched.is_overnight %}<span class="schedule-overnight-tag">next day</span>{% endif %}
@@ -667,7 +681,7 @@
                     <label class="form-label">Who's streaming? *
                         <select class="form-select" name="streamer_id" id="edit-shift-streamer" required>
                             <option value="">— pick streamer —</option>
-                            {% for s in streamers %}
+                            {% for s in (pickable_streamers or streamers) %}
                             <option value="{{ s.id }}">{{ s.display_name or s.name }}</option>
                             {% endfor %}
                         </select>

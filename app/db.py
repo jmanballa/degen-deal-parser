@@ -189,6 +189,11 @@ SQLITE_ADDITIVE_MIGRATIONS = {
     },
     "user": {
         "password_salt": "TEXT",
+        "is_schedulable": "BOOLEAN DEFAULT 0",
+        "staff_kind": "TEXT DEFAULT 'storefront'",
+    },
+    "streamers": {
+        "user_id": "INTEGER",
     },
     "invitetoken": {
         "token_lookup_hmac": "BLOB",
@@ -258,6 +263,9 @@ SQLITE_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_created_at ON tiktok_auth (created_at)",
     "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_updated_at ON tiktok_auth (updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
+    "CREATE INDEX IF NOT EXISTS idx_user_is_schedulable ON user (is_schedulable)",
+    "CREATE INDEX IF NOT EXISTS idx_user_staff_kind ON user (staff_kind)",
+    "CREATE INDEX IF NOT EXISTS idx_streamers_user_id ON streamers (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_token_lookup_hmac ON invitetoken (token_lookup_hmac)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_target_user_id ON invitetoken (target_user_id)",
     "CREATE INDEX IF NOT EXISTS idx_passwordresettoken_token_lookup_hmac ON passwordresettoken (token_lookup_hmac)",
@@ -380,6 +388,11 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
     },
     "user": {
         "password_salt": "TEXT",
+        "is_schedulable": "BOOLEAN DEFAULT FALSE",
+        "staff_kind": "TEXT DEFAULT 'storefront'",
+    },
+    "streamers": {
+        "user_id": "INTEGER",
     },
     "invitetoken": {
         "token_lookup_hmac": "BYTEA",
@@ -449,6 +462,9 @@ POSTGRES_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_created_at ON tiktok_auth (created_at)",
     "CREATE INDEX IF NOT EXISTS idx_tiktok_auth_updated_at ON tiktok_auth (updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
+    'CREATE INDEX IF NOT EXISTS idx_user_is_schedulable ON "user" (is_schedulable)',
+    'CREATE INDEX IF NOT EXISTS idx_user_staff_kind ON "user" (staff_kind)',
+    "CREATE INDEX IF NOT EXISTS idx_streamers_user_id ON streamers (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_token_lookup_hmac ON invitetoken (token_lookup_hmac)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_target_user_id ON invitetoken (target_user_id)",
     "CREATE INDEX IF NOT EXISTS idx_passwordresettoken_token_lookup_hmac ON passwordresettoken (token_lookup_hmac)",
@@ -876,6 +892,113 @@ def seed_employee_portal_defaults(session: Session) -> None:
         session.commit()
 
 
+def seed_staff_schedule_defaults(session: Session) -> None:
+    """One-time backfill for new Wave 4.8 staff columns.
+
+    Adds two protections against re-running and clobbering admin edits:
+      * `is_schedulable` is only auto-flipped on if NO user has
+        is_schedulable=True yet. Once any admin has curated the list,
+        we stop.
+      * `staff_kind` is only auto-set to 'stream' if NO user has
+        staff_kind='stream' yet. Same logic.
+
+    Additionally, on every boot we fill in missing Streamer.user_id by
+    matching Streamer.name / Streamer.display_name to User.display_name
+    (case-insensitive). This is safe to re-run because we only fill
+    NULLs and never overwrite an existing link.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    from sqlmodel import select as _select
+
+    from .models import (
+        STAFF_KIND_STREAM,
+        ScheduleRosterMember,
+        ShiftEntry,
+        Streamer,
+        User,
+    )
+
+    now = _dt.now(_tz.utc)
+    changed = False
+
+    # 1) Link Streamers -> Users by case-insensitive name match.
+    streamers = list(
+        session.exec(
+            _select(Streamer).where(Streamer.user_id.is_(None))
+        ).all()
+    )
+    if streamers:
+        users = list(session.exec(_select(User)).all())
+        name_to_user: dict[str, User] = {}
+        for u in users:
+            for candidate in (u.display_name, u.username):
+                key = (candidate or "").strip().lower()
+                if key and key not in name_to_user:
+                    name_to_user[key] = u
+        for s in streamers:
+            for candidate in (s.display_name, s.name):
+                key = (candidate or "").strip().lower()
+                if not key:
+                    continue
+                match = name_to_user.get(key)
+                if match and match.id:
+                    s.user_id = match.id
+                    s.updated_at = now
+                    session.add(s)
+                    changed = True
+                    break
+
+    # 2) Auto-classify linked users as 'stream' — but only if admin
+    #    hasn't started curating yet.
+    stream_users_exist = session.exec(
+        _select(User).where(User.staff_kind == STAFF_KIND_STREAM).limit(1)
+    ).first() is not None
+    if not stream_users_exist:
+        linked_user_ids = {
+            s.user_id
+            for s in session.exec(_select(Streamer).where(Streamer.is_active == True)).all()  # noqa: E712
+            if s.user_id is not None
+        }
+        for uid in linked_user_ids:
+            u = session.get(User, uid)
+            if u is None:
+                continue
+            if u.staff_kind != STAFF_KIND_STREAM:
+                u.staff_kind = STAFF_KIND_STREAM
+                u.updated_at = now
+                session.add(u)
+                changed = True
+
+    # 3) Auto-enable is_schedulable for everyone who's actually been
+    #    put on a schedule, again only if no curation has happened.
+    schedulable_exists = session.exec(
+        _select(User).where(User.is_schedulable == True).limit(1)  # noqa: E712
+    ).first() is not None
+    if not schedulable_exists:
+        rostered_ids = {
+            row.user_id
+            for row in session.exec(_select(ScheduleRosterMember)).all()
+            if row.user_id is not None
+        }
+        shifted_ids = {
+            row.user_id
+            for row in session.exec(_select(ShiftEntry)).all()
+            if row.user_id is not None
+        }
+        for uid in rostered_ids | shifted_ids:
+            u = session.get(User, uid)
+            if u is None or u.is_schedulable:
+                continue
+            u.is_schedulable = True
+            u.updated_at = now
+            session.add(u)
+            changed = True
+
+    if changed:
+        session.commit()
+
+
 def init_db() -> None:
     attempts = 1 if database_url.startswith("sqlite") else 6
     delay_seconds = 1.0
@@ -910,6 +1033,11 @@ def init_db() -> None:
                 seed_employee_portal_defaults(session)
         except Exception as exc:
             print(f"[db] employee portal seed skipped: {exc}")
+        try:
+            with Session(engine) as session:
+                seed_staff_schedule_defaults(session)
+        except Exception as exc:
+            print(f"[db] staff/schedule backfill skipped: {exc}")
 
     try:
         from .shopify_ingest import repair_shopify_tax_fields

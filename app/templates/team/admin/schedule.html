@@ -30,21 +30,22 @@
     }
     .sch-loc-row .sch-loc-input::placeholder { color: var(--lx-muted); opacity: 0.5; }
     .sch-head-row th {
-        background: #f6b37a; /* peach like the screenshot */
+        background: #f6b37a;
         color: #111;
         font-weight: 600;
         padding: 6px 8px;
         text-align: left;
     }
-    .sch-head-row th.sch-name-head { background: #f6b37a; }
+    .sch-head-row.is-stream th { background: #8cbef7; }
     .sch-name-col {
         background: #f6b37a;
         color: #111;
         font-weight: 600;
         padding: 6px 10px;
         white-space: nowrap;
-        width: 120px;
+        width: 140px;
     }
+    .sch-name-col.is-stream { background: #8cbef7; }
     .sch-cell { padding: 0; height: 38px; }
     .sch-cell input {
         width: 100%;
@@ -64,8 +65,8 @@
         background: rgba(59,130,246,0.08);
     }
     /* kind → color */
-    .sch-k-work       { background: #86efac; color: #111; }       /* green */
-    .sch-k-off        { background: #a8a29e; color: #1c1917; }    /* warm grey */
+    .sch-k-work       { background: #86efac; color: #111; }
+    .sch-k-off        { background: #a8a29e; color: #1c1917; }
     .sch-k-show       { background: #60a5fa; color: #0b1220; font-weight: 600; }
     .sch-k-request    { background: #f87171; color: #1a0000; font-weight: 600; }
     .sch-k-stream     { background: #bbf7d0; color: #0f1a10; }
@@ -85,6 +86,24 @@
     .sch-week-btns { display: flex; gap: 6px; align-items: center; }
     .sch-wk-label { font-size: 14px; font-weight: 600; margin: 0 10px; }
 
+    .sch-grid-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 24px 0 10px;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--lx-text);
+    }
+    .sch-grid-title .sch-kind-chip {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 500;
+    }
+    .sch-kind-chip.is-storefront { background: rgba(251,146,60,0.18); color: #fdba74; }
+    .sch-kind-chip.is-stream     { background: rgba(96,165,250,0.18); color: #93c5fd; }
+
     .sch-legend {
         display: flex;
         flex-wrap: wrap;
@@ -95,15 +114,12 @@
         padding-top: 12px;
         border-top: 1px solid var(--lx-br);
     }
-    .sch-legend-chip {
-        display: inline-flex; align-items: center; gap: 4px;
-    }
+    .sch-legend-chip { display: inline-flex; align-items: center; gap: 4px; }
     .sch-legend-sw {
         display: inline-block;
         width: 14px; height: 14px; border-radius: 3px;
         border: 1px solid var(--lx-br);
     }
-    /* Per-week roster controls */
     .sch-roster-bar {
         display: flex;
         flex-wrap: wrap;
@@ -147,6 +163,154 @@
 </style>
 {% endblock %}
 
+{# ---------------------------------------------------------------------
+   Grid macro. Rendered once per staff_kind (storefront + stream) so the
+   same template handles both roster + cell editing for each kind without
+   duplicating dozens of lines of markup.
+   --------------------------------------------------------------------- #}
+{% macro render_grid(ctx, kind_label, kind_slug, include_day_headers) %}
+    <div class="sch-grid-title">
+        <span>{{ kind_label }} schedule</span>
+        <span class="sch-kind-chip is-{{ kind_slug }}">{{ ctx.users|length }} on this week</span>
+    </div>
+
+    {% if can_edit %}
+    <div class="sch-roster-bar">
+        <strong style="margin-right:4px;">Roster:</strong>
+        <form method="post" action="/team/admin/schedule/roster/add">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+            <input type="hidden" name="week" value="{{ ctx.week_start_iso }}"/>
+            <input type="hidden" name="staff_kind" value="{{ kind_slug }}"/>
+            <select name="user_id" required>
+                <option value="">Add {{ kind_label|lower }} employee…</option>
+                {% for u in ctx.addable_users %}
+                <option value="{{ u.id }}">
+                    {{ u.display_name or u.username }}{% if not u.is_active and (u.password_hash or '') == '' %} · draft{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6;">Add</button>
+        </form>
+        {% if ctx.prev_roster_count %}
+        <form method="post" action="/team/admin/schedule/roster/copy-previous">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+            <input type="hidden" name="week" value="{{ ctx.week_start_iso }}"/>
+            <input type="hidden" name="staff_kind" value="{{ kind_slug }}"/>
+            <button class="ta-btn" type="submit" title="Copy the {{ ctx.prev_roster_count }} {{ kind_label|lower }} employee(s) from last week onto this week">
+                Copy last week ({{ ctx.prev_roster_count }})
+            </button>
+        </form>
+        {% endif %}
+        {% if not ctx.addable_users and not ctx.users %}
+        <span style="font-size:12px; color:var(--lx-muted); margin-left:auto;">
+            Mark employees as <strong>On schedule</strong> and
+            <strong>Type = {{ kind_label }}</strong> on the
+            <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a> to add them here.
+        </span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/team/admin/schedule">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <input type="hidden" name="week" value="{{ ctx.week_start_iso }}"/>
+        <input type="hidden" name="staff_kind" value="{{ kind_slug }}"/>
+
+        <div class="ta-card sch-wrap" style="padding:10px;">
+            <table class="sch-table">
+                <thead>
+                    {% if include_day_headers %}
+                    <tr class="sch-loc-row">
+                        <th></th>
+                        {% for d in ctx.week_days %}
+                        {% set note = ctx.day_note_map.get(d.isoformat()) %}
+                        <th>
+                            {% if can_edit %}
+                            <input class="sch-loc-input"
+                                   type="text"
+                                   name="{{ build_day_loc_key(d) }}"
+                                   value="{{ note.location_label if note else '' }}"
+                                   placeholder="location / note"
+                                   autocomplete="off"/>
+                            {% else %}
+                            {{ note.location_label if note and note.location_label else '' }}
+                            {% endif %}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                    {% endif %}
+                    <tr class="sch-head-row {% if kind_slug == 'stream' %}is-stream{% endif %}">
+                        <th>{{ ctx.week_start.strftime('%b') }} {{ ctx.week_start.day }}</th>
+                        {% for d in ctx.week_days %}
+                        <th style="text-align:center; min-width:120px;">
+                            <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }}-{{ d.strftime('%b') }}</div>
+                            <div style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in ctx.users %}
+                    <tr>
+                        <td class="sch-name-col {% if kind_slug == 'stream' %}is-stream{% endif %}">
+                            <div class="sch-name-inner">
+                                <a href="/team/admin/employees/{{ u.id }}" style="color:inherit; text-decoration:none;">{{ u.display_name or u.username }}</a>
+                                {% if can_edit %}
+                                <button class="sch-remove-btn"
+                                        type="submit"
+                                        form="sch-remove-{{ kind_slug }}-{{ u.id }}"
+                                        title="Remove {{ u.display_name or u.username }} from this week">×</button>
+                                {% endif %}
+                            </div>
+                        </td>
+                        {% for d in ctx.week_days %}
+                        {% set entry = ctx.entry_map.get((u.id, d.isoformat())) %}
+                        {% set kind = (entry.kind if entry else 'blank') %}
+                        {% set label = (entry.label if entry else '') %}
+                        <td class="sch-cell sch-k-{{ kind }}">
+                            {% if can_edit %}
+                            <input type="text"
+                                   name="{{ build_cell_key(u.id, d) }}"
+                                   value="{{ label }}"
+                                   placeholder="—"
+                                   autocomplete="off"/>
+                            {% else %}
+                            <div style="padding:8px 6px; text-align:center;">{{ label }}</div>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                    {% if not ctx.users %}
+                    <tr><td colspan="{{ ctx.week_days|length + 1 }}" style="padding:24px; text-align:center; color:var(--lx-muted);">
+                        No {{ kind_label|lower }} employees on this week yet.
+                    </td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if can_edit %}
+        <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+            <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
+                Save {{ kind_label|lower }} schedule
+            </button>
+        </div>
+        {% endif %}
+    </form>
+
+    {% if can_edit %}
+    {% for u in ctx.users %}
+    <form id="sch-remove-{{ kind_slug }}-{{ u.id }}" method="post" action="/team/admin/schedule/roster/remove" style="display:none;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <input type="hidden" name="week" value="{{ ctx.week_start_iso }}"/>
+        <input type="hidden" name="user_id" value="{{ u.id }}"/>
+        <input type="hidden" name="staff_kind" value="{{ kind_slug }}"/>
+    </form>
+    {% endfor %}
+    {% endif %}
+{% endmacro %}
+
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
 
@@ -169,152 +333,23 @@
 </div>
 
 <p style="font-size:12px; color:var(--lx-muted); margin:-4px 0 14px; max-width:820px;">
-    Add employees to this week one at a time using the roster below, then type shift times like
+    Two independent schedules: <strong>Storefront</strong> for the floor team, <strong>Stream</strong> for the live room.
+    Add employees to each grid individually, then type shift times like
     <code style="background:var(--lx-s2); padding:1px 5px; border-radius:4px;">10:30 AM - 6:30 PM</code> into the cells.
     Special words color themselves: <strong>OFF</strong>, <strong>SHOW</strong>, <strong>REQUEST</strong>, <strong>Stream</strong>, <strong>IF NEEDED</strong>, <strong>ALL</strong>.
-    The top "location" row is the header you see when the team works a show (e.g. <em>East Bay Santa Clara</em>).
+    Which grid an employee appears in is controlled by the <strong>Type</strong> column on the
+    <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a>.
 </p>
 
-{% if can_edit %}
-<div class="sch-roster-bar">
-    <strong style="margin-right:4px;">Roster for this week:</strong>
-    <form method="post" action="/team/admin/schedule/roster/add">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
-        <input type="hidden" name="week" value="{{ week_start_iso }}"/>
-        <select name="user_id" required>
-            <option value="">Add employee…</option>
-            {% for u in addable_users %}
-            <option value="{{ u.id }}">
-                {{ u.display_name or u.username }}{% if not u.is_active and (u.password_hash or '') == '' %} · draft{% endif %}
-            </option>
-            {% endfor %}
-        </select>
-        <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6;">Add</button>
-    </form>
-    {% if prev_roster_count %}
-    <form method="post" action="/team/admin/schedule/roster/copy-previous">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
-        <input type="hidden" name="week" value="{{ week_start_iso }}"/>
-        <button class="ta-btn" type="submit" title="Copy the {{ prev_roster_count }} employee(s) from last week onto this week">
-            Copy last week ({{ prev_roster_count }})
-        </button>
-    </form>
-    {% endif %}
-    <span style="font-size:12px; color:var(--lx-muted); margin-left:auto;">
-        {{ users|length }} on this week
-    </span>
+{{ render_grid(storefront, 'Storefront', 'storefront', True) }}
+
+{{ render_grid(stream, 'Stream', 'stream', False) }}
+
+<div class="sch-legend">
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#86efac;"></span> Scheduled shift</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#a8a29e;"></span> OFF</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#60a5fa;"></span> SHOW</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#f87171;"></span> REQUEST (time off)</span>
+    <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#bbf7d0;"></span> Stream / IF NEEDED</span>
 </div>
-{% endif %}
-
-<form method="post" action="/team/admin/schedule">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
-    <input type="hidden" name="week" value="{{ week_start_iso }}"/>
-
-    <div class="ta-card sch-wrap" style="padding:10px;">
-        <table class="sch-table">
-            <thead>
-                <tr class="sch-loc-row">
-                    <th></th>
-                    {% for d in week_days %}
-                    {% set note = day_note_map.get(d.isoformat()) %}
-                    <th>
-                        {% if can_edit %}
-                        <input class="sch-loc-input"
-                               type="text"
-                               name="{{ build_day_loc_key(d) }}"
-                               value="{{ note.location_label if note else '' }}"
-                               placeholder="location / note"
-                               autocomplete="off"/>
-                        {% else %}
-                        {{ note.location_label if note and note.location_label else '' }}
-                        {% endif %}
-                    </th>
-                    {% endfor %}
-                </tr>
-                <tr class="sch-head-row">
-                    <th class="sch-name-head">{{ week_start.strftime('%b') }} {{ week_start.day }}</th>
-                    {% for d in week_days %}
-                    <th style="text-align:center; min-width:120px;">
-                        <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }}-{{ d.strftime('%b') }}</div>
-                        <div style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
-                    </th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for u in users %}
-                <tr>
-                    <td class="sch-name-col">
-                        <div class="sch-name-inner">
-                            <span>{{ u.display_name or u.username }}</span>
-                            {# Render the remove button OUTSIDE the save-form via form attribute
-                               so clicking it posts only to /roster/remove. We close the save form
-                               after the table, so inside the tbody this is still nested — that's
-                               illegal HTML, so instead we use a button that points back to a
-                               hidden form further down using the `form` attribute. #}
-                            {% if can_edit %}
-                            <button class="sch-remove-btn"
-                                    type="submit"
-                                    form="sch-remove-{{ u.id }}"
-                                    title="Remove {{ u.display_name or u.username }} from this week">×</button>
-                            {% endif %}
-                        </div>
-                    </td>
-                    {% for d in week_days %}
-                    {% set entry = entry_map.get((u.id, d.isoformat())) %}
-                    {% set kind = (entry.kind if entry else 'blank') %}
-                    {% set label = (entry.label if entry else '') %}
-                    <td class="sch-cell sch-k-{{ kind }}">
-                        {% if can_edit %}
-                        <input type="text"
-                               name="{{ build_cell_key(u.id, d) }}"
-                               value="{{ label }}"
-                               placeholder="—"
-                               autocomplete="off"/>
-                        {% else %}
-                        <div style="padding:8px 6px; text-align:center;">{{ label }}</div>
-                        {% endif %}
-                    </td>
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-                {% if not users %}
-                <tr><td colspan="{{ week_days|length + 1 }}" style="padding:24px; text-align:center; color:var(--lx-muted);">
-                    Nobody on this week yet. Use the <strong>Add employee</strong> picker above to build this week's roster.
-                </td></tr>
-                {% endif %}
-            </tbody>
-        </table>
-    </div>
-
-    {% if can_edit %}
-    <div style="margin-top:14px; display:flex; justify-content:flex-end;">
-        <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
-            Save schedule
-        </button>
-    </div>
-    {% endif %}
-
-    <div class="sch-legend">
-        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#86efac;"></span> Scheduled shift</span>
-        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#a8a29e;"></span> OFF</span>
-        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#60a5fa;"></span> SHOW</span>
-        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#f87171;"></span> REQUEST (time off)</span>
-        <span class="sch-legend-chip"><span class="sch-legend-sw" style="background:#bbf7d0;"></span> Stream / IF NEEDED</span>
-    </div>
-</form>
-
-{# Hidden per-row remove forms. The "×" buttons inside the table use the
-   form="sch-remove-{id}" attribute so they submit here instead of the
-   outer save form. Keeps the markup HTML5-valid (no nested forms) while
-   still giving us a one-click remove per row. #}
-{% if can_edit %}
-{% for u in users %}
-<form id="sch-remove-{{ u.id }}" method="post" action="/team/admin/schedule/roster/remove" style="display:none;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
-    <input type="hidden" name="week" value="{{ week_start_iso }}"/>
-    <input type="hidden" name="user_id" value="{{ u.id }}"/>
-</form>
-{% endfor %}
-{% endif %}
 {% endblock %}

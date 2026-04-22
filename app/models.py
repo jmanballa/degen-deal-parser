@@ -444,6 +444,11 @@ class TikTokProduct(SQLModel, table=True):
     synced_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+STAFF_KIND_STOREFRONT = "storefront"
+STAFF_KIND_STREAM = "stream"
+STAFF_KINDS = (STAFF_KIND_STOREFRONT, STAFF_KIND_STREAM)
+
+
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
@@ -452,6 +457,13 @@ class User(SQLModel, table=True):
     display_name: str = Field(default="")
     role: str = Field(default="viewer", index=True)
     is_active: bool = Field(default=True, index=True)
+    # Curated "can this person be put on the schedule?" flag.
+    # Defaults to False so new hires are explicit opt-ins by an admin.
+    is_schedulable: bool = Field(default=False, index=True)
+    # Which side of the shop they work — storefront floor vs stream room.
+    # Drives which schedule the admin's add-picker shows them on, and
+    # which page (storefront grid vs stream grid) they'll appear in.
+    staff_kind: str = Field(default=STAFF_KIND_STOREFRONT, index=True)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow, index=True)
 
@@ -621,6 +633,10 @@ class Streamer(SQLModel, table=True):
     color: Optional[str] = Field(default=None)
     avatar_emoji: Optional[str] = Field(default=None)
     is_active: bool = Field(default=True, index=True)
+    # Optional link back to the User record for this streamer. Lets the
+    # stream-manager UI deep-link to the employee's admin profile and
+    # share a single schedulable/staff_kind source of truth.
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 

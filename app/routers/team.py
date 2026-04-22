@@ -856,8 +856,15 @@ def team_schedule(
         _grid_context,
         _parse_week_start,
     )
+    from ..models import STAFF_KIND_STOREFRONT, STAFF_KIND_STREAM
 
-    ctx = _grid_context(session, _parse_week_start(week))
+    week_start = _parse_week_start(week)
+    storefront_ctx = _grid_context(
+        session, week_start, staff_kind=STAFF_KIND_STOREFRONT
+    )
+    stream_ctx = _grid_context(
+        session, week_start, staff_kind=STAFF_KIND_STREAM
+    )
     return templates.TemplateResponse(
         request,
         "team/schedule.html",
@@ -869,7 +876,15 @@ def team_schedule(
             "csrf_token": issue_token(request),
             "build_cell_key": _build_cell_key,
             "build_day_loc_key": _build_day_loc_key,
-            **ctx,
+            "storefront": storefront_ctx,
+            "stream": stream_ctx,
+            "week_start": storefront_ctx["week_start"],
+            "week_days": storefront_ctx["week_days"],
+            "day_note_map": storefront_ctx["day_note_map"],
+            "prev_week": storefront_ctx["prev_week"],
+            "next_week": storefront_ctx["next_week"],
+            "this_week": storefront_ctx["this_week"],
+            "is_current_week": storefront_ctx["is_current_week"],
             **_nav_context(session, user),
         },
     )
