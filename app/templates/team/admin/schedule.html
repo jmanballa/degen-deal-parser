@@ -75,6 +75,15 @@
         position: relative;
         background: var(--lx-bg);
     }
+    /* Editable cells: iOS Safari needs the WHOLE td to look clickable,
+       otherwise a thumb tap that drifts onto the 2–4px padding around
+       the inner button hits a non-clickable <td> and iOS shows no
+       tap-highlight at all (Jeffrey's "absolute no tap" symptom). */
+    .sch-cell.sch-cell-edit {
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(59,130,246,0.18);
+    }
     .sch-cell.is-today { box-shadow: inset 2px 0 0 #fdba74; }
 
     /* The clickable block (edit mode).
@@ -689,7 +698,7 @@
                         {% set kind = (entry.kind if entry else 'blank') %}
                         {% set hint_color = (hint.color if hint and not entry else None) %}
                         {% set is_today = (d == today) %}
-                        <td class="sch-cell {% if is_today %}is-today{% endif %}"
+                        <td class="sch-cell {% if edit %}sch-cell-edit{% endif %} {% if is_today %}is-today{% endif %}"
                             data-user-id="{{ u.id }}"
                             data-user-name="{{ u.display_name or u.username }}"
                             data-date="{{ d.isoformat() }}"
@@ -1163,24 +1172,60 @@
         backdrop.addEventListener('click', function() { closeModal(); });
     }
 
-    // Single entry point for both mouse clicks and touch taps. With
-    // `touch-action: manipulation` on `.sch-block` (see CSS), iOS fires a
-    // fast synthetic click on tap — no custom touchend dance needed. The
-    // previous touchend + preventDefault approach was unreliable: when
-    // the user's finger drifted even a pixel inside the horizontally
-    // scrollable `.sch-wrap`, iOS classified the tap as a pan gesture
-    // and silently dropped both `touchend` and the synthetic `click`,
-    // so tap-to-edit never fired. A plain click listener + CSS is the
-    // simplest thing that reliably works across Safari/Chrome/Android.
-    function handleCellActivate(ev) {
-        var btn = ev.target.closest('.sch-block');
-        if (!btn) return;
-        if (btn.classList.contains('is-ro')) return;
+    // Direct per-button binding. We previously used event delegation on
+    // the form — it worked in Chromium/WebKit tests but Jeffrey reported
+    // "absolute no tap, no highlight flash" on a real iPhone Safari 17.
+    // That specific symptom (no tap-highlight) means iOS didn't classify
+    // the form-delegated tap as a click at all. Binding listeners to
+    // each button directly is the belt-and-suspenders fix: iOS *always*
+    // treats an element with a direct listener as clickable.
+    //
+    // We also listen for `pointerup` in case `click` gets eaten by the
+    // horizontally-scrollable container. `pointerup` fires for mouse,
+    // touch, and pen uniformly. Guard against double-fire with a
+    // short-lived "last fired" timestamp per button.
+    var DEBUG = (window.location.search || '').indexOf('schdbg=1') !== -1;
+    function log(/*...*/) {
+        if (!DEBUG) return;
+        try { console.log.apply(console, ['[sch]'].concat([].slice.call(arguments))); } catch (_) {}
+    }
+
+    function activateBlock(btn) {
+        if (!btn || btn.classList.contains('is-ro')) return;
         var cell = btn.closest('.sch-cell');
         if (!cell) return;
         openFor(cell);
     }
-    grid.addEventListener('click', handleCellActivate);
+
+    // Bind to BOTH the cell (td) and the block (button). Jeffrey's finger
+    // on a ~84px-wide cell only needs to land anywhere inside the td —
+    // even if the tap lands on the 2px padding around the button, the
+    // cell handler still fires. iOS Safari shows no tap highlight on a
+    // plain <td>, so we also set cursor:pointer on the cell (see CSS)
+    // which tells iOS "yes, this is a click target" and activates the
+    // -webkit-tap-highlight-color flash.
+    var editableCells = grid.querySelectorAll('.sch-cell-edit');
+    log('binding', editableCells.length, 'editable cells');
+    Array.prototype.forEach.call(editableCells, function(cell) {
+        var btn = cell.querySelector('.sch-block:not(.is-ro)');
+        if (!btn) return;
+        var lastFired = 0;
+        function fire(ev) {
+            var now = Date.now();
+            if (now - lastFired < 350) return;
+            lastFired = now;
+            log('activate via', ev.type, btn.getAttribute('data-label'));
+            activateBlock(btn);
+        }
+        cell.addEventListener('click', fire);
+        btn.addEventListener('click', fire);
+        if (window.PointerEvent) {
+            cell.addEventListener('pointerup', function(ev) {
+                if (ev.pointerType === 'mouse') return;
+                fire(ev);
+            });
+        }
+    });
 
     // Warn if user navigates away with unsaved changes.
     window.addEventListener('beforeunload', function(ev) {
