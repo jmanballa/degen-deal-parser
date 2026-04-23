@@ -509,6 +509,7 @@ def tiktok_streamer_page(
     if denial := require_role_response(request, "employee"):
         return denial
 
+    page_load_floor = datetime.now(timezone.utc) - timedelta(hours=24)
     orders = session.exec(
         select(TikTokOrder).order_by(TikTokOrder.created_at.desc()).limit(50)
     ).all()
@@ -518,7 +519,11 @@ def tiktok_streamer_page(
     buyer_totals = _compute_buyer_lifetime_totals(session)
     _enrich_cards_with_buyer_totals(cards, buyer_totals)
 
-    latest_updated_at = session.exec(select(func.max(TikTokOrder.updated_at))).one()
+    # Scope MAX(updated_at) to 24h window so old orders getting status-update
+    # webhooks don't advance the cursor and cause stale orders to reappear.
+    latest_updated_at = session.exec(
+        select(func.max(TikTokOrder.updated_at)).where(TikTokOrder.created_at >= page_load_floor)
+    ).one()
     latest_updated_at_text = None
     if latest_updated_at is not None:
         if latest_updated_at.tzinfo is None:
@@ -612,7 +617,12 @@ def tiktok_streamer_poll(
         buyer_totals = _compute_buyer_lifetime_totals(session)
         _enrich_cards_with_buyer_totals(cards, buyer_totals)
 
-    latest_updated_at = session.exec(select(func.max(TikTokOrder.updated_at))).one()
+    # Scope MAX(updated_at) to the same 24h window used for order queries.
+    # Using global MAX caused the cursor to jump forward when old orders got
+    # status-update webhooks, which made stale orders reappear at the top.
+    latest_updated_at = session.exec(
+        select(func.max(TikTokOrder.updated_at)).where(TikTokOrder.created_at >= created_at_floor)
+    ).one()
     latest_updated_at_text = None
     if latest_updated_at is not None:
         if latest_updated_at.tzinfo is None:
