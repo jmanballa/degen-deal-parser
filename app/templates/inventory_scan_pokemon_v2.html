@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <meta name="theme-color" content="#08090a">
+    <meta name="permissions-policy" content="camera=*">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Degen v2">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+    <title>Degen Eye v2 — Fast Scanner</title>
+    <style>
+        :root {
+            --accent: #00c2ff;
+            --accent-strong: #0a8acc;
+            --bg-dark: #0b0e13;
+            --text: #f2f2f4;
+            --muted: #8a93a6;
+            --success: #4caf50;
+            --warn: #ff9800;
+            --danger: #f44336;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin:0; padding:0; background:var(--bg-dark); color:var(--text); height:100%; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+        a { color:inherit; }
+
+        .scanner-app { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; }
+
+        /* Top bar */
+        .top-bar { display:flex; align-items:center; gap:8px; padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px; background:linear-gradient(180deg, rgba(0,0,0,.75), rgba(0,0,0,.15) 70%, transparent); position:absolute; top:0; left:0; right:0; z-index:10; }
+        .top-bar-back { color:#fff; text-decoration:none; font-size:20px; padding:8px 10px; border-radius:8px; background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.12); }
+        .top-bar-title { font-size:15px; font-weight:800; color:#fff; letter-spacing:-.01em; text-shadow:0 1px 4px rgba(0,0,0,.4); display:flex; align-items:center; }
+        .v2-badge { font-size:10px; font-weight:800; letter-spacing:.08em; padding:3px 7px; border-radius:6px; background:linear-gradient(135deg, var(--accent), var(--accent-strong)); color:#fff; margin-left:6px; }
+        .v1-link { margin-left:auto; color:rgba(255,255,255,.7); font-size:12px; font-weight:600; text-decoration:none; padding:6px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.35); }
+
+        /* Camera viewport */
+        .cam-viewport { position:relative; flex:1; background:#0c0a08; overflow:hidden; }
+        video { width:100%; height:100%; object-fit:cover; display:block; }
+        canvas { display:none; }
+
+        .guide-overlay { position:absolute; inset:0; pointer-events:none; display:flex; align-items:center; justify-content:center; }
+        .guide-rect { width:68%; aspect-ratio:5/7; border:2px dashed rgba(255,255,255,.55); border-radius:12px; position:relative; pointer-events:none; box-shadow: 0 0 0 9999px rgba(0,0,0,.45); }
+        .guide-label { position:absolute; bottom:-24px; left:50%; transform:translateX(-50%); font-size:11px; color:rgba(255,255,255,.7); font-weight:600; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+
+        .cam-placeholder { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:rgba(255,255,255,.4); text-align:center; font-size:14px; font-weight:600; z-index:5; }
+        .cam-ph-icon { font-size:42px; }
+        .btn-cam-start { margin-top:12px; padding:12px 28px; border-radius:14px; border:none; background:linear-gradient(180deg,var(--accent),var(--accent-strong)); color:#fff; font:inherit; font-size:15px; font-weight:800; cursor:pointer; }
+
+        .flash-overlay { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .05s; z-index:8; }
+        .flash-overlay.active { opacity:.7; }
+
+        .focus-indicator { position:absolute; width:72px; height:72px; border:1.5px solid rgba(255,204,0,.95); border-radius:4px; transform:translate(-50%,-50%) scale(1.6); opacity:0; pointer-events:none; z-index:9; transition:transform .18s ease-out, opacity .18s ease-out; }
+        .focus-indicator.active { opacity:1; transform:translate(-50%,-50%) scale(1); }
+        .focus-indicator.fade { opacity:0; transition:opacity .5s ease-out .4s; }
+
+        .capture-btn { position:absolute; bottom:calc(88px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); width:72px; height:72px; border-radius:50%; border:4px solid rgba(255,255,255,.95); background:transparent; cursor:pointer; padding:0; z-index:10; transition:transform .1s; }
+        .capture-btn:active { transform:translateX(-50%) scale(.92); }
+        .capture-btn:disabled { opacity:.35; cursor:not-allowed; }
+        .capture-btn-inner { width:100%; height:100%; border-radius:50%; background:#fff; }
+
+        /* Live progressive result card */
+        .live-result { position:absolute; bottom:calc(180px + env(safe-area-inset-bottom,0px)); left:12px; right:12px; background:rgba(15,23,42,.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:12px 14px; z-index:10; display:none; color:#fff; }
+        .live-result.visible { display:block; animation:slideUp .25s ease-out; }
+        @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
+        .lr-row { display:flex; align-items:center; gap:10px; }
+        .lr-thumb { width:48px; height:68px; border-radius:6px; background:rgba(255,255,255,.06); object-fit:cover; flex-shrink:0; border:1px solid rgba(255,255,255,.08); }
+        .lr-meta { flex:1; min-width:0; }
+        .lr-name { font-weight:700; font-size:15px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .lr-sub { color:var(--muted); font-size:12px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .lr-price { font-weight:800; font-size:16px; color:var(--success); white-space:nowrap; }
+        .lr-price.pending { color:var(--muted); font-weight:500; }
+        .lr-progress { display:flex; gap:4px; margin-top:8px; }
+        .lr-dot { flex:1; height:3px; border-radius:2px; background:rgba(255,255,255,.1); transition:background .2s; }
+        .lr-dot.active { background:var(--accent); }
+        .lr-dot.done { background:var(--success); }
+        .lr-confidence { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.05em; padding:2px 6px; border-radius:4px; margin-left:6px; text-transform:uppercase; vertical-align:middle; }
+        .lr-confidence.HIGH { background:rgba(76,175,80,.25); color:#81c784; }
+        .lr-confidence.MEDIUM { background:rgba(255,152,0,.25); color:#ffb74d; }
+        .lr-confidence.LOW { background:rgba(244,67,54,.25); color:#e57373; }
+
+        /* Bottom bar */
+        .bottom-bar { position:absolute; bottom:0; left:0; right:0; padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px)); background:linear-gradient(0deg, rgba(0,0,0,.85), rgba(0,0,0,.2)); display:flex; align-items:center; gap:10px; z-index:9; }
+        .batch-count { color:#fff; font-weight:700; font-size:14px; }
+        .batch-count .num { color:var(--accent); font-size:20px; margin-right:2px; }
+        .bottom-bar .btn { padding:10px 14px; border-radius:10px; font-size:13px; font-weight:700; border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.4); color:#fff; cursor:pointer; text-decoration:none; }
+        .bottom-bar .btn.primary { background:linear-gradient(180deg,var(--accent),var(--accent-strong)); border-color:transparent; }
+
+        /* Toasts */
+        .toast-container { position:fixed; top:calc(56px + env(safe-area-inset-top,0px)); left:50%; transform:translateX(-50%); z-index:100; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+        .toast { background:rgba(15,23,42,.95); color:#fff; padding:10px 16px; border-radius:10px; border:1px solid rgba(255,255,255,.1); font-size:13px; font-weight:600; animation:toastIn .2s ease-out, toastOut .3s ease-in 2.4s forwards; box-shadow:0 6px 20px rgba(0,0,0,.45); }
+        .toast.err { border-color:rgba(244,67,54,.5); background:rgba(40,10,10,.95); }
+        @keyframes toastIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+        @keyframes toastOut { to { opacity:0; transform:translateY(-8px); } }
+
+        /* Status warning (e.g. index not built, camera denied) */
+        .status-bar { position:absolute; top:calc(56px + env(safe-area-inset-top,0px)); left:12px; right:12px; padding:8px 12px; background:rgba(255,152,0,.15); border:1px solid rgba(255,152,0,.4); border-radius:8px; color:#ffb74d; font-size:12px; font-weight:600; z-index:11; display:none; }
+        .status-bar.visible { display:block; }
+    </style>
+</head>
+<body>
+<div class="scanner-app" id="scanner-app">
+    <div class="top-bar">
+        <a class="top-bar-back" href="/inventory">&larr;</a>
+        <span class="top-bar-title">Degen Eye<span class="v2-badge">V2</span></span>
+        <a class="v1-link" href="/degen_eye">v1</a>
+    </div>
+
+    <div class="status-bar" id="status-bar"></div>
+
+    <div class="cam-viewport" id="cam-viewport">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+        <div class="guide-overlay"><div class="guide-rect"><span class="guide-label">Align card here</span></div></div>
+        <div class="cam-placeholder" id="camera-placeholder">
+            <div class="cam-ph-icon">&#128247;</div>
+            <div>Tap below to start scanning</div>
+            <button class="btn-cam-start" id="start-btn" onclick="V2.startCamera()">Start Camera</button>
+        </div>
+        <div class="flash-overlay" id="flash-overlay"></div>
+        <div class="focus-indicator" id="focus-indicator"></div>
+
+        <div class="live-result" id="live-result">
+            <div class="lr-row">
+                <img id="lr-thumb" class="lr-thumb" alt="">
+                <div class="lr-meta">
+                    <div class="lr-name" id="lr-name">Scanning&hellip;</div>
+                    <div class="lr-sub" id="lr-sub">&nbsp;</div>
+                </div>
+                <div class="lr-price pending" id="lr-price">&mdash;</div>
+            </div>
+            <div class="lr-progress">
+                <div class="lr-dot" id="lr-dot-detect"></div>
+                <div class="lr-dot" id="lr-dot-id"></div>
+                <div class="lr-dot" id="lr-dot-price"></div>
+                <div class="lr-dot" id="lr-dot-variants"></div>
+            </div>
+        </div>
+
+        <button class="capture-btn" id="capture-btn" disabled title="Capture card">
+            <div class="capture-btn-inner"></div>
+        </button>
+    </div>
+
+    <div class="bottom-bar">
+        <div class="batch-count"><span class="num" id="batch-count">0</span> <span id="batch-word">cards</span> scanned</div>
+        <div style="flex:1"></div>
+        <a class="btn" href="/degen_eye" id="review-btn">Review &rarr;</a>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+</div>
+
+<script>
+var V2 = (function() {
+    var stream = null;
+    var facingMode = 'environment';
+    var scanInFlight = false;
+
+    // Batch: shares localStorage key with v1 so added items flow into v1's
+    // review/confirm screens without v2 having to re-implement all of it.
+    var batch;
+    try {
+        batch = JSON.parse(localStorage.getItem('scan_batch') || '[]');
+        if (!Array.isArray(batch)) batch = [];
+    } catch (e) {
+        try { localStorage.removeItem('scan_batch'); } catch (_) {}
+        batch = [];
+    }
+
+    function saveBatch() {
+        try { localStorage.setItem('scan_batch', JSON.stringify(batch)); } catch (e) {}
+        var el = document.getElementById('batch-count');
+        var word = document.getElementById('batch-word');
+        if (el) el.textContent = String(batch.length);
+        if (word) word.textContent = batch.length === 1 ? 'card' : 'cards';
+    }
+
+    function showToast(text, cls, durationMs) {
+        var c = document.getElementById('toast-container');
+        if (!c) return;
+        var t = document.createElement('div');
+        t.className = 'toast' + (cls ? ' ' + cls : '');
+        t.textContent = text;
+        c.appendChild(t);
+        setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, durationMs || 2800);
+    }
+
+    function setStatus(msg) {
+        var el = document.getElementById('status-bar');
+        if (!el) return;
+        if (!msg) { el.classList.remove('visible'); el.textContent = ''; return; }
+        el.textContent = msg;
+        el.classList.add('visible');
+    }
+
+    function escHtml(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // --- Camera ---
+    async function startCamera() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                    frameRate: { ideal: 30, max: 30 }
+                }
+            });
+            var v = document.getElementById('video');
+            v.srcObject = stream;
+            document.getElementById('camera-placeholder').style.display = 'none';
+            document.getElementById('capture-btn').disabled = false;
+        } catch (e) {
+            setStatus('Camera access denied: ' + e.message);
+        }
+    }
+
+    function captureImage() {
+        var video = document.getElementById('video');
+        var canvas = document.getElementById('canvas');
+        var vw = video.videoWidth || 1280;
+        var vh = video.videoHeight || 720;
+        canvas.width = vw;
+        canvas.height = vh;
+        canvas.getContext('2d').drawImage(video, 0, 0, vw, vh);
+        return canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+    }
+
+    function flashEffect() {
+        var f = document.getElementById('flash-overlay');
+        f.classList.add('active');
+        setTimeout(function() { f.classList.remove('active'); }, 140);
+    }
+
+    var _focusFadeTimer = null;
+    function _showFocus(x, y) {
+        var vp = document.getElementById('cam-viewport');
+        var ind = document.getElementById('focus-indicator');
+        if (!vp || !ind) return;
+        var r = vp.getBoundingClientRect();
+        ind.classList.remove('active', 'fade');
+        void ind.offsetWidth;
+        ind.style.left = (x - r.left) + 'px';
+        ind.style.top = (y - r.top) + 'px';
+        ind.classList.add('active');
+        if (_focusFadeTimer) clearTimeout(_focusFadeTimer);
+        _focusFadeTimer = setTimeout(function() { ind.classList.add('fade'); }, 200);
+    }
+
+    function setupTap() {
+        var v = document.getElementById('video');
+        if (!v || v._tapBound) return;
+        v._tapBound = true;
+        v.addEventListener('click', function(e) {
+            if (!stream) return;
+            _showFocus(e.clientX, e.clientY);
+        });
+    }
+
+    // --- Progressive result card ---
+    function _showResult() {
+        document.getElementById('live-result').classList.add('visible');
+    }
+    function _hideResult() {
+        var lr = document.getElementById('live-result');
+        lr.classList.remove('visible');
+        ['lr-dot-detect', 'lr-dot-id', 'lr-dot-price', 'lr-dot-variants'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.className = 'lr-dot';
+        });
+        document.getElementById('lr-name').textContent = 'Scanning\u2026';
+        document.getElementById('lr-sub').innerHTML = '&nbsp;';
+        var p = document.getElementById('lr-price');
+        p.textContent = '\u2014';
+        p.className = 'lr-price pending';
+        document.getElementById('lr-thumb').src = '';
+    }
+    function _markDot(id, state) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.className = 'lr-dot ' + (state || 'active');
+    }
+
+    // --- SSE scan flow ---
+    async function runScan() {
+        if (scanInFlight) return;
+        if (!stream) { setStatus('Start the camera first.'); return; }
+        scanInFlight = true;
+        flashEffect();
+
+        var b64;
+        try { b64 = captureImage(); }
+        catch (e) { scanInFlight = false; showToast('Capture failed', 'err'); return; }
+
+        _hideResult();
+        _showResult();
+        _markDot('lr-dot-detect', 'active');
+
+        var scanId = null;
+        try {
+            var initResp = await fetch('/degen_eye/v2/scan-init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: b64, category_id: '3' })
+            });
+            if (!initResp.ok) {
+                var text = await initResp.text();
+                throw new Error('init HTTP ' + initResp.status + ': ' + text.slice(0, 160));
+            }
+            var initData = await initResp.json();
+            scanId = initData.scan_id;
+        } catch (e) {
+            scanInFlight = false;
+            _hideResult();
+            showToast('Scan failed: ' + e.message, 'err', 3500);
+            return;
+        }
+
+        var es = new EventSource('/degen_eye/v2/scan-stream?scan_id=' + encodeURIComponent(scanId));
+        var finalResult = null;
+
+        es.addEventListener('detected', function(ev) {
+            _markDot('lr-dot-detect', 'done');
+            _markDot('lr-dot-id', 'active');
+            try {
+                var d = JSON.parse(ev.data);
+                if (!d.found) {
+                    document.getElementById('lr-sub').innerHTML = 'Card edges not found &mdash; using raw image';
+                }
+            } catch (_) {}
+        });
+
+        es.addEventListener('identified', function(ev) {
+            _markDot('lr-dot-id', 'done');
+            _markDot('lr-dot-price', 'active');
+            try {
+                var d = JSON.parse(ev.data);
+                document.getElementById('lr-name').innerHTML =
+                    escHtml(d.name || 'Unknown') +
+                    (d.confidence ? '<span class="lr-confidence ' + escHtml(d.confidence) + '">' + escHtml(d.confidence) + '</span>' : '');
+                var sub = [escHtml(d.set_name || '')];
+                if (d.number) sub.push('#' + escHtml(d.number));
+                if (d.source) sub.push('via ' + escHtml(d.source));
+                document.getElementById('lr-sub').innerHTML = sub.filter(Boolean).join(' \u00b7 ');
+            } catch (_) {}
+        });
+
+        es.addEventListener('price', function(ev) {
+            _markDot('lr-dot-price', 'done');
+            _markDot('lr-dot-variants', 'active');
+            try {
+                var d = JSON.parse(ev.data);
+                var p = document.getElementById('lr-price');
+                if (d.market_price != null) {
+                    p.textContent = '$' + Number(d.market_price).toFixed(2);
+                    p.className = 'lr-price';
+                } else {
+                    p.textContent = 'No price';
+                    p.className = 'lr-price pending';
+                }
+                if (d.image_url) document.getElementById('lr-thumb').src = d.image_url;
+            } catch (_) {}
+        });
+
+        es.addEventListener('variants', function(ev) {
+            _markDot('lr-dot-variants', 'done');
+        });
+
+        es.addEventListener('done', function(ev) {
+            try { finalResult = JSON.parse(ev.data); } catch (_) {}
+            es.close();
+            scanInFlight = false;
+            if (finalResult && finalResult.best_match) {
+                addToBatch(finalResult);
+                setTimeout(_hideResult, 900);
+            } else {
+                setTimeout(_hideResult, 1500);
+            }
+        });
+
+        es.addEventListener('error', function(ev) {
+            var msg = 'Stream error';
+            try { var d = JSON.parse(ev.data || '{}'); if (d.error) msg = d.error; } catch (_) {}
+            showToast(msg, 'err', 3500);
+            es.close();
+            scanInFlight = false;
+            _hideResult();
+        });
+
+        // Browser-level error (connection drop) has no .data
+        es.onerror = function() {
+            if (es.readyState === EventSource.CLOSED) return;
+            es.close();
+            scanInFlight = false;
+        };
+    }
+
+    function addToBatch(result) {
+        var m = result.best_match || {};
+        var variants = m.available_variants || [];
+        var variant = '';
+        var autoPrice = m.market_price;
+        if (variants.length) {
+            variant = variants[0].name || '';
+            if (variants[0].price != null) autoPrice = variants[0].price;
+        }
+        var item = {
+            card_name: m.name || '',
+            game: result.game || 'Pokemon',
+            condition: 'NM',
+            set_name: m.set_name || '',
+            card_number: m.number || '',
+            image_url: m.image_url || '',
+            auto_price: autoPrice,
+            is_foil: (variant || '').toLowerCase().indexOf('holo') >= 0,
+            variant: variant,
+            notes: 'Scanner: Degen Eye v2',
+            _available_variants: variants,
+            _source: 'v2'
+        };
+        batch.push(item);
+        saveBatch();
+        showToast('\u2713 ' + (m.name || 'Card') + ' added');
+    }
+
+    // --- Init ---
+    saveBatch();
+    document.getElementById('capture-btn').addEventListener('click', runScan);
+    if (window.innerWidth <= 780) { startCamera(); }
+    setupTap();
+
+    return {
+        startCamera: startCamera,
+        runScan: runScan
+    };
+})();
+</script>
+</body>
+</html>

@@ -28,6 +28,9 @@ from .auth import has_role
 from .card_scanner import identify_card_from_image, lookup_card_image_and_price
 from .cert_lookup import lookup_cert
 from .pokemon_scanner import run_pipeline as run_pokemon_pipeline, get_scan_history, fetch_tcg_categories, get_validation_result, text_search_cards
+from .degen_eye_v2 import run_v2_pipeline, run_v2_pipeline_stream
+from .phash_scanner import get_index_stats as phash_index_stats, has_index as phash_has_index
+from .price_cache import get_warm_stats as price_cache_stats, warm_price_cache
 from .config import get_settings
 from .db import get_session
 from .inventory_barcode import (
@@ -878,6 +881,165 @@ loadHistory();
 setInterval(function(){if(document.getElementById('autoRefresh').checked)loadHistory();},3000);
 </script>
 </body></html>""")
+
+
+# ---------------------------------------------------------------------------
+# Degen Eye v2 — pHash-first scanner (Pokemon MVP, targets sub-1-second)
+# ---------------------------------------------------------------------------
+# v2 runs entirely locally for identification: OpenCV card detection,
+# perceptual-hash nearest-neighbor lookup against a pre-built index of
+# every Pokemon card, and a pre-warmed TCGTracking price cache. v1 is
+# untouched — both scanners coexist under /degen_eye.
+
+@router.get("/degen_eye/v2", response_class=HTMLResponse)
+async def degen_eye_v2_page(request: Request):
+    if denial := _require_employee(request):
+        return denial
+    return _templates.TemplateResponse(
+        request,
+        "inventory_scan_pokemon_v2.html",
+        {"current_user": _current_user(request), "conditions": CONDITIONS},
+    )
+
+
+@router.post("/degen_eye/v2/scan")
+async def degen_eye_v2_scan(request: Request):
+    """Non-streaming v2 scan — accepts a base64 image, returns a full ScanResult.
+
+    Request body: {"image": "<base64>", "category_id": "3"}
+    Response shape mirrors v1's /degen_eye/identify so the existing batch
+    UI helpers work without changes.
+    """
+    if denial := _require_employee(request):
+        return denial
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    image_b64 = (body.get("image") or "").strip()
+    if not image_b64:
+        return JSONResponse({"error": "Missing image field"}, status_code=400)
+    category_id = (body.get("category_id") or "3").strip()
+
+    result = await run_v2_pipeline(image_b64, category_id=category_id)
+    status_code = 422 if result.get("status") == "ERROR" else 200
+    return JSONResponse(result, status_code=status_code)
+
+
+@router.post("/degen_eye/v2/scan-init")
+async def degen_eye_v2_scan_init(request: Request):
+    """Prepare a streaming scan and return a ``scan_id`` to connect via SSE.
+
+    We stash the uploaded image in an in-memory map keyed by scan_id; the
+    SSE endpoint retrieves it and runs the pipeline. This keeps the SSE
+    URL query-string small enough that browsers don't balk.
+    """
+    if denial := _require_employee(request):
+        return denial
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    image_b64 = (body.get("image") or "").strip()
+    if not image_b64:
+        return JSONResponse({"error": "Missing image field"}, status_code=400)
+    category_id = (body.get("category_id") or "3").strip()
+
+    import uuid as _uuid
+    import time as _time
+    scan_id = _uuid.uuid4().hex
+    _V2_PENDING_SCANS[scan_id] = (_time.monotonic(), image_b64, category_id)
+    # Evict entries older than 120s so the map can't grow forever if clients
+    # never open the SSE connection.
+    _evict_stale_v2_pending()
+    return JSONResponse({"scan_id": scan_id})
+
+
+# Small in-memory buffer so scan-init can hand a scan off to scan-stream
+# without blowing the SSE URL past browser query-length limits.
+_V2_PENDING_SCANS: dict[str, tuple[float, str, str]] = {}
+_V2_PENDING_TTL = 120.0
+_V2_PENDING_MAX = 200
+
+
+def _evict_stale_v2_pending() -> None:
+    import time as _time
+    now = _time.monotonic()
+    stale = [k for k, (ts, _img, _cat) in _V2_PENDING_SCANS.items() if now - ts > _V2_PENDING_TTL]
+    for k in stale:
+        _V2_PENDING_SCANS.pop(k, None)
+    if len(_V2_PENDING_SCANS) > _V2_PENDING_MAX:
+        # Drop the oldest to keep the map bounded
+        oldest = sorted(_V2_PENDING_SCANS.items(), key=lambda kv: kv[1][0])[: len(_V2_PENDING_SCANS) - _V2_PENDING_MAX]
+        for k, _ in oldest:
+            _V2_PENDING_SCANS.pop(k, None)
+
+
+@router.get("/degen_eye/v2/scan-stream")
+async def degen_eye_v2_scan_stream(request: Request, scan_id: str):
+    """Server-Sent Events stream of a v2 scan's progressive results.
+
+    Events emitted in order: detected, identified, price, variants, done.
+    ``event: error`` is emitted on unrecoverable failures before done.
+    """
+    if denial := _require_employee(request):
+        return denial
+
+    pending = _V2_PENDING_SCANS.pop(scan_id, None)
+    if pending is None:
+        return JSONResponse(
+            {"error": "Unknown or expired scan_id; POST to /degen_eye/v2/scan-init first"},
+            status_code=404,
+        )
+    _, image_b64, category_id = pending
+
+    async def _event_source():
+        import json as _json
+        try:
+            async for event_name, payload in run_v2_pipeline_stream(image_b64, category_id):
+                safe_payload = _json.dumps(payload, default=str)
+                yield f"event: {event_name}\ndata: {safe_payload}\n\n"
+                # Disconnection check — bail early if the client closed the tab.
+                if await request.is_disconnected():
+                    logger.info("[degen_eye_v2] SSE client disconnected mid-scan (scan_id=%s)", scan_id)
+                    return
+        except Exception as exc:
+            logger.exception("[degen_eye_v2] SSE pipeline crashed: %s", exc)
+            yield f"event: error\ndata: {{\"error\": {_json.dumps(str(exc))}}}\n\n"
+
+    from fastapi.responses import StreamingResponse as _StreamingResponse
+    return _StreamingResponse(
+        _event_source(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",  # disable nginx buffering so events flush
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.get("/degen_eye/v2/stats")
+async def degen_eye_v2_stats(request: Request):
+    """Admin-ish JSON: index size, last build, cache warm state."""
+    if denial := _require_employee(request):
+        return denial
+    return JSONResponse({
+        "phash_index": phash_index_stats(),
+        "price_cache": price_cache_stats(),
+        "pending_scans": len(_V2_PENDING_SCANS),
+    })
+
+
+@router.post("/degen_eye/v2/warm")
+async def degen_eye_v2_warm(request: Request):
+    """Trigger an on-demand price-cache warm (reviewer-only — it's network-heavy)."""
+    if denial := _require_reviewer(request):
+        return denial
+    stats = await warm_price_cache()
+    return JSONResponse(stats)
 
 
 # ---------------------------------------------------------------------------
