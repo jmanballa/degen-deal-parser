@@ -10,6 +10,17 @@
        read-only mode (mirror of /stream-manager).
        ====================================================================== */
 
+    /* Schedule page is wide by nature (employee column + 7 days + totals).
+       Opt out of the 1160px / 1200px admin content caps so the grid can
+       stretch to fill the viewport and avoid horizontal scrolling on
+       normal-sized screens. Keep a little breathing room on very wide
+       monitors via the 1800px cap. */
+    main.pt-main { max-width: 100%; padding-left: 28px; padding-right: 28px; }
+    .ta-main-inner { max-width: 1800px; }
+    @media (max-width: 860px) {
+        main.pt-main { padding-left: 14px; padding-right: 14px; }
+    }
+
     .sch-wrap { overflow-x: auto; }
     .sch-table {
         border-collapse: collapse;
