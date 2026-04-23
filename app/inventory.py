@@ -6,9 +6,12 @@ push-to-shopify) require 'reviewer' or above.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
+import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -920,6 +923,8 @@ async def degen_eye_v2_scan(request: Request):
     image_b64 = (body.get("image") or "").strip()
     if not image_b64:
         return JSONResponse({"error": "Missing image field"}, status_code=400)
+    if len(image_b64) > _V2_MAX_SCAN_IMAGE_B64_CHARS:
+        return JSONResponse({"error": "Image is too large"}, status_code=413)
     category_id = (body.get("category_id") or "3").strip()
 
     result = await run_v2_pipeline(image_b64, category_id=category_id)
@@ -931,9 +936,10 @@ async def degen_eye_v2_scan(request: Request):
 async def degen_eye_v2_scan_init(request: Request):
     """Prepare a streaming scan and return a ``scan_id`` to connect via SSE.
 
-    We stash the uploaded image in an in-memory map keyed by scan_id; the
-    SSE endpoint retrieves it and runs the pipeline. This keeps the SSE
-    URL query-string small enough that browsers don't balk.
+    We stash the uploaded image in a short-lived file keyed by scan_id; the
+    SSE endpoint atomically claims it and runs the pipeline. This keeps the
+    URL query-string small and works when scan-init and scan-stream land on
+    different web workers.
     """
     if denial := _require_employee(request):
         return denial
@@ -945,36 +951,134 @@ async def degen_eye_v2_scan_init(request: Request):
     image_b64 = (body.get("image") or "").strip()
     if not image_b64:
         return JSONResponse({"error": "Missing image field"}, status_code=400)
+    if len(image_b64) > _V2_MAX_SCAN_IMAGE_B64_CHARS:
+        return JSONResponse({"error": "Image is too large"}, status_code=413)
     category_id = (body.get("category_id") or "3").strip()
 
-    import uuid as _uuid
-    import time as _time
-    scan_id = _uuid.uuid4().hex
-    _V2_PENDING_SCANS[scan_id] = (_time.monotonic(), image_b64, category_id)
-    # Evict entries older than 120s so the map can't grow forever if clients
-    # never open the SSE connection.
-    _evict_stale_v2_pending()
+    scan_id = uuid.uuid4().hex
+    try:
+        _write_v2_pending_scan(scan_id, image_b64, category_id)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except OSError as exc:
+        logger.warning("[degen_eye_v2] failed to stage pending scan: %s", exc)
+        return JSONResponse({"error": "Unable to stage scan"}, status_code=500)
     return JSONResponse({"scan_id": scan_id})
 
 
-# Small in-memory buffer so scan-init can hand a scan off to scan-stream
-# without blowing the SSE URL past browser query-length limits.
-_V2_PENDING_SCANS: dict[str, tuple[float, str, str]] = {}
+# Small file-backed buffer so scan-init can hand a scan off to scan-stream
+# without blowing the SSE URL past browser query-length limits. This must not
+# be process-local: with multiple uvicorn/gunicorn workers, the POST and SSE GET
+# can land in different processes on the same host.
+_V2_PENDING_DIR = Path(__file__).resolve().parent.parent / "data" / "v2_pending_scans"
 _V2_PENDING_TTL = 120.0
 _V2_PENDING_MAX = 200
+_V2_MAX_SCAN_IMAGE_B64_CHARS = 12 * 1024 * 1024
+_V2_MAX_DETECT_IMAGE_B64_CHARS = 2 * 1024 * 1024
+_V2_HEX_CHARS = set("0123456789abcdef")
+
+
+def _is_v2_scan_id(scan_id: str) -> bool:
+    scan_id = (scan_id or "").strip().lower()
+    return len(scan_id) == 32 and all(c in _V2_HEX_CHARS for c in scan_id)
+
+
+def _v2_pending_path(scan_id: str) -> Path:
+    return _V2_PENDING_DIR / f"{scan_id}.json"
+
+
+def _iter_v2_pending_files() -> list[Path]:
+    if not _V2_PENDING_DIR.exists():
+        return []
+    return [
+        p for p in _V2_PENDING_DIR.iterdir()
+        if p.is_file() and (p.name.endswith(".json") or p.name.endswith(".json.claimed"))
+    ]
 
 
 def _evict_stale_v2_pending() -> None:
-    import time as _time
-    now = _time.monotonic()
-    stale = [k for k, (ts, _img, _cat) in _V2_PENDING_SCANS.items() if now - ts > _V2_PENDING_TTL]
-    for k in stale:
-        _V2_PENDING_SCANS.pop(k, None)
-    if len(_V2_PENDING_SCANS) > _V2_PENDING_MAX:
-        # Drop the oldest to keep the map bounded
-        oldest = sorted(_V2_PENDING_SCANS.items(), key=lambda kv: kv[1][0])[: len(_V2_PENDING_SCANS) - _V2_PENDING_MAX]
-        for k, _ in oldest:
-            _V2_PENDING_SCANS.pop(k, None)
+    now = time.time()
+    _V2_PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    files = _iter_v2_pending_files()
+    for path in files:
+        try:
+            if now - path.stat().st_mtime > _V2_PENDING_TTL:
+                path.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("[degen_eye_v2] unable to inspect/remove pending file %s", path, exc_info=True)
+
+    active = [p for p in _iter_v2_pending_files() if p.name.endswith(".json")]
+    overflow = len(active) - _V2_PENDING_MAX
+    if overflow > 0:
+        oldest = sorted(active, key=lambda p: p.stat().st_mtime)[:overflow]
+        for path in oldest:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("[degen_eye_v2] unable to evict pending file %s", path, exc_info=True)
+
+
+def _write_v2_pending_scan(scan_id: str, image_b64: str, category_id: str) -> None:
+    if not _is_v2_scan_id(scan_id):
+        raise ValueError("Invalid scan id")
+    if len(image_b64) > _V2_MAX_SCAN_IMAGE_B64_CHARS:
+        raise ValueError("Image is too large")
+    _evict_stale_v2_pending()
+    payload = {
+        "created_at": time.time(),
+        "image": image_b64,
+        "category_id": category_id,
+    }
+    path = _v2_pending_path(scan_id)
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def _claim_v2_pending_scan(scan_id: str) -> Optional[tuple[str, str]]:
+    if not _is_v2_scan_id(scan_id):
+        return None
+    _evict_stale_v2_pending()
+    path = _v2_pending_path(scan_id)
+    claimed = path.with_name(f"{path.name}.claimed")
+    try:
+        path.replace(claimed)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        logger.warning("[degen_eye_v2] failed to claim scan_id=%s: %s", scan_id, exc)
+        return None
+
+    try:
+        payload = json.loads(claimed.read_text(encoding="utf-8"))
+        created_at = float(payload.get("created_at") or 0)
+        if time.time() - created_at > _V2_PENDING_TTL:
+            return None
+        image_b64 = str(payload.get("image") or "")
+        category_id = str(payload.get("category_id") or "3")
+        if not image_b64:
+            return None
+        return (image_b64, category_id)
+    except Exception as exc:
+        logger.warning("[degen_eye_v2] failed to read pending scan %s: %s", scan_id, exc)
+        return None
+    finally:
+        try:
+            claimed.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("[degen_eye_v2] unable to remove claimed pending scan %s", claimed, exc_info=True)
+
+
+def _count_v2_pending_scans() -> int:
+    _evict_stale_v2_pending()
+    return len([p for p in _iter_v2_pending_files() if p.name.endswith(".json")])
 
 
 @router.get("/degen_eye/v2/scan-stream")
@@ -987,17 +1091,18 @@ async def degen_eye_v2_scan_stream(request: Request, scan_id: str):
     if denial := _require_employee(request):
         return denial
 
-    pending = _V2_PENDING_SCANS.pop(scan_id, None)
+    pending = _claim_v2_pending_scan(scan_id)
     if pending is None:
         return JSONResponse(
             {"error": "Unknown or expired scan_id; POST to /degen_eye/v2/scan-init first"},
             status_code=404,
         )
-    _, image_b64, category_id = pending
+    image_b64, category_id = pending
 
     async def _event_source():
         import json as _json
         try:
+            yield ": connected\n\n"
             async for event_name, payload in run_v2_pipeline_stream(image_b64, category_id):
                 safe_payload = _json.dumps(payload, default=str)
                 yield f"event: {event_name}\ndata: {safe_payload}\n\n"
@@ -1056,13 +1161,15 @@ async def degen_eye_v2_detect_only(request: Request):
         return JSONResponse({"error": "Missing image field"}, status_code=400)
     if "," in image_b64:
         image_b64 = image_b64.split(",", 1)[1]
+    if len(image_b64) > _V2_MAX_DETECT_IMAGE_B64_CHARS:
+        return JSONResponse({"error": "Image is too large"}, status_code=413)
     try:
         raw = _b64.b64decode(image_b64)
     except Exception:
         return JSONResponse({"error": "Invalid base64"}, status_code=400)
 
     t_start = _time.monotonic()
-    result = detect_box(raw)
+    result = await asyncio.to_thread(detect_box, raw)
     result["elapsed_ms"] = round((_time.monotonic() - t_start) * 1000, 1)
     return JSONResponse(result)
 
@@ -1075,7 +1182,7 @@ async def degen_eye_v2_stats(request: Request):
     return JSONResponse({
         "phash_index": phash_index_stats(),
         "price_cache": price_cache_stats(),
-        "pending_scans": len(_V2_PENDING_SCANS),
+        "pending_scans": _count_v2_pending_scans(),
         "v2_history_entries": len(get_v2_scan_history()),
     })
 

@@ -25,15 +25,17 @@ import asyncio
 import base64
 import collections
 import datetime as _dt
+import json
 import logging
 import time
 from dataclasses import asdict
+from pathlib import Path
+from threading import Lock
 from typing import Any, AsyncIterator, Optional
 
 from .card_detect import detect_and_crop
 from .config import get_settings
 from .phash_scanner import (
-    HIGH_THRESHOLD,
     MEDIUM_THRESHOLD,
     PhashMatch,
     has_index,
@@ -59,6 +61,24 @@ logger = logging.getLogger(__name__)
 # buffer semantics (maxlen=25).
 # ---------------------------------------------------------------------------
 _V2_SCAN_HISTORY: collections.deque[dict] = collections.deque(maxlen=25)
+_ROOT = Path(__file__).resolve().parent.parent
+_V2_HISTORY_PATH = _ROOT / "data" / "v2_scan_history.jsonl"
+_V2_HISTORY_LOCK = Lock()
+_V2_HISTORY_MAX_BYTES = 1024 * 1024
+
+
+def _append_v2_history_file(entry: dict) -> None:
+    try:
+        _V2_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(entry, default=str, separators=(",", ":"))
+        with _V2_HISTORY_LOCK:
+            with _V2_HISTORY_PATH.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+            if _V2_HISTORY_PATH.stat().st_size > _V2_HISTORY_MAX_BYTES:
+                lines = _V2_HISTORY_PATH.read_text(encoding="utf-8", errors="ignore").splitlines()
+                _V2_HISTORY_PATH.write_text("\n".join(lines[-200:]) + "\n", encoding="utf-8")
+    except OSError:
+        logger.debug("[degen_eye_v2] unable to persist v2 history", exc_info=True)
 
 
 def _save_v2_history(result: dict) -> None:
@@ -92,10 +112,26 @@ def _save_v2_history(result: dict) -> None:
         "debug": dbg,
     }
     _V2_SCAN_HISTORY.appendleft(entry)
+    _append_v2_history_file(entry)
 
 
 def get_v2_scan_history() -> list[dict]:
     """Return the recent v2-only scan history (newest first)."""
+    try:
+        if _V2_HISTORY_PATH.exists():
+            lines = _V2_HISTORY_PATH.read_text(encoding="utf-8", errors="ignore").splitlines()
+            entries: list[dict] = []
+            for line in reversed(lines[-100:]):
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+                if len(entries) >= 25:
+                    break
+            if entries:
+                return entries
+    except OSError:
+        logger.debug("[degen_eye_v2] unable to read v2 history file", exc_info=True)
     return list(_V2_SCAN_HISTORY)
 
 
@@ -131,6 +167,57 @@ def _phash_match_to_candidate(match: PhashMatch) -> ScoredCandidate:
         confidence=match.confidence,
         match_reason=f"pHash d={match.distance}",
     )
+
+
+def _same_card_core(name_a: str, number_a: str, name_b: str, number_b: str) -> bool:
+    return (
+        (name_a or "").strip().lower() == (name_b or "").strip().lower()
+        and (number_a or "").split("/")[0].strip().lstrip("0")
+        == (number_b or "").split("/")[0].strip().lstrip("0")
+    )
+
+
+def _ximilar_best_to_candidate(ximilar_result: Optional[dict]) -> Optional[ScoredCandidate]:
+    if not ximilar_result:
+        return None
+    x_best = ximilar_result.get("best_match") or {}
+    x_name = x_best.get("name") or ""
+    if not x_name:
+        return None
+    return ScoredCandidate(
+        id=x_best.get("id") or "",
+        name=x_name,
+        number=x_best.get("number") or "",
+        set_id=x_best.get("set_id") or "",
+        set_name=x_best.get("set_name") or "",
+        image_url=x_best.get("image_url") or "",
+        image_url_small=x_best.get("image_url_small") or "",
+        source="ximilar",
+        score=float(x_best.get("score") or 50.0),
+        confidence=x_best.get("confidence") or "MEDIUM",
+        match_reason="ximilar fallback",
+        tcgplayer_url=x_best.get("tcgplayer_url"),
+        available_variants=list(x_best.get("available_variants") or []),
+        market_price=x_best.get("market_price"),
+    )
+
+
+def _merge_ximilar_candidate(
+    candidates: list[ScoredCandidate],
+    ximilar_result: Optional[dict],
+    *,
+    prefer_ximilar_top: bool,
+) -> None:
+    x_candidate = _ximilar_best_to_candidate(ximilar_result)
+    if x_candidate is None:
+        return
+    already = any(
+        _same_card_core(c.name, c.number, x_candidate.name, x_candidate.number)
+        for c in candidates
+    )
+    if already:
+        return
+    candidates.insert(0 if prefer_ximilar_top else min(1, len(candidates)), x_candidate)
 
 
 async def _enrich_top_candidate(
@@ -193,16 +280,14 @@ async def _run_ximilar_fallback(
     ``_run_ximilar_pipeline`` writes its own entry into v1's ``_scan_history``
     ring buffer. Since this call was triggered by a v2 scan we don't want it
     to appear in v1's debug/history endpoints — the v2 orchestrator will
-    record the wrapped result into ``_V2_SCAN_HISTORY`` separately. Snapshot
-    v1's history length before the call and pop the entry Ximilar added so
-    v1's history stays "pure v1".
+    record the wrapped result into ``_V2_SCAN_HISTORY`` separately. After the
+    call returns, pop the newest v1 entry so v1's history stays "pure v1".
     """
     settings = get_settings()
     if not settings.ximilar_api_token:
         debug["ximilar_fallback"] = "skipped_no_token"
         return None
 
-    v1_hist_len_before = len(_V1_SCAN_HISTORY)
     t_ximilar = time.monotonic()
     try:
         result = await _run_ximilar_pipeline(
@@ -213,15 +298,13 @@ async def _run_ximilar_fallback(
         debug["ximilar_fallback"] = f"error: {exc}"
         return None
 
-    # Ximilar pipeline appendleft-ed one history entry. Because asyncio is
-    # cooperative + single-threaded, no other scan ran between Ximilar's
-    # save and our read here, so popleft is race-free and removes exactly
-    # the entry Ximilar added.
-    if len(_V1_SCAN_HISTORY) > v1_hist_len_before:
-        try:
-            _V1_SCAN_HISTORY.popleft()
-        except IndexError:
-            pass
+    # Ximilar pipeline appendleft-ed one history entry. There is no await
+    # between that save and the return to this coroutine, so the newest entry
+    # is the fallback result even when the deque was already at maxlen.
+    try:
+        _V1_SCAN_HISTORY.popleft()
+    except IndexError:
+        pass
 
     debug["ximilar_fallback_elapsed_ms"] = _elapsed(t_ximilar)
     debug["ximilar_fallback"] = "ran"
@@ -261,11 +344,13 @@ async def run_v2_pipeline(image_b64: str, category_id: str = "3") -> dict[str, A
             status="ERROR", error="Invalid base64 image",
             processing_time_ms=_elapsed(t_start),
         ))
-        return _stamp(result, category_id, v2_debug)
+        out = _stamp(result, category_id, v2_debug)
+        _save_v2_history(out)
+        return out
 
     # Stage 1: card detection + rectification
     t_detect = time.monotonic()
-    crop_bytes, detect_debug = detect_and_crop(raw_bytes)
+    crop_bytes, detect_debug = await asyncio.to_thread(detect_and_crop, raw_bytes)
     v2_debug["stages_ms"]["detect"] = _elapsed(t_detect)
     v2_debug["detect"] = detect_debug
 
@@ -273,7 +358,7 @@ async def run_v2_pipeline(image_b64: str, category_id: str = "3") -> dict[str, A
     image_for_hash = crop_bytes if crop_bytes else raw_bytes
 
     # Stage 2: pHash lookup
-    if not has_index():
+    if not await asyncio.to_thread(has_index):
         # Index isn't built yet — log once, immediately fall back to Ximilar so
         # the server is still useful even before the offline build has run.
         v2_debug["phash"] = {"skipped": "index_not_built"}
@@ -292,25 +377,31 @@ async def run_v2_pipeline(image_b64: str, category_id: str = "3") -> dict[str, A
             error="pHash index not built and Ximilar unavailable. Run scripts/build_phash_index.py.",
             processing_time_ms=_elapsed(t_start),
         ))
-        return _stamp(result, category_id, v2_debug)
+        out = _stamp(result, category_id, v2_debug)
+        _save_v2_history(out)
+        return out
 
     t_phash = time.monotonic()
-    phash_value, matches = lookup(image_for_hash, top_n=5)
+    phash_value, matches = await asyncio.to_thread(lookup, image_for_hash, top_n=5)
+    phash_source = "crop" if crop_bytes else "raw"
     # If we warped and the best distance is still weak, also try the raw
     # input. Card detection's perspective transform can introduce small
     # resampling shifts that move the pHash even when the content is right;
     # the raw image may produce a tighter match.
-    if crop_bytes and (not matches or matches[0].distance > HIGH_THRESHOLD):
-        _, raw_matches = lookup(raw_bytes, top_n=5)
+    if crop_bytes and (not matches or matches[0].distance > MEDIUM_THRESHOLD):
+        raw_phash_value, raw_matches = await asyncio.to_thread(lookup, raw_bytes, top_n=5)
         if raw_matches and (not matches or raw_matches[0].distance < matches[0].distance):
             v2_debug["raw_image_preferred"] = {
                 "crop_distance": matches[0].distance if matches else None,
                 "raw_distance": raw_matches[0].distance,
             }
+            phash_value = raw_phash_value
+            phash_source = "raw"
             matches = raw_matches
     v2_debug["stages_ms"]["phash"] = _elapsed(t_phash)
     v2_debug["phash"] = {
         "value": phash_value,
+        "source": phash_source,
         "top": [
             {
                 "name": m.entry.name, "number": m.entry.number,
@@ -336,7 +427,9 @@ async def run_v2_pipeline(image_b64: str, category_id: str = "3") -> dict[str, A
             status="NO_MATCH", error="No pHash match and Ximilar unavailable",
             processing_time_ms=_elapsed(t_start),
         ))
-        return _stamp(result, category_id, v2_debug)
+        out = _stamp(result, category_id, v2_debug)
+        _save_v2_history(out)
+        return out
 
     top_match = matches[0]
 
@@ -356,34 +449,16 @@ async def run_v2_pipeline(image_b64: str, category_id: str = "3") -> dict[str, A
     # Ximilar ran, we merge the two top results.
     candidates: list[ScoredCandidate] = [_phash_match_to_candidate(m) for m in matches]
 
-    if ximilar_result:
-        x_best = (ximilar_result.get("best_match") or {})
-        x_num = x_best.get("number") or ""
-        x_name = x_best.get("name") or ""
-        already = any(
-            (c.name or "").strip().lower() == x_name.strip().lower()
-            and (c.number or "").split("/")[0].lstrip("0") == x_num.split("/")[0].lstrip("0")
-            for c in candidates
-        )
-        if x_name and not already:
-            candidates.insert(0 if top_match.confidence == "LOW" else 1, ScoredCandidate(
-                id=x_best.get("id") or "",
-                name=x_name, number=x_num,
-                set_id=x_best.get("set_id") or "",
-                set_name=x_best.get("set_name") or "",
-                image_url=x_best.get("image_url") or "",
-                image_url_small=x_best.get("image_url_small") or "",
-                source="ximilar",
-                score=float(x_best.get("score") or 50.0),
-                confidence=x_best.get("confidence") or "MEDIUM",
-                match_reason="ximilar fallback",
-                tcgplayer_url=x_best.get("tcgplayer_url"),
-                available_variants=list(x_best.get("available_variants") or []),
-                market_price=x_best.get("market_price"),
-            ))
-
-    # Stage 4: price enrichment for the top candidate
+    # Stage 4: price enrichment for the pHash top candidate. Do this before
+    # inserting a disagreeing Ximilar candidate so price/image data cannot be
+    # applied to the wrong card.
     await _enrich_top_candidate(candidates, matches, category_id, v2_debug)
+    if ximilar_result:
+        _merge_ximilar_candidate(
+            candidates,
+            ximilar_result,
+            prefer_ximilar_top=(top_match.confidence == "LOW" and not phash_ximilar_agree),
+        )
 
     # Stage 5: decide the final status
     top = candidates[0]
@@ -450,11 +525,17 @@ async def run_v2_pipeline_stream(
     raw_bytes = _b64_to_bytes(image_b64)
     if raw_bytes is None:
         yield ("error", {"error": "Invalid base64 image"})
+        result = asdict(ScanResult(
+            status="ERROR",
+            error="Invalid base64 image",
+            processing_time_ms=_elapsed(t_start),
+        ))
+        _save_v2_history(_stamp(result, category_id, v2_debug))
         return
 
     # --- Stage 1: detect + crop ---
     t_detect = time.monotonic()
-    crop_bytes, detect_debug = detect_and_crop(raw_bytes)
+    crop_bytes, detect_debug = await asyncio.to_thread(detect_and_crop, raw_bytes)
     v2_debug["stages_ms"]["detect"] = _elapsed(t_detect)
     v2_debug["detect"] = detect_debug
     image_for_hash = crop_bytes if crop_bytes else raw_bytes
@@ -467,20 +548,24 @@ async def run_v2_pipeline_stream(
     # --- Stage 2: pHash lookup (or skip straight to Ximilar) ---
     matches: list[PhashMatch] = []
     ximilar_result: Optional[dict] = None
-    if has_index():
+    phash_source = "crop" if crop_bytes else "raw"
+    if await asyncio.to_thread(has_index):
         t_phash = time.monotonic()
-        phash_value, matches = lookup(image_for_hash, top_n=5)
-        if crop_bytes and (not matches or matches[0].distance > HIGH_THRESHOLD):
-            _, raw_matches = lookup(raw_bytes, top_n=5)
+        phash_value, matches = await asyncio.to_thread(lookup, image_for_hash, top_n=5)
+        if crop_bytes and (not matches or matches[0].distance > MEDIUM_THRESHOLD):
+            raw_phash_value, raw_matches = await asyncio.to_thread(lookup, raw_bytes, top_n=5)
             if raw_matches and (not matches or raw_matches[0].distance < matches[0].distance):
                 v2_debug["raw_image_preferred"] = {
                     "crop_distance": matches[0].distance if matches else None,
                     "raw_distance": raw_matches[0].distance,
                 }
+                phash_value = raw_phash_value
+                phash_source = "raw"
                 matches = raw_matches
         v2_debug["stages_ms"]["phash"] = _elapsed(t_phash)
         v2_debug["phash"] = {
             "value": phash_value,
+            "source": phash_source,
             "top": [
                 {
                     "name": m.entry.name, "number": m.entry.number,
@@ -500,12 +585,22 @@ async def run_v2_pipeline_stream(
         if top_match.confidence == "LOW":
             ximilar_result = await _run_ximilar_fallback(image_b64, category_id, v2_debug)
         candidates = [_phash_match_to_candidate(m) for m in matches]
+        x_sig = _ximilar_top_sig(ximilar_result)
+        p_sig = _phash_top_sig(matches)
+        phash_ximilar_agree = (x_sig is not None and p_sig is not None and x_sig == p_sig)
+        v2_debug["phash_ximilar_agree"] = phash_ximilar_agree
+        if ximilar_result:
+            _merge_ximilar_candidate(
+                candidates,
+                ximilar_result,
+                prefer_ximilar_top=(top_match.confidence == "LOW" and not phash_ximilar_agree),
+            )
         top = candidates[0]
         yield ("identified", {
             "name": top.name, "number": top.number, "set_name": top.set_name,
             "confidence": top.confidence, "score": top.score,
-            "source": "phash",
-            "distance": top_match.distance,
+            "source": top.source,
+            "distance": top_match.distance if top.source == "phash" else None,
             "elapsed_ms": v2_debug["stages_ms"].get("phash"),
         })
     else:
@@ -534,12 +629,14 @@ async def run_v2_pipeline_stream(
             error="No pHash match and Ximilar unavailable",
             processing_time_ms=_elapsed(t_start),
         ))
-        yield ("done", _stamp(result, category_id, v2_debug))
+        stamped = _stamp(result, category_id, v2_debug)
+        _save_v2_history(stamped)
+        yield ("done", stamped)
         return
 
     # --- Stage 3: price enrichment ---
-    candidates = [_phash_match_to_candidate(m) for m in matches]
-    await _enrich_top_candidate(candidates, matches, category_id, v2_debug)
+    if candidates and candidates[0].source == "phash":
+        await _enrich_top_candidate(candidates, matches, category_id, v2_debug)
     top = candidates[0]
 
     yield ("price", {
@@ -547,43 +644,15 @@ async def run_v2_pipeline_stream(
         "tcgplayer_url": top.tcgplayer_url,
         "image_url": top.image_url,
         "elapsed_ms": v2_debug.get("price_elapsed_ms"),
-        "source": v2_debug.get("price_source"),
+        "source": v2_debug.get("price_source") or top.source,
     })
 
     yield ("variants", {
         "available_variants": list(top.available_variants or []),
     })
 
-    # Merge Ximilar fallback into candidate list if present
-    if ximilar_result:
-        x_best = (ximilar_result.get("best_match") or {})
-        x_name = x_best.get("name") or ""
-        x_num = x_best.get("number") or ""
-        already = any(
-            (c.name or "").strip().lower() == x_name.strip().lower()
-            and (c.number or "").split("/")[0].lstrip("0") == x_num.split("/")[0].lstrip("0")
-            for c in candidates
-        )
-        if x_name and not already:
-            candidates.insert(1, ScoredCandidate(
-                id=x_best.get("id") or "",
-                name=x_name, number=x_num,
-                set_id=x_best.get("set_id") or "",
-                set_name=x_best.get("set_name") or "",
-                image_url=x_best.get("image_url") or "",
-                image_url_small=x_best.get("image_url_small") or "",
-                source="ximilar",
-                score=float(x_best.get("score") or 50.0),
-                confidence=x_best.get("confidence") or "MEDIUM",
-                match_reason="ximilar fallback",
-                tcgplayer_url=x_best.get("tcgplayer_url"),
-            ))
-
     top_match = matches[0]
-    x_sig = _ximilar_top_sig(ximilar_result)
-    p_sig = _phash_top_sig(matches)
-    phash_ximilar_agree = (x_sig is not None and p_sig is not None and x_sig == p_sig)
-    v2_debug["phash_ximilar_agree"] = phash_ximilar_agree
+    phash_ximilar_agree = bool(v2_debug.get("phash_ximilar_agree"))
 
     if top_match.confidence in ("HIGH", "MEDIUM"):
         status = "MATCHED"

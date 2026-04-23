@@ -122,6 +122,7 @@ from .models import (
     utcnow,
 )
 from .ops_log import count_recent_errors, list_operations_logs, list_operations_logs_for_backfill_request, parse_operations_log_details
+from .price_cache import start_background_warm_refresh
 from .reparse_runs import list_recent_reparse_runs, safe_create_reparse_run, safe_finalize_reparse_run_queue
 from .reparse import reparse_message_row, reparse_message_rows
 from .reporting import (
@@ -438,6 +439,11 @@ async def lifespan(app: FastAPI):
     else:
         app.state.inv_price_task = None
 
+    price_cache_task = start_background_warm_refresh()
+    if price_cache_task is not None:
+        background_tasks.append(price_cache_task)
+    app.state.price_cache_warm_task = price_cache_task
+
     yield
 
     stop_event.set()
@@ -749,5 +755,4 @@ def health():
             local_runtime_needs_attention=True,
             error=str(exc),
         )
-
 

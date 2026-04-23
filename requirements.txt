@@ -12,8 +12,8 @@ jinja2==3.1.5
 python-multipart
 psycopg[binary]
 Pillow
-opencv-python-headless
-imagehash
+opencv-python-headless==4.13.0.92
+imagehash==4.3.2
 tiksync
 python-barcode
 firecrawl-py

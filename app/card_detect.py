@@ -20,6 +20,7 @@ can degrade gracefully instead of crashing.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 from typing import Any, Optional
@@ -195,12 +196,25 @@ def detect_and_crop(raw_bytes: bytes) -> tuple[Optional[bytes], dict[str, Any]]:
     # the pHash. Bail out so the caller uses the raw bytes for hashing.
     xs = rect[:, 0]
     ys = rect[:, 1]
-    margin_x = min(float(xs.min()), float(w - xs.max()))
-    margin_y = min(float(ys.min()), float(h - ys.max()))
-    edge_margin_frac = min(margin_x / w if w else 0, margin_y / h if h else 0)
-    if edge_margin_frac < 0.015:  # corners within ~1.5% of the image border
+    left_margin = float(xs.min())
+    right_margin = float(w - xs.max())
+    top_margin = float(ys.min())
+    bottom_margin = float(h - ys.max())
+    margins = [
+        left_margin / w if w else 0,
+        right_margin / w if w else 0,
+        top_margin / h if h else 0,
+        bottom_margin / h if h else 0,
+    ]
+    edge_margin_frac = min(margins)
+    max_edge_margin_frac = max(margins)
+    # Treat the image as pre-cropped only when the detected card is flush on
+    # all sides. A real camera frame often has one edge near the border; using
+    # the minimum margin alone caused those captures to skip rectification.
+    if max_edge_margin_frac < 0.015:
         debug["reason"] = "image_already_cropped"
         debug["edge_margin_frac"] = round(edge_margin_frac, 4)
+        debug["max_edge_margin_frac"] = round(max_edge_margin_frac, 4)
         return (None, debug)
 
     warped = _warp_to_portrait(img, rect.astype(np.float32))
@@ -268,7 +282,8 @@ def detect_box(raw_bytes: bytes) -> dict[str, Any]:
     score, rect = best
     # Quantize corners to 10px grid so small camera jitter still counts as "stable"
     quantized = [(int(round(x / 10)) * 10, int(round(y / 10)) * 10) for x, y in rect.tolist()]
-    stability_hash = hex(hash(tuple(quantized)) & 0xFFFFFFFF)
+    stability_key = "|".join(f"{x}:{y}" for x, y in quantized)
+    stability_hash = hashlib.sha1(stability_key.encode("ascii")).hexdigest()[:12]
     xs = [p[0] for p in rect.tolist()]
     ys = [p[1] for p in rect.tolist()]
     return {

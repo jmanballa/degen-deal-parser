@@ -223,27 +223,31 @@ async def _process_ref(
     sem: asyncio.Semaphore,
 ) -> Optional[tuple[CardRef, int]]:
     async with sem:
-        # Need high-res image URL; fetch card detail lazily if we don't have one
-        url = ref.image_url
-        if not url:
-            detail = await _fetch_tcgdex_card(client, ref.card_id.split(":", 1)[-1])
-            if detail is None:
-                return None
-            url = _tcgdex_image_url(detail) or ""
+        try:
+            # Need high-res image URL; fetch card detail lazily if we don't have one
+            url = ref.image_url
             if not url:
-                return None
-            ref.image_url = url
-            # Backfill number with the detail's localId if needed
-            if not ref.number:
-                ref.number = str(detail.get("localId") or "")
+                detail = await _fetch_tcgdex_card(client, ref.card_id.split(":", 1)[-1])
+                if detail is None:
+                    return None
+                url = _tcgdex_image_url(detail) or ""
+                if not url:
+                    return None
+                ref.image_url = url
+                # Backfill number with the detail's localId if needed
+                if not ref.number:
+                    ref.number = str(detail.get("localId") or "")
 
-        raw = await _download_image(client, url)
-        if raw is None:
+            raw = await _download_image(client, url)
+            if raw is None:
+                return None
+            value = _phash_from_bytes(raw)
+            if value is None:
+                return None
+            return (ref, value)
+        except Exception as exc:
+            log.debug("Skipping %s after indexing error: %s", ref.card_id, exc)
             return None
-        value = _phash_from_bytes(raw)
-        if value is None:
-            return None
-        return (ref, value)
 
 
 # ---------------------------------------------------------------------------

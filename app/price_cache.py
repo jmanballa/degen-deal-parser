@@ -223,7 +223,7 @@ async def warm_price_cache(
 def start_background_warm_refresh(
     *, initial_delay_seconds: float = 5.0,
     interval_seconds: int = _REFRESH_INTERVAL_SECONDS,
-) -> None:
+) -> Optional[asyncio.Task]:
     """Fire-and-forget background task: initial warm + daily refresh.
 
     Intended to be called once from the FastAPI lifespan hook. Reads from
@@ -233,7 +233,7 @@ def start_background_warm_refresh(
     global _warm_task
 
     if _warm_task is not None and not _warm_task.done():
-        return
+        return _warm_task
 
     async def _loop() -> None:
         await asyncio.sleep(max(0.0, initial_delay_seconds))
@@ -253,9 +253,10 @@ def start_background_warm_refresh(
         loop = asyncio.get_event_loop()
     except RuntimeError:
         logger.debug("[price_cache] no event loop; skipping background warm")
-        return
+        return None
 
     _warm_task = loop.create_task(_loop())
+    return _warm_task
 
 
 def get_warm_stats() -> dict[str, Any]:

@@ -473,11 +473,14 @@ var V2 = (function() {
         _markDot('lr-dot-detect', 'active');
 
         var scanId = null;
+        var initController = window.AbortController ? new AbortController() : null;
+        var initTimeoutId = initController ? setTimeout(function() { initController.abort(); }, 8000) : null;
         try {
             var initResp = await fetch('/degen_eye/v2/scan-init', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: b64, category_id: '3' })
+                body: JSON.stringify({ image: b64, category_id: '3' }),
+                signal: initController ? initController.signal : undefined
             });
             if (!initResp.ok) {
                 var text = await initResp.text();
@@ -490,10 +493,13 @@ var V2 = (function() {
             _hideResult();
             showToast('Scan failed: ' + e.message, 'err', 3500);
             return;
+        } finally {
+            if (initTimeoutId) clearTimeout(initTimeoutId);
         }
 
         var es = new EventSource('/degen_eye/v2/scan-stream?scan_id=' + encodeURIComponent(scanId));
         var finalResult = null;
+        var streamFinished = false;
 
         es.addEventListener('detected', function(ev) {
             _markDot('lr-dot-detect', 'done');
@@ -544,12 +550,16 @@ var V2 = (function() {
 
         es.addEventListener('done', function(ev) {
             try { finalResult = JSON.parse(ev.data); } catch (_) {}
+            streamFinished = true;
             es.close();
             scanInFlight = false;
-            if (finalResult && finalResult.best_match) {
+            if (finalResult && finalResult.status === 'MATCHED' && finalResult.best_match) {
                 addToBatch(finalResult);
                 setTimeout(_hideResult, 900);
             } else {
+                if (finalResult && finalResult.status === 'AMBIGUOUS') {
+                    showToast('Needs review: ambiguous match', 'err', 3500);
+                }
                 setTimeout(_hideResult, 1500);
             }
         });
@@ -558,6 +568,7 @@ var V2 = (function() {
             var msg = 'Stream error';
             try { var d = JSON.parse(ev.data || '{}'); if (d.error) msg = d.error; } catch (_) {}
             showToast(msg, 'err', 3500);
+            streamFinished = true;
             es.close();
             scanInFlight = false;
             _hideResult();
@@ -565,9 +576,12 @@ var V2 = (function() {
 
         // Browser-level error (connection drop) has no .data
         es.onerror = function() {
+            if (streamFinished) return;
             if (es.readyState === EventSource.CLOSED) return;
             es.close();
             scanInFlight = false;
+            _hideResult();
+            showToast('Scan stream disconnected', 'err', 3500);
         };
     }
 
@@ -653,12 +667,15 @@ var V2 = (function() {
         var now = Date.now();
         if (now < autoCooldownUntil) return;
         autoInFlight = true;
+        var controller = window.AbortController ? new AbortController() : null;
+        var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 1200) : null;
         try {
             var thumb = _captureThumb(AUTO_DETECT_WIDTH);
             var resp = await fetch('/degen_eye/v2/detect-only', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: thumb.b64 })
+                body: JSON.stringify({ image: thumb.b64 }),
+                signal: controller ? controller.signal : undefined
             });
             if (!resp.ok) {
                 // Treat auth / server errors as transient — retry on next tick.
@@ -690,6 +707,7 @@ var V2 = (function() {
         } catch (e) {
             // Silent — transient network blips shouldn't spam the user
         } finally {
+            if (timeoutId) clearTimeout(timeoutId);
             autoInFlight = false;
         }
     }

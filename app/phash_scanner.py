@@ -15,6 +15,7 @@ Confidence banding (64-bit pHash, hash_size=8):
 from __future__ import annotations
 
 import io
+import heapq
 import logging
 import os
 import sqlite3
@@ -89,7 +90,10 @@ def _load_index(force: bool = False) -> list[PhashEntry]:
     global _INDEX, _INDEX_METADATA
     with _INDEX_LOCK:
         if _INDEX is not None and not force:
-            return _INDEX
+            # If the first lookup happened before the offline builder created
+            # the file, don't pin the process to an empty index forever.
+            if _INDEX or not _INDEX_PATH.exists():
+                return _INDEX
         if not _INDEX_PATH.exists():
             logger.warning(
                 "[phash_scanner] Index not found at %s — lookup will return empty "
@@ -171,7 +175,7 @@ def compute_phash(image_bytes: bytes) -> Optional[int]:
 
 
 def _hamming(a: int, b: int) -> int:
-    return bin(a ^ b).count("1")
+    return (a ^ b).bit_count()
 
 
 # ---------------------------------------------------------------------------
@@ -202,23 +206,32 @@ def lookup(
         return (None, [])
 
     t_start = time.monotonic()
-    matches: list[PhashMatch] = []
+    top_n = max(1, int(top_n or 1))
+    heap: list[tuple[int, int, PhashEntry, int]] = []
+    searched = 0
     # Plain linear scan — 20k entries * XOR+popcount = a few ms in Python.
     for entry in index:
         if set_filter and entry.set_id != set_filter:
             continue
+        searched += 1
         d = _hamming(value, entry.phash)
-        matches.append(PhashMatch(entry=entry, distance=d, confidence=_band(d)))
+        item = (-d, searched, entry, d)
+        if len(heap) < top_n:
+            heapq.heappush(heap, item)
+        elif d < heap[0][3]:
+            heapq.heapreplace(heap, item)
 
-    matches.sort(key=lambda m: m.distance)
-    top = matches[:top_n]
+    top = [
+        PhashMatch(entry=entry, distance=d, confidence=_band(d))
+        for _neg_d, _seq, entry, d in sorted(heap, key=lambda item: item[3])
+    ]
 
     elapsed = (time.monotonic() - t_start) * 1000
     if top:
         logger.info(
             "[phash_scanner] Lookup: best=%s #%s d=%d (%s), searched=%d in %.1fms",
             top[0].entry.name, top[0].entry.number, top[0].distance,
-            top[0].confidence, len(index), elapsed,
+            top[0].confidence, searched, elapsed,
         )
     else:
         logger.info("[phash_scanner] Lookup: no entries searched (set_filter=%s)", set_filter)
