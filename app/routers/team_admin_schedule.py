@@ -814,7 +814,12 @@ async def admin_schedule_save(
     Only dirty rows get touched; identical-to-stored values are a no-op
     so the audit log stays clean.
     """
-    denial, current = _admin_gate(request, session, "admin.schedule.edit")
+    # Scheduling is a floor-manager job, not an admin-only one. The
+    # perms matrix already grants "admin.schedule.edit" to managers by
+    # default (db.py), but `_admin_gate` would additionally require rank
+    # = admin and lock them out. Use the looser gate here so anyone
+    # carrying the permission can write to the schedule.
+    denial, current = _permission_gate(request, session, "admin.schedule.edit")
     if denial:
         return denial
     form = await request.form()
@@ -1307,7 +1312,12 @@ async def admin_schedule_generate_from_previous(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    denial, current = _admin_gate(request, session, "admin.schedule.edit")
+    # Scheduling is a floor-manager job, not an admin-only one. The
+    # perms matrix already grants "admin.schedule.edit" to managers by
+    # default (db.py), but `_admin_gate` would additionally require rank
+    # = admin and lock them out. Use the looser gate here so anyone
+    # carrying the permission can write to the schedule.
+    denial, current = _permission_gate(request, session, "admin.schedule.edit")
     if denial:
         return denial
     form = await request.form()
@@ -1516,7 +1526,12 @@ async def admin_schedule_closures_save(
       - custom_new_label[]=Inventory day → parallel to custom_new_date
       - custom_delete_id[]=7         → custom rows to delete
     """
-    denial, current = _admin_gate(request, session, "admin.schedule.edit")
+    # Scheduling is a floor-manager job, not an admin-only one. The
+    # perms matrix already grants "admin.schedule.edit" to managers by
+    # default (db.py), but `_admin_gate` would additionally require rank
+    # = admin and lock them out. Use the looser gate here so anyone
+    # carrying the permission can write to the schedule.
+    denial, current = _permission_gate(request, session, "admin.schedule.edit")
     if denial:
         return denial
     form = await request.form()
@@ -1740,7 +1755,12 @@ async def admin_schedule_roster_add(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    denial, current = _admin_gate(request, session, "admin.schedule.edit")
+    # Scheduling is a floor-manager job, not an admin-only one. The
+    # perms matrix already grants "admin.schedule.edit" to managers by
+    # default (db.py), but `_admin_gate` would additionally require rank
+    # = admin and lock them out. Use the looser gate here so anyone
+    # carrying the permission can write to the schedule.
+    denial, current = _permission_gate(request, session, "admin.schedule.edit")
     if denial:
         return denial
     form = await request.form()
@@ -1832,7 +1852,12 @@ async def admin_schedule_roster_remove(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    denial, current = _admin_gate(request, session, "admin.schedule.edit")
+    # Scheduling is a floor-manager job, not an admin-only one. The
+    # perms matrix already grants "admin.schedule.edit" to managers by
+    # default (db.py), but `_admin_gate` would additionally require rank
+    # = admin and lock them out. Use the looser gate here so anyone
+    # carrying the permission can write to the schedule.
+    denial, current = _permission_gate(request, session, "admin.schedule.edit")
     if denial:
         return denial
     form = await request.form()
@@ -1911,7 +1936,12 @@ async def admin_schedule_roster_copy_previous(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    denial, current = _admin_gate(request, session, "admin.schedule.edit")
+    # Scheduling is a floor-manager job, not an admin-only one. The
+    # perms matrix already grants "admin.schedule.edit" to managers by
+    # default (db.py), but `_admin_gate` would additionally require rank
+    # = admin and lock them out. Use the looser gate here so anyone
+    # carrying the permission can write to the schedule.
+    denial, current = _permission_gate(request, session, "admin.schedule.edit")
     if denial:
         return denial
     form = await request.form()

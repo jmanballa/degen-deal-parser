@@ -235,10 +235,17 @@ def seed_default_users(session: Session) -> None:
 
 
 def role_rank(role: Optional[str]) -> int:
+    # Managers and reviewers share the same rank on purpose: a store
+    # manager is trusted to do everything a deal-reviewer can (approve
+    # messages, access bookkeeping, etc.) but nothing an admin can (seed
+    # users, configure integrations, wipe data). Keeping them at the same
+    # tier means route gates written as `require_role_response(..., "reviewer")`
+    # naturally cover both without having to list the role explicitly at
+    # every call site.
     return {
         "employee": 1,
         "viewer": 2,
-        "manager": 3,
+        "manager": 4,
         "reviewer": 4,
         "admin": 5,
     }.get(role or "", 0)
@@ -584,6 +591,7 @@ def consume_invite_token(
 
     email_clean = (email or "").strip().lower() or None
     email_hash: Optional[str] = None
+    email_skipped_due_to_clash = False
     if email_clean:
         email_hash = _email_hash(email_clean)
         clash = session.exec(
@@ -593,7 +601,17 @@ def consume_invite_token(
         # draft-creation time. That's the SAME profile we're about to
         # update, not a real clash.
         if clash is not None and clash.user_id != row.target_user_id:
-            raise ValueError("invite_email_taken")
+            # A different employee already owns this email. We used to
+            # raise `invite_email_taken` here, but that blew up the whole
+            # onboarding flow — a hostile UX when the real cause is
+            # usually browser autofill pulling an email belonging to the
+            # admin or another teammate who shares the device. Drop the
+            # submitted email instead: the account still gets created,
+            # the employee can fix their email from /team/profile later,
+            # and we leave an audit trail for an admin to spot later.
+            email_clean = None
+            email_hash = None
+            email_skipped_due_to_clash = True
 
     pwd_hash, pwd_salt = hash_password(new_password)
     now = utcnow()
@@ -681,9 +699,25 @@ def consume_invite_token(
             actor_user_id=user.id,
             target_user_id=user.id,
             action="account.invite_accepted",
-            details_json=json.dumps({"email_hint": row.email_hint, "captured": captured}),
+            details_json=json.dumps({
+                "email_hint": row.email_hint,
+                "captured": captured,
+                "email_skipped_due_to_clash": email_skipped_due_to_clash,
+            }),
         )
     )
+    if email_skipped_due_to_clash:
+        session.add(
+            AuditLog(
+                actor_user_id=user.id,
+                target_user_id=user.id,
+                action="account.invite_email_dropped",
+                details_json=json.dumps({
+                    "reason": "address_already_on_file_for_another_employee",
+                    "email_hint": row.email_hint,
+                }),
+            )
+        )
     session.commit()
     session.refresh(user)
     return user

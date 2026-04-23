@@ -52,8 +52,16 @@ class PIIRoundtripTests(unittest.TestCase):
 class RoleRankTests(unittest.TestCase):
     def test_five_tier_ordering(self):
         from app.auth import role_rank
+
         ranks = [role_rank(r) for r in ("employee", "viewer", "manager", "reviewer", "admin")]
-        self.assertEqual(ranks, [1, 2, 3, 4, 5])
+        # Manager and reviewer share a tier so managers inherit every
+        # reviewer-gated ops page without having to list "manager" at
+        # every require_role_response call site. Admin stays strictly
+        # above both so admin-only routes (user management, integrations
+        # config, destructive ops) still block managers.
+        self.assertEqual(ranks, [1, 2, 4, 4, 5])
+        self.assertLess(ranks[2], ranks[4])  # manager < admin
+        self.assertLess(ranks[3], ranks[4])  # reviewer < admin
 
     def test_existing_callers_still_work(self):
         from app.auth import has_role

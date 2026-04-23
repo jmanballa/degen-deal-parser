@@ -18,8 +18,17 @@
         </p>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
+        {# Managers/reviewers/admins do double-duty on both portals — give
+           them a one-click escape hatch from the team portal back into the
+           ops dashboard so they're not hunting for "Back to Ops" in the
+           sidebar footer. Employees and viewers never see this button. #}
+        <a class="pt-btn primary" href="/dashboard" title="Switch to the ops dashboard">
+            <span aria-hidden="true" style="margin-right:6px;">→</span>Go to Ops
+        </a>
+        {% endif %}
         <a class="pt-btn" href="/team/profile">Update my profile</a>
-        <a class="pt-btn primary" href="/team/supply">Request supplies</a>
+        <a class="pt-btn{% if not (current_user and current_user.role in ('admin','manager','reviewer')) %} primary{% endif %}" href="/team/supply">Request supplies</a>
     </div>
 </div>
 

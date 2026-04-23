@@ -34,7 +34,10 @@ def bookkeeping_page(
     error: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    if denial := require_role_response(request, "admin"):
+    # Reviewer-level covers both "reviewer" accounts and "manager" accounts
+    # (they share a rank tier). Admins are still allowed because rank-admin
+    # > rank-reviewer. Bookkeeping is ops-layer, not admin-layer.
+    if denial := require_role_response(request, "reviewer"):
         return denial
     imports = list_bookkeeping_imports(session)
     selected_import = None
@@ -109,7 +112,7 @@ async def bookkeeping_import_form(
     upload_file: UploadFile = File(...),
     session: Session = Depends(get_session),
 ):
-    if denial := require_role_response(request, "admin"):
+    if denial := require_role_response(request, "reviewer"):
         return denial
     if not upload_file.filename:
         return RedirectResponse(
@@ -145,7 +148,7 @@ async def bookkeeping_import_detected_message(
     message_id: int,
     session: Session = Depends(get_session),
 ):
-    if denial := require_role_response(request, "admin"):
+    if denial := require_role_response(request, "reviewer"):
         return denial
     row = session.get(DiscordMessage, message_id)
     if not row:
@@ -188,7 +191,7 @@ async def bookkeeping_refresh_import(
     request: Request,
     import_id: int,
 ):
-    if denial := require_role_response(request, "admin"):
+    if denial := require_role_response(request, "reviewer"):
         return denial
     try:
         refreshed_import_id = await refresh_bookkeeping_import_from_source(import_id)
