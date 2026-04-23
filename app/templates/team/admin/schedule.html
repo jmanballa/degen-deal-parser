@@ -622,6 +622,158 @@
     .sch-modal.is-stream .sch-modal-stream-fields { display: flex; }
     .sch-modal.is-stream .sch-modal-tabs { display: none; }
     .sch-modal.is-stream .sch-modal-note { display: none; }
+
+    /* ------- Closed-day / holiday badges on the day header ------- */
+    .sch-day-closed {
+        display: inline-block;
+        margin-top: 2px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        background: rgba(239, 68, 68, 0.18);
+        color: #fca5a5;
+        border: 1px solid rgba(239,68,68,0.35);
+        line-height: 1.4;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .sch-head-row th.is-closed-col { background: rgba(239,68,68,0.06); }
+    .sch-loc-row th.is-closed-col { background: rgba(239,68,68,0.04); }
+
+    /* ------- Holidays modal (separate overlay from the cell editor) ------- */
+    .sch-holiday-modal {
+        display: none;
+        position: fixed;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        border: 1px solid var(--lx-br);
+        border-radius: 14px;
+        background: var(--lx-s1);
+        color: var(--lx-text);
+        width: min(560px, 94vw);
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+        z-index: 1001;
+    }
+    .sch-holiday-modal.is-open { display: block; }
+    .sch-holiday-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+    .sch-holiday-body h3 { margin: 0; font-size: 15px; }
+    .sch-holiday-sub { font-size: 12px; color: var(--lx-muted); margin-top: -8px; }
+    .sch-holiday-year {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--lx-muted);
+        margin: 8px 0 4px;
+    }
+    .sch-holiday-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 10px;
+    }
+    @media (max-width: 600px) {
+        .sch-holiday-list { grid-template-columns: 1fr; }
+    }
+    .sch-holiday-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .sch-holiday-row:hover { background: rgba(148,163,184,0.06); }
+    .sch-holiday-row input[type="checkbox"] { accent-color: #3b82f6; }
+    .sch-holiday-row-date {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--lx-muted);
+    }
+    .sch-custom-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .sch-custom-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 8px;
+        background: var(--lx-bg);
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        font-size: 13px;
+    }
+    .sch-custom-row-date { color: var(--lx-muted); font-size: 12px; min-width: 100px; }
+    .sch-custom-row-del {
+        background: transparent;
+        border: 1px solid rgba(239,68,68,0.4);
+        color: #fca5a5;
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    .sch-custom-add {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+    .sch-custom-add input {
+        background: var(--lx-bg);
+        border: 1px solid var(--lx-br);
+        color: var(--lx-text);
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-family: inherit;
+    }
+    .sch-custom-add input[type="date"] { min-width: 150px; }
+    .sch-custom-add input[type="text"] { flex: 1; min-width: 100px; }
+    .sch-custom-add button {
+        background: var(--lx-s2);
+        border: 1px solid var(--lx-br);
+        color: var(--lx-text);
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .sch-custom-add button:hover { background: var(--lx-s1); }
+    .sch-holiday-new-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .sch-holiday-new-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 8px;
+        background: rgba(96,165,250,0.08);
+        border: 1px dashed rgba(96,165,250,0.35);
+        border-radius: 8px;
+        font-size: 12px;
+        color: #bfdbfe;
+    }
+    .sch-holiday-new-row-del {
+        margin-left: auto;
+        background: transparent;
+        border: 1px solid rgba(239,68,68,0.4);
+        color: #fca5a5;
+        border-radius: 6px;
+        padding: 2px 7px;
+        font-size: 11px;
+        cursor: pointer;
+    }
 </style>
 {% endblock %}
 
@@ -707,7 +859,8 @@
                         <th></th>
                         {% for d in ctx.week_days %}
                         {% set note = ctx.day_note_map.get(d.isoformat()) %}
-                        <th>
+                        {% set closure = ctx.closure_map.get(d.isoformat()) if ctx.closure_map else None %}
+                        <th class="{% if closure %}is-closed-col{% endif %}">
                             {% if edit %}
                             <input class="sch-loc-input"
                                    type="text"
@@ -728,9 +881,13 @@
                         {% for d in ctx.week_days %}
                         {% set dhrs = ctx.day_hours.get(d.isoformat(), 0.0) %}
                         {% set is_today = (d == today) %}
-                        <th style="text-align:center; min-width:120px;">
+                        {% set closure = ctx.closure_map.get(d.isoformat()) if ctx.closure_map else None %}
+                        <th class="{% if closure %}is-closed-col{% endif %}" style="text-align:center; min-width:120px;">
                             <div style="font-size:11px; font-weight:500; opacity:0.85;">{{ d.day }} {{ d.strftime('%b') }}</div>
                             <div class="{% if is_today %}sch-today{% endif %}" style="font-size:13px; font-weight:700;">{{ d.strftime('%A') }}</div>
+                            {% if closure %}
+                            <div class="sch-day-closed" title="{{ closure.label or 'Closed' }}">Closed · {{ closure.label or '' }}</div>
+                            {% endif %}
                             {% if kind_slug == 'storefront' %}
                             <div class="sch-dayhrs">{% if dhrs > 0 %}{{ '%.1f'|format(dhrs) }} hrs{% else %}—{% endif %}</div>
                             {% endif %}
@@ -919,6 +1076,10 @@
     <div class="sch-edit-actions">
         {% if edit_mode %}
         <span style="font-size:12px; color:#86efac; font-weight:500;">Editing · click any cell</span>
+        <button type="button" class="sch-edit-btn" id="sch-holiday-open"
+                title="Mark store-closed days (legal holidays or custom dates).">
+            🎉 Holidays
+        </button>
         {% elif can_edit %}
         <a class="sch-edit-btn primary"
            href="/team/admin/schedule?week={{ week_start_iso }}&edit=1">
@@ -1064,6 +1225,81 @@
             <button type="button" class="sch-modal-ok" id="sch-modal-save">Save</button>
         </div>
     </div>
+</div>
+
+{# ---- Holidays / store-closed-days modal ---- #}
+<div id="sch-holiday-modal" class="sch-holiday-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="sch-holiday-title">
+    <form method="post" action="/team/admin/schedule/closures/save">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <input type="hidden" name="week" value="{{ week_start_iso }}"/>
+        {# Distinct list of years covered by holiday_options so the
+           backend knows which years' legal checklists are being
+           wholesale-replaced. #}
+        {% set legal_years_set = holiday_options|map(attribute='year')|unique|list %}
+        {% for y in legal_years_set %}
+        <input type="hidden" name="legal_year" value="{{ y }}"/>
+        {% endfor %}
+
+        <div class="sch-holiday-body">
+            <h3 id="sch-holiday-title">🎉 Store-closed days</h3>
+            <div class="sch-holiday-sub">
+                Check the legal holidays your store is closed. Closed dates show a <strong>Closed</strong> tag
+                on the matching day in the schedule grid. You can also add any custom date below.
+            </div>
+
+            {% for y in legal_years_set %}
+            <div class="sch-holiday-year">Legal holidays · {{ y }}</div>
+            <div class="sch-holiday-list">
+                {% for h in holiday_options if h.year == y %}
+                <label class="sch-holiday-row">
+                    <input type="checkbox"
+                           class="sch-holiday-check"
+                           data-iso="{{ h.date_iso }}"
+                           data-key="{{ h.key }}"
+                           data-label="{{ h.label }}"
+                           {% if h.checked %}checked{% endif %}/>
+                    <span>{{ h.label }}</span>
+                    <span class="sch-holiday-row-date">{{ h.pretty_date }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            {% endfor %}
+
+            <div class="sch-holiday-year" style="margin-top:14px;">Custom closures</div>
+            {% if custom_closures %}
+            <div class="sch-custom-list">
+                {% for c in custom_closures %}
+                <div class="sch-custom-row" data-custom-id="{{ c.id }}">
+                    <span class="sch-custom-row-date">{{ c.day_date.strftime('%a, %b') }} {{ c.day_date.day }}, {{ c.day_date.year }}</span>
+                    <span style="flex:1;">{{ c.label or 'Closed' }}</span>
+                    <button type="button" class="sch-custom-row-del" data-remove-custom="{{ c.id }}">Remove</button>
+                    <input type="hidden" name="closure_iso" value="{{ c.day_date.isoformat() }}"/>
+                    <input type="hidden" name="closure_key" value=""/>
+                    <input type="hidden" name="closure_label" value="{{ c.label or 'Closed' }}"/>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="font-size:12px; color:var(--lx-muted);">No custom closures yet.</div>
+            {% endif %}
+
+            <div class="sch-custom-add">
+                <input type="date" id="sch-holiday-new-date" aria-label="Closure date"/>
+                <input type="text" id="sch-holiday-new-label" maxlength="60" placeholder="Label (e.g. Inventory day)"/>
+                <button type="button" id="sch-holiday-new-add">+ Add</button>
+            </div>
+
+            {# New custom rows typed by the admin this session land here as
+               hidden inputs so they post with the form. #}
+            <div class="sch-holiday-new-list" id="sch-holiday-new-list"></div>
+
+            <div class="sch-modal-actions">
+                <span class="sch-modal-spacer"></span>
+                <button type="button" class="sch-modal-cancel" id="sch-holiday-cancel">Cancel</button>
+                <button type="submit" class="sch-modal-ok">Save holidays</button>
+            </div>
+        </div>
+    </form>
 </div>
 
 <script>
@@ -1510,6 +1746,144 @@
         ev.preventDefault();
         ev.returnValue = '';
     });
+
+    // ----------------------------------------------------------------
+    // Holidays / closures modal
+    // ----------------------------------------------------------------
+    var holidayModal = document.getElementById('sch-holiday-modal');
+    var holidayOpen = document.getElementById('sch-holiday-open');
+    var holidayCancel = document.getElementById('sch-holiday-cancel');
+    if (holidayModal && holidayOpen) {
+        function openHoliday() {
+            holidayModal.classList.add('is-open');
+            if (backdrop) backdrop.classList.add('is-open');
+            holidayModal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeHoliday() {
+            holidayModal.classList.remove('is-open');
+            if (backdrop && !modal.classList.contains('is-open')) {
+                backdrop.classList.remove('is-open');
+            }
+            holidayModal.setAttribute('aria-hidden', 'true');
+            if (!modal.classList.contains('is-open')) {
+                document.body.style.overflow = '';
+            }
+        }
+        holidayOpen.addEventListener('click', openHoliday);
+        if (holidayCancel) holidayCancel.addEventListener('click', closeHoliday);
+        if (backdrop) {
+            // Re-use the shared backdrop for both modals. Close whichever
+            // is currently open.
+            backdrop.addEventListener('click', function() {
+                if (holidayModal.classList.contains('is-open')) closeHoliday();
+            });
+        }
+        document.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Escape' && holidayModal.classList.contains('is-open')) {
+                closeHoliday();
+            }
+        });
+
+        // Legal-holiday checkbox rows. When an admin toggles one we
+        // need the backend to know (iso, key, label). We sync into a
+        // shadow container that holds a matching triplet of hidden
+        // inputs; unchecked rows contribute nothing.
+        var legalShadow = document.createElement('div');
+        legalShadow.id = 'sch-holiday-legal-shadow';
+        legalShadow.style.display = 'none';
+        holidayModal.querySelector('form').appendChild(legalShadow);
+
+        function syncLegalChecks() {
+            legalShadow.innerHTML = '';
+            var boxes = holidayModal.querySelectorAll('.sch-holiday-check');
+            Array.prototype.forEach.call(boxes, function(box) {
+                if (!box.checked) return;
+                var iso = box.getAttribute('data-iso');
+                var key = box.getAttribute('data-key') || '';
+                var label = box.getAttribute('data-label') || '';
+                ['closure_iso', 'closure_key', 'closure_label'].forEach(function(name, idx) {
+                    var v = idx === 0 ? iso : (idx === 1 ? key : label);
+                    var i = document.createElement('input');
+                    i.type = 'hidden';
+                    i.name = name;
+                    i.value = v;
+                    legalShadow.appendChild(i);
+                });
+            });
+        }
+        Array.prototype.forEach.call(
+            holidayModal.querySelectorAll('.sch-holiday-check'),
+            function(box) { box.addEventListener('change', syncLegalChecks); }
+        );
+        // Sync once on load so the initial set posts correctly even if
+        // the admin never touches a box.
+        syncLegalChecks();
+
+        // Existing custom rows: × button marks the row for deletion and
+        // removes its hidden inputs so it doesn't also appear as a
+        // kept closure_iso.
+        Array.prototype.forEach.call(
+            holidayModal.querySelectorAll('[data-remove-custom]'),
+            function(btn) {
+                btn.addEventListener('click', function() {
+                    var id = btn.getAttribute('data-remove-custom');
+                    var row = btn.closest('.sch-custom-row');
+                    if (!row) return;
+                    // Strip the row's keep-inputs and replace with a
+                    // single custom_delete_id hidden input.
+                    row.innerHTML = '';
+                    var del = document.createElement('input');
+                    del.type = 'hidden';
+                    del.name = 'custom_delete_id';
+                    del.value = id;
+                    row.appendChild(del);
+                    row.style.display = 'none';
+                });
+            }
+        );
+
+        // "Add" button for new custom closures.
+        var newDate = document.getElementById('sch-holiday-new-date');
+        var newLabel = document.getElementById('sch-holiday-new-label');
+        var newAddBtn = document.getElementById('sch-holiday-new-add');
+        var newList = document.getElementById('sch-holiday-new-list');
+        if (newAddBtn && newDate && newLabel && newList) {
+            newAddBtn.addEventListener('click', function() {
+                var iso = (newDate.value || '').trim();
+                if (!iso) {
+                    newDate.focus();
+                    return;
+                }
+                var label = (newLabel.value || '').trim() || 'Closed';
+                var row = document.createElement('div');
+                row.className = 'sch-holiday-new-row';
+                var dateIn = document.createElement('input');
+                dateIn.type = 'hidden';
+                dateIn.name = 'custom_new_date';
+                dateIn.value = iso;
+                var labelIn = document.createElement('input');
+                labelIn.type = 'hidden';
+                labelIn.name = 'custom_new_label';
+                labelIn.value = label;
+                var span = document.createElement('span');
+                span.textContent = iso + ' · ' + label;
+                var del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'sch-holiday-new-row-del';
+                del.textContent = 'Remove';
+                del.addEventListener('click', function() { row.remove(); });
+                row.appendChild(span);
+                row.appendChild(del);
+                row.appendChild(dateIn);
+                row.appendChild(labelIn);
+                newList.appendChild(row);
+                newDate.value = '';
+                newLabel.value = '';
+                newDate.focus();
+            });
+        }
+    }
 })();
 </script>
 {% endif %}

@@ -896,6 +896,29 @@ class ScheduleDayNote(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class StoreClosure(SQLModel, table=True):
+    """A single date the storefront is closed ("holiday" or "custom" day off).
+
+    Independent of ShiftEntry: a closed day doesn't clear anyone's shift,
+    it just flags the column so admins know at a glance the store isn't
+    open. One row per date. `source` tells us whether the row came from
+    the "Legal holidays" checklist ("legal") or was added freehand by an
+    admin ("custom"); `holiday_key` is a stable key for legal ones (e.g.
+    "christmas", "thanksgiving") so re-checking the same holiday the
+    next year matches the prior row instead of duplicating.
+    """
+    __tablename__ = "store_closure"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    day_date: date = Field(index=True, unique=True)
+    label: str = Field(default="")
+    source: str = Field(default="custom")  # "legal" | "custom"
+    holiday_key: str = Field(default="")
+    created_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class ScheduleRosterMember(SQLModel, table=True):
     """Per-week schedule roster.
 

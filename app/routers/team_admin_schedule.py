@@ -35,6 +35,7 @@ from ..models import (
     ScheduleRosterMember,
     SHIFT_KIND_BLANK,
     ShiftEntry,
+    StoreClosure,
     StreamAccount,
     Streamer,
     StreamSchedule,
@@ -74,6 +75,93 @@ def _build_cell_key(user_id: int, d: date) -> str:
 
 def _build_day_loc_key(d: date) -> str:
     return f"dayloc__{d.isoformat()}"
+
+
+# ---------------------------------------------------------------------------
+# US legal holidays
+#
+# Hand-rolled so we don't take on a new dependency. Covers the 11 US federal
+# holidays plus Christmas Eve / NYE / Easter Sunday which commonly close
+# retail storefronts. Each entry is (stable_key, display_label, date) so
+# re-checking the same holiday next year upserts on (holiday_key, year).
+# ---------------------------------------------------------------------------
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
+    """Return the nth occurrence of `weekday` (Mon=0..Sun=6) in year/month."""
+    first = date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return first + timedelta(days=offset + (n - 1) * 7)
+
+
+def _last_weekday(year: int, month: int, weekday: int) -> date:
+    """Return the last occurrence of `weekday` in year/month."""
+    import calendar as _cal
+
+    last_day = _cal.monthrange(year, month)[1]
+    last = date(year, month, last_day)
+    offset = (last.weekday() - weekday) % 7
+    return last - timedelta(days=offset)
+
+
+def _easter_sunday(year: int) -> date:
+    """Anonymous Gregorian algorithm for Easter Sunday (western)."""
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d_ = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d_ - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _us_legal_holidays(year: int) -> list[tuple[str, str, date]]:
+    """Return a list of (key, label, date) tuples for the given year.
+
+    Keys are stable across years so the holidays modal can treat
+    "christmas 2026" and "christmas 2027" as the same line with a
+    different date.
+    """
+    return [
+        ("new_years_day", "New Year's Day", date(year, 1, 1)),
+        ("mlk_day", "Martin Luther King Jr. Day", _nth_weekday(year, 1, 0, 3)),
+        ("presidents_day", "Presidents' Day", _nth_weekday(year, 2, 0, 3)),
+        ("easter_sunday", "Easter Sunday", _easter_sunday(year)),
+        ("memorial_day", "Memorial Day", _last_weekday(year, 5, 0)),
+        ("juneteenth", "Juneteenth", date(year, 6, 19)),
+        ("independence_day", "Independence Day", date(year, 7, 4)),
+        ("labor_day", "Labor Day", _nth_weekday(year, 9, 0, 1)),
+        ("columbus_day", "Columbus Day / Indigenous Peoples' Day", _nth_weekday(year, 10, 0, 2)),
+        ("veterans_day", "Veterans Day", date(year, 11, 11)),
+        ("thanksgiving", "Thanksgiving Day", _nth_weekday(year, 11, 3, 4)),
+        ("day_after_thanksgiving", "Day after Thanksgiving", _nth_weekday(year, 11, 3, 4) + timedelta(days=1)),
+        ("christmas_eve", "Christmas Eve", date(year, 12, 24)),
+        ("christmas_day", "Christmas Day", date(year, 12, 25)),
+        ("new_years_eve", "New Year's Eve", date(year, 12, 31)),
+    ]
+
+
+def _closure_map_for_range(
+    session: Session, first_day: date, last_day: date
+) -> dict[str, StoreClosure]:
+    """ISO date -> StoreClosure for every closure in the given range."""
+    rows = list(
+        session.exec(
+            select(StoreClosure).where(
+                StoreClosure.day_date >= first_day,
+                StoreClosure.day_date <= last_day,
+            )
+        ).all()
+    )
+    return {r.day_date.isoformat(): r for r in rows}
 
 
 def _fmt_time_12h(t24: str) -> str:
@@ -470,6 +558,8 @@ def _grid_context(
         )
     )
 
+    closure_map = _closure_map_for_range(session, first_day, last_day)
+
     return {
         "week_start": week_start,
         "week_start_iso": week_start.isoformat(),
@@ -479,6 +569,7 @@ def _grid_context(
         "stream_hint_map": {},
         "stream_legend": [],
         "day_note_map": day_note_map,
+        "closure_map": closure_map,
         "roster_user_ids": roster_user_ids,
         "addable_users": addable_users,
         "prev_week": prev_week,
@@ -527,6 +618,8 @@ def _stream_grid_context(
     next_week = (week_start + timedelta(days=7)).isoformat()
     this_week = _monday_of(date.today()).isoformat()
 
+    closure_map = _closure_map_for_range(session, week_days[0], week_days[-1])
+
     return {
         "week_start": week_start,
         "week_start_iso": week_start.isoformat(),
@@ -539,6 +632,7 @@ def _stream_grid_context(
         "stream_legend": legend,
         # Per-day location headers are a Storefront-only concept.
         "day_note_map": {},
+        "closure_map": closure_map,
         "roster_user_ids": set(),
         "addable_users": [],
         "prev_week": prev_week,
@@ -630,6 +724,46 @@ def admin_schedule_view(
                 .order_by(StreamAccount.sort_order, StreamAccount.name)
             ).all()
         )
+
+    # Holidays modal data. Only computed in edit mode to keep the
+    # read-only view cheap. We show the current year + the following
+    # year so admins can plan the closure list ahead (eg. check
+    # Christmas 2027 in November 2026).
+    holiday_options: list[dict] = []
+    custom_closures: list[StoreClosure] = []
+    if edit_mode:
+        today = date.today()
+        first_year = min(today.year, week_start.year)
+        years_to_show = [first_year, first_year + 1]
+        # All existing closures across both modal years — used to
+        # pre-check legal boxes and to list custom closures.
+        range_first = date(years_to_show[0], 1, 1)
+        range_last = date(years_to_show[-1], 12, 31)
+        existing_closures = list(
+            session.exec(
+                select(StoreClosure).where(
+                    StoreClosure.day_date >= range_first,
+                    StoreClosure.day_date <= range_last,
+                ).order_by(StoreClosure.day_date)
+            ).all()
+        )
+        closed_iso = {c.day_date.isoformat(): c for c in existing_closures}
+        week_last = week_start + timedelta(days=6)
+        for year in years_to_show:
+            for key, label, d in _us_legal_holidays(year):
+                iso = d.isoformat()
+                pretty = f"{d.strftime('%a, %b')} {d.day}"
+                holiday_options.append({
+                    "key": key,
+                    "label": label,
+                    "year": year,
+                    "date": d,
+                    "date_iso": iso,
+                    "pretty_date": pretty,
+                    "checked": iso in closed_iso,
+                    "in_week": week_start <= d <= week_last,
+                })
+        custom_closures = [c for c in existing_closures if (c.source or "custom") == "custom"]
     # Top-level nav context (week_start / prev_week / etc.) mirrors the
     # storefront grid so the week buttons still work.
     return templates.TemplateResponse(
@@ -643,6 +777,8 @@ def admin_schedule_view(
             "can_edit": can_edit,
             "edit_mode": edit_mode,
             "stream_accounts": stream_accounts,
+            "holiday_options": holiday_options,
+            "custom_closures": custom_closures,
             "csrf_token": issue_token(request),
             "build_cell_key": _build_cell_key,
             "build_day_loc_key": _build_day_loc_key,
@@ -1338,6 +1474,241 @@ async def admin_schedule_generate_from_previous(
     return _redirect_back(
         week_start,
         f"Generated {added} shift{'s' if added != 1 else ''} from last week.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Holidays / store-closed days
+#
+# Admins open a modal listing US legal holidays (+ common retail days like
+# Christmas Eve) with checkboxes. Whatever is checked on save becomes the
+# authoritative set of closures for that year range. Admins can also add
+# freehand custom closures (any date + label) and delete them.
+# ---------------------------------------------------------------------------
+
+
+_LEGAL_HOLIDAY_KEYS: set[str] = {
+    key for year in (2020,) for (key, _l, _d) in _us_legal_holidays(year)
+}
+
+
+@router.post(
+    "/team/admin/schedule/closures/save",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_schedule_closures_save(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """Replace the closure set for the years covered by the modal.
+
+    Form conventions:
+      - week=YYYY-MM-DD            → where to redirect after save
+      - legal_year[]=2026          → years whose legal checklist is in
+                                    the payload. Any legal StoreClosure
+                                    in those years that is not listed
+                                    under `closure_iso[]` is deleted.
+      - closure_iso[]=2026-12-25   → ISO dates to keep / create.
+      - closure_key[]=christmas_day → parallel list aligned to
+                                    closure_iso; "" for custom entries.
+      - closure_label[]=Christmas Day → parallel list of display labels.
+      - custom_new_date[]=2026-03-15  → any fresh custom rows to add
+      - custom_new_label[]=Inventory day → parallel to custom_new_date
+      - custom_delete_id[]=7         → custom rows to delete
+    """
+    denial, current = _admin_gate(request, session, "admin.schedule.edit")
+    if denial:
+        return denial
+    form = await request.form()
+    week_start = _parse_week_start(form.get("week") or "")
+
+    # 1) Build the incoming set of (iso, key, label) the admin wants.
+    incoming_iso = form.getlist("closure_iso")
+    incoming_key = form.getlist("closure_key")
+    incoming_label = form.getlist("closure_label")
+    incoming: list[tuple[str, str, str]] = []
+    for i in range(len(incoming_iso)):
+        iso = (incoming_iso[i] or "").strip()
+        if not iso:
+            continue
+        try:
+            datetime.strptime(iso, "%Y-%m-%d")
+        except ValueError:
+            continue
+        key = incoming_key[i] if i < len(incoming_key) else ""
+        label = (incoming_label[i] if i < len(incoming_label) else "").strip() or iso
+        incoming.append((iso, key, label))
+
+    # 2) The years we're fully overwriting — any legal row in these
+    #    years that isn't in `incoming` should be deleted so unchecked
+    #    boxes persist across the save.
+    legal_years: set[int] = set()
+    for raw in form.getlist("legal_year"):
+        try:
+            legal_years.add(int(raw))
+        except (TypeError, ValueError):
+            pass
+
+    # 3) Pull existing rows for the relevant year range + any extra
+    #    dates referenced by incoming (to handle upserts correctly).
+    year_first = date(min(legal_years), 1, 1) if legal_years else date(week_start.year, 1, 1)
+    year_last = date(max(legal_years), 12, 31) if legal_years else date(week_start.year, 12, 31)
+    existing = list(
+        session.exec(
+            select(StoreClosure).where(
+                StoreClosure.day_date >= year_first,
+                StoreClosure.day_date <= year_last,
+            )
+        ).all()
+    )
+    existing_by_iso: dict[str, StoreClosure] = {r.day_date.isoformat(): r for r in existing}
+
+    now = utcnow()
+    added = 0
+    updated = 0
+    deleted = 0
+
+    # 3a) Upsert each incoming entry.
+    incoming_iso_set: set[str] = set()
+    for iso, key, label in incoming:
+        incoming_iso_set.add(iso)
+        row = existing_by_iso.get(iso)
+        if row is None:
+            # Upsert-by-ISO may miss rows outside the year window; look up again.
+            row = session.exec(
+                select(StoreClosure).where(
+                    StoreClosure.day_date == datetime.strptime(iso, "%Y-%m-%d").date()
+                )
+            ).first()
+        source = "legal" if key in _LEGAL_HOLIDAY_KEYS else "custom"
+        if row is None:
+            session.add(
+                StoreClosure(
+                    day_date=datetime.strptime(iso, "%Y-%m-%d").date(),
+                    label=label,
+                    source=source,
+                    holiday_key=key if source == "legal" else "",
+                    created_by_user_id=current.id,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            added += 1
+        else:
+            changed = False
+            if row.label != label:
+                row.label = label
+                changed = True
+            if row.source != source:
+                row.source = source
+                changed = True
+            new_key = key if source == "legal" else ""
+            if row.holiday_key != new_key:
+                row.holiday_key = new_key
+                changed = True
+            if changed:
+                row.updated_at = now
+                session.add(row)
+                updated += 1
+
+    # 3b) Legal rows in overwritten years that aren't in incoming → delete.
+    for row in existing:
+        if (row.source or "custom") != "legal":
+            continue
+        if row.day_date.year not in legal_years:
+            continue
+        if row.day_date.isoformat() in incoming_iso_set:
+            continue
+        session.delete(row)
+        deleted += 1
+
+    # 4) Custom-delete list — explicit deletions of custom rows the
+    #    admin hit "×" on.
+    for raw in form.getlist("custom_delete_id"):
+        try:
+            cid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        target = session.get(StoreClosure, cid)
+        if target is None:
+            continue
+        if (target.source or "custom") != "custom":
+            continue
+        session.delete(target)
+        deleted += 1
+
+    # 5) New custom rows added inline.
+    new_dates = form.getlist("custom_new_date")
+    new_labels = form.getlist("custom_new_label")
+    for i, raw_date in enumerate(new_dates):
+        raw_date = (raw_date or "").strip()
+        if not raw_date:
+            continue
+        try:
+            d_new = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        raw_label = (new_labels[i] if i < len(new_labels) else "").strip() or "Closed"
+        # Don't duplicate an existing date — upsert-ish behaviour: if
+        # there's already a row (legal or custom) for this date, bump
+        # its label instead of adding a second row.
+        existing_same = session.exec(
+            select(StoreClosure).where(StoreClosure.day_date == d_new)
+        ).first()
+        if existing_same is not None:
+            if existing_same.label != raw_label or (existing_same.source or "custom") != "custom":
+                existing_same.label = raw_label
+                existing_same.source = "custom"
+                existing_same.holiday_key = ""
+                existing_same.updated_at = now
+                session.add(existing_same)
+                updated += 1
+            continue
+        session.add(
+            StoreClosure(
+                day_date=d_new,
+                label=raw_label,
+                source="custom",
+                holiday_key="",
+                created_by_user_id=current.id,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        added += 1
+
+    total = added + updated + deleted
+    if total:
+        session.add(
+            AuditLog(
+                actor_user_id=current.id,
+                action="admin.schedule.closures_save",
+                resource_key="admin.schedule.edit",
+                details_json=json.dumps({
+                    "added": added,
+                    "updated": updated,
+                    "deleted": deleted,
+                    "legal_years": sorted(legal_years),
+                }),
+                ip_address=(request.client.host if request.client else None),
+            )
+        )
+        session.commit()
+        parts = []
+        if added:
+            parts.append(f"{added} added")
+        if updated:
+            parts.append(f"{updated} updated")
+        if deleted:
+            parts.append(f"{deleted} removed")
+        flash = "Holidays saved · " + " · ".join(parts)
+    else:
+        flash = "No holiday changes."
+
+    from urllib.parse import quote_plus
+    return RedirectResponse(
+        f"/team/admin/schedule?week={week_start.isoformat()}&edit=1&flash={quote_plus(flash)}",
+        status_code=303,
     )
 
 
