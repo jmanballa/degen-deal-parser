@@ -438,15 +438,14 @@ def _nav_context(session: Session, user: User) -> dict:
         if has_permission(session, user, key, cache=cache):
             admin_nav.append({"name": name, "href": href})
 
-    # "Tools" section — ops pages selectively exposed to rank-and-file staff.
-    # These are pages where TikTok numbers / public market prices are OK but
-    # internal cost basis / margins / P&L are NOT present. Gated against the
-    # user's role rather than the perms matrix so every authenticated employee
-    # gets them out of the box (matches the role drops in inventory.py +
-    # tiktok_streamer.py).
+    # "Tools" section — ops pages selectively exposed to privileged portal
+    # roles. There is no dedicated tools resource key yet, so use the existing
+    # manager/reviewer/admin permissions instead of widening employee nav.
     tools_nav = []
-    role = (user.role or "").lower()
-    if role in ("employee", "viewer", "manager", "reviewer", "admin"):
+    if (
+        has_permission(session, user, "admin.schedule.edit", cache=cache)
+        or has_permission(session, user, "admin.supply.view", cache=cache)
+    ):
         tools_nav.append({"name": "live-stream", "href": "/tiktok/streamer"})
         tools_nav.append({"name": "degen-eye", "href": "/degen_eye"})
 
@@ -459,6 +458,11 @@ def _nav_context(session: Session, user: User) -> dict:
     }
 
 
+@router.get("/team/dashboard")
+def team_dashboard_alias():
+    return RedirectResponse("/team/", status_code=303)
+
+
 @router.get("/team/", response_class=HTMLResponse)
 def team_dashboard(
     request: Request,
@@ -469,6 +473,13 @@ def team_dashboard(
         return denial
     widgets = perms.allowed_widgets_for(session, user)
     clockify_ready = bool((get_settings().clockify_api_key or "").strip())
+    supply_queue_count = len(
+        session.exec(
+            select(SupplyRequest).where(
+                SupplyRequest.status.in_(("pending", "submitted"))
+            )
+        ).all()
+    )
     return templates.TemplateResponse(
         request,
         "team/dashboard.html",
@@ -479,6 +490,7 @@ def team_dashboard(
             "current_user": user,
             "widgets": widgets,
             "clockify_ready": clockify_ready,
+            "supply_queue_count": supply_queue_count,
             "now_hour": utcnow().hour,
             "csrf_token": issue_token(request),
             **_nav_context(session, user),

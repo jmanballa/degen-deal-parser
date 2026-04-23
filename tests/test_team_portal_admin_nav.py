@@ -4,17 +4,17 @@ The "Admin" group in the portal sidebar (`base.html`) is populated by
 `_nav_context` in `app/routers/team.py`, which filters admin links through
 `has_permission()`. This test locks in:
 
-- Admins see all four admin links (Employees, Invites, Permissions, Supply).
-- Employees see ZERO admin links and no "Admin" divider.
+- Admins see all privileged sidebar links.
+- Employees see ZERO admin/tools links and no privileged dividers.
 - Managers see only Supply Queue (page.admin.supply is manager+).
 - Reviewers see only Supply Queue.
 """
 from __future__ import annotations
 
-import importlib
 import os
 import unittest
-from unittest.mock import patch
+from html import unescape
+from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
 from sqlalchemy.pool import StaticPool
@@ -48,38 +48,10 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         self.session = Session(self.engine)
         seed_employee_portal_defaults(self.session)
 
-        from app import config as cfg
-        cfg.get_settings.cache_clear()
-        import app.main as app_main
-        importlib.reload(app_main)
-        self.app_main = app_main
-
-        from app.db import get_session as real_get_session
-
-        def _session_override():
-            s = Session(self.engine)
-            try:
-                yield s
-            finally:
-                s.close()
-
-        self.app_main.app.dependency_overrides[real_get_session] = _session_override
-
-        from fastapi.testclient import TestClient
-        self.client = TestClient(self.app_main.app)
-
     def tearDown(self):
-        self.app_main.app.dependency_overrides.clear()
         self.session.close()
-        for attr in ("_patcher_shared", "_patcher_main"):
-            p = getattr(self, attr, None)
-            if p:
-                p.stop()
-                setattr(self, attr, None)
 
     def _login_as(self, role: str, user_id: int = 100, username: str = "u"):
-        from app import shared
-        import app.main as app_main
         from app.models import User
 
         u = User(
@@ -95,69 +67,129 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         if self.session.get(User, user_id) is None:
             self.session.add(u)
             self.session.commit()
-
-        self._patcher_shared = patch.object(shared, "get_request_user", return_value=u)
-        self._patcher_shared.start()
-        self._patcher_main = patch.object(app_main, "get_request_user", return_value=u)
-        self._patcher_main.start()
         return u
 
     def _dashboard_html(self) -> str:
-        r = self.client.get("/team/", follow_redirects=False)
-        self.assertEqual(r.status_code, 200, f"dashboard failed: {r.status_code} {r.text[:200]}")
-        return r.text
+        from app import permissions as perms
+        from app.routers.team import _nav_context
+        from app.shared import templates
 
-    def test_admin_sees_all_four_admin_links(self):
-        self._login_as("admin", user_id=101, username="adm")
+        user = self._current_user
+        request = SimpleNamespace(url=SimpleNamespace(path="/team/"))
+        context = {
+            "request": request,
+            "title": "Dashboard",
+            "active": "dashboard",
+            "current_user": user,
+            "widgets": perms.allowed_widgets_for(self.session, user),
+            "clockify_ready": False,
+            "supply_queue_count": 0,
+            "now_hour": 12,
+            "csrf_token": "test-token",
+            **_nav_context(self.session, user),
+        }
+        return templates.env.get_template("team/dashboard.html").render(context)
+
+    def test_team_dashboard_alias_redirects_to_home(self):
+        from app.routers.team import router, team_dashboard_alias
+
+        self.assertTrue(
+            any(
+                getattr(route, "path", None) == "/team/dashboard"
+                and "GET" in getattr(route, "methods", set())
+                for route in router.routes
+            )
+        )
+        response = team_dashboard_alias()
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers.get("location"), "/team/")
+
+    def test_admin_sees_all_privileged_sidebar_links(self):
+        self._current_user = self._login_as("admin", user_id=101, username="adm")
         html = self._dashboard_html()
         self.assertIn("Update my profile", html)
         self.assertIn('href="/team/admin/schedule"', html)
         self.assertIn('href="/team/admin/employees"', html)
-        self.assertIn('href="/team/admin/employees"', html)
         self.assertIn('href="/team/admin/invites"', html)
         self.assertIn('href="/team/admin/permissions"', html)
         self.assertIn('href="/team/admin/supply"', html)
+        self.assertIn('href="/tiktok/streamer"', html)
+        self.assertIn('href="/degen_eye"', html)
+        self.assertIn('href="/dashboard"', html)
         self.assertIn(">Admin<", html, "admin group divider should render")
 
-    def test_employee_sees_no_admin_links(self):
-        self._login_as("employee", user_id=102, username="emp")
+    def test_employee_sees_no_admin_or_tools_links(self):
+        self._current_user = self._login_as("employee", user_id=102, username="emp")
         html = self._dashboard_html()
         self.assertIn("Update my profile", html)
         self.assertIn('href="/team/profile"', html)
         self.assertIn('href="/team/supply"', html)
+        self.assertIn('href="/team/schedule"', html)
+        self.assertNotIn('href="/team/admin/schedule"', html)
         self.assertNotIn('href="/team/admin/employees"', html)
         self.assertNotIn('href="/team/admin/invites"', html)
         self.assertNotIn('href="/team/admin/permissions"', html)
         self.assertNotIn('href="/team/admin/supply"', html)
+        self.assertNotIn('href="/tiktok/streamer"', html)
+        self.assertNotIn('href="/degen_eye"', html)
+        self.assertNotIn('href="/dashboard"', html)
+        self.assertNotIn('href="/admin"', html)
+        self.assertNotIn("Back to Ops", html)
         # The "Admin" group header must not render for plain employees.
         self.assertNotIn(
             '<div class="pt-side-group">Admin</div>',
             html,
             "admin divider leaked into an employee's sidebar",
         )
+        self.assertNotIn(
+            '<div class="pt-side-group">Tools</div>',
+            html,
+            "tools divider leaked into an employee's sidebar",
+        )
 
     def test_manager_sees_only_supply_queue(self):
-        self._login_as("manager", user_id=103, username="mgr")
+        self._current_user = self._login_as("manager", user_id=103, username="mgr")
         html = self._dashboard_html()
+        self.assertIn('href="/team/admin/schedule"', html)
         # page.admin.supply is manager=True in DEFAULT_ROLE_PERMISSIONS.
         self.assertIn('href="/team/admin/supply"', html)
+        self.assertIn('href="/tiktok/streamer"', html)
+        self.assertIn('href="/degen_eye"', html)
+        self.assertIn('href="/dashboard"', html)
         # The other three admin pages are admin-only.
         self.assertNotIn('href="/team/admin/employees"', html)
         self.assertNotIn('href="/team/admin/invites"', html)
         self.assertNotIn('href="/team/admin/permissions"', html)
 
     def test_reviewer_sees_only_supply_queue(self):
-        self._login_as("reviewer", user_id=104, username="rev")
+        self._current_user = self._login_as("reviewer", user_id=104, username="rev")
         html = self._dashboard_html()
         self.assertIn('href="/team/admin/supply"', html)
+        self.assertIn('href="/tiktok/streamer"', html)
+        self.assertIn('href="/degen_eye"', html)
         self.assertNotIn('href="/team/admin/employees"', html)
         self.assertNotIn('href="/team/admin/invites"', html)
         self.assertNotIn('href="/team/admin/permissions"', html)
 
+    def test_dashboard_placeholder_copy_is_softened_but_cards_remain(self):
+        self._current_user = self._login_as("employee", user_id=107, username="copy")
+        html = self._dashboard_html()
+        self.assertNotIn("Not connected", html)
+        self.assertNotIn("isn't hooked up", html)
+        self.assertNotIn("lands soon", html)
+        upper = unescape(html).upper()
+        self.assertIn("HOURS THIS WEEK", upper)
+        self.assertIn("ESTIMATED PAY", upper)
+        self.assertIn("TODAY'S TASKS", upper)
+
     def test_viewer_cannot_enter_permission_gated_admin_page(self):
-        self._login_as("viewer", user_id=105, username="viewer")
-        response = self.client.get("/team/admin/supply", follow_redirects=False)
-        self.assertEqual(response.status_code, 403)
+        from app.routers.team_admin import _permission_gate
+
+        user = self._login_as("viewer", user_id=105, username="viewer")
+        request = SimpleNamespace(state=SimpleNamespace(current_user=user))
+        denial, _ = _permission_gate(request, self.session, "admin.supply.view")
+        self.assertIsNotNone(denial)
+        self.assertEqual(denial.status_code, 403)
 
 
 if __name__ == "__main__":

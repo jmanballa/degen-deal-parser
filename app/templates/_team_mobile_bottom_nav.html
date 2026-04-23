@@ -8,7 +8,7 @@
    run `_nav_context()` still render a usable nav.
    ===================================================================== #}
 {% set _tools = tools_nav_items|default([]) %}
-{% set _has_tools = _tools and _tools|length > 0 %}
+{% set _has_tools = current_user and current_user.role in ("admin", "manager", "reviewer") and _tools and _tools|length > 0 %}
 {% set _path = request.url.path %}
 {% set _sched_href = schedule_href|default('/team/schedule') %}
 <nav class="pt-mobile-bottom-nav" id="pt-mobile-bottom-nav" aria-label="Primary">

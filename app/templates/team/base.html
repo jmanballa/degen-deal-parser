@@ -92,13 +92,14 @@
             'live-stream': '●',
             'degen-eye': '◎'
         } %}
+        {% set portal_privileged = current_user and current_user.role in ("admin", "manager", "reviewer") %}
         {% for item in nav_items %}
           <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
             <span class="pt-link-ico">{{ nav_icons.get(item.name, '·') }}</span>
             <span>{{ item.name|replace('-', ' ')|capitalize }}</span>
           </a>
         {% endfor %}
-        {% if tools_nav_items %}
+        {% if tools_nav_items and portal_privileged %}
           <div class="pt-side-group">Tools</div>
           {% for item in tools_nav_items %}
             <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
@@ -107,7 +108,7 @@
             </a>
           {% endfor %}
         {% endif %}
-        {% if admin_nav_items %}
+        {% if admin_nav_items and portal_privileged %}
           <div class="pt-side-group">Admin</div>
           {% for item in admin_nav_items %}
             <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
@@ -117,7 +118,7 @@
           {% endfor %}
         {% endif %}
         <div class="pt-side-footer">
-            {% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
+            {% if portal_privileged %}
               <a class="pt-link" href="/dashboard" style="margin-top:6px;">
                 <span class="pt-link-ico">←</span>
                 <span>Back to Ops</span>

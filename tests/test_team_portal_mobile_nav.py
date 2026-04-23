@@ -9,16 +9,15 @@ on every authenticated portal page:
      close button (`#pt-drawer-close`) so the JS can wire up tap-to-close.
   3. A bottom nav (`.pt-mobile-bottom-nav`) with a primary center FAB.
 
-We also verify the drawer JS is loaded and that the bottom nav adapts to
-the viewer's `tools_nav_items` (Stream + Eye FAB when tools are available,
-Policies + Supply fallback otherwise).
+We also verify the drawer JS is loaded and that the bottom nav adapts by
+role: employees get the employee schedule and no tools, while privileged
+portal roles get Stream + Eye and the editable admin schedule.
 """
 from __future__ import annotations
 
-import importlib
 import os
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
 from sqlalchemy.pool import StaticPool
@@ -52,38 +51,10 @@ class MobileNavTests(unittest.TestCase):
         self.session = Session(self.engine)
         seed_employee_portal_defaults(self.session)
 
-        from app import config as cfg
-        cfg.get_settings.cache_clear()
-        import app.main as app_main
-        importlib.reload(app_main)
-        self.app_main = app_main
-
-        from app.db import get_session as real_get_session
-
-        def _session_override():
-            s = Session(self.engine)
-            try:
-                yield s
-            finally:
-                s.close()
-
-        self.app_main.app.dependency_overrides[real_get_session] = _session_override
-
-        from fastapi.testclient import TestClient
-        self.client = TestClient(self.app_main.app)
-
     def tearDown(self):
-        self.app_main.app.dependency_overrides.clear()
         self.session.close()
-        for attr in ("_patcher_shared", "_patcher_main"):
-            p = getattr(self, attr, None)
-            if p:
-                p.stop()
-                setattr(self, attr, None)
 
     def _login_as(self, role: str, user_id: int = 500, username: str = "u"):
-        from app import shared
-        import app.main as app_main
         from app.models import User
 
         u = User(
@@ -98,59 +69,90 @@ class MobileNavTests(unittest.TestCase):
         if self.session.get(User, user_id) is None:
             self.session.add(u)
             self.session.commit()
-            self.session.refresh(u)
-            self.session.expunge(u)
-
-        self._patcher_shared = patch.object(shared, "get_request_user", return_value=u)
-        self._patcher_shared.start()
-        self._patcher_main = patch.object(app_main, "get_request_user", return_value=u)
-        self._patcher_main.start()
         return u
 
+    def _dashboard_html(self, path: str = "/team/") -> str:
+        from app import permissions as perms
+        from app.routers.team import _nav_context
+        from app.shared import templates
+
+        user = self._current_user
+        request = SimpleNamespace(url=SimpleNamespace(path=path))
+        context = {
+            "request": request,
+            "title": "Dashboard",
+            "active": "dashboard",
+            "current_user": user,
+            "widgets": perms.allowed_widgets_for(self.session, user),
+            "clockify_ready": False,
+            "supply_queue_count": 0,
+            "now_hour": 12,
+            "csrf_token": "test-token",
+            **_nav_context(self.session, user),
+        }
+        return templates.env.get_template("team/dashboard.html").render(context)
+
     def test_portal_dashboard_renders_mobile_topbar_and_hamburger(self):
-        self._login_as("employee", user_id=501, username="emp1")
-        html = self.client.get("/team/", follow_redirects=False).text
+        self._current_user = self._login_as("employee", user_id=501, username="emp1")
+        html = self._dashboard_html()
         self.assertIn('id="pt-mobile-topbar"', html)
         self.assertIn('id="pt-hamburger"', html)
         self.assertIn('aria-controls="pt-sidebar"', html)
 
     def test_portal_sidebar_has_drawer_hooks(self):
-        self._login_as("employee", user_id=502, username="emp2")
-        html = self.client.get("/team/", follow_redirects=False).text
+        self._current_user = self._login_as("employee", user_id=502, username="emp2")
+        html = self._dashboard_html()
         self.assertIn('id="pt-sidebar"', html)
         self.assertIn('id="pt-drawer-close"', html)
         self.assertIn('id="pt-drawer-backdrop"', html)
         self.assertIn("/static/portal-drawer.js", html)
 
-    def test_bottom_nav_shows_live_stream_and_eye_fab_for_employee(self):
-        self._login_as("employee", user_id=503, username="emp3")
-        html = self.client.get("/team/", follow_redirects=False).text
+    def test_bottom_nav_hides_tools_for_employee(self):
+        self._current_user = self._login_as("employee", user_id=503, username="emp3")
+        html = self._dashboard_html()
         self.assertIn('class="pt-mobile-bottom-nav"', html)
-        # Five expected bottom-nav destinations for a user with Tools access:
+        # Five expected bottom-nav destinations for a plain employee:
         for needle in (
             'href="/team/"',
-            'href="/tiktok/streamer"',
-            'href="/degen_eye"',
+            'href="/team/policies"',
+            'href="/team/supply"',
             'href="/team/schedule"',
             'href="/team/profile"',
         ):
             self.assertIn(needle, html, f"missing bottom-nav link: {needle}")
-        # Center FAB must exist on a Tools-enabled nav
+        self.assertNotIn('href="/team/admin/schedule"', html)
+        self.assertNotIn('href="/tiktok/streamer"', html)
+        self.assertNotIn('href="/degen_eye"', html)
+        # Center FAB still exists, but it points to employee supply requests.
+        self.assertIn('class="pt-mbn-fab"', html)
+        self.assertIn('pt-mbn-item-center', html)
+
+    def test_bottom_nav_shows_tools_and_admin_schedule_for_manager(self):
+        self._current_user = self._login_as("manager", user_id=506, username="mgr1")
+        html = self._dashboard_html()
+        for needle in (
+            'href="/team/"',
+            'href="/tiktok/streamer"',
+            'href="/degen_eye"',
+            'href="/team/admin/schedule"',
+            'href="/team/profile"',
+        ):
+            self.assertIn(needle, html, f"missing bottom-nav link: {needle}")
         self.assertIn('class="pt-mbn-fab"', html)
         self.assertIn('pt-mbn-item-center', html)
 
     def test_bottom_nav_renders_on_non_home_pages_too(self):
-        self._login_as("admin", user_id=504, username="adm1")
+        self._current_user = self._login_as("employee", user_id=504, username="emp5")
         for path in ("/team/schedule", "/team/policies", "/team/profile"):
-            html = self.client.get(path, follow_redirects=False).text
+            html = self._dashboard_html(path=path)
             self.assertIn('class="pt-mobile-bottom-nav"', html,
                           f"bottom nav missing on {path}")
             self.assertIn('id="pt-hamburger"', html,
                           f"hamburger missing on {path}")
 
     def test_active_state_marks_current_bottom_nav_item(self):
-        self._login_as("employee", user_id=505, username="emp4")
-        html = self.client.get("/team/schedule", follow_redirects=False).text
+        self._current_user = self._login_as("employee", user_id=505, username="emp4")
+        html = self._dashboard_html(path="/team/schedule")
         # Look for the schedule anchor carrying the active class.
         self.assertRegex(
             html,

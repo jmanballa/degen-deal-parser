@@ -42,15 +42,16 @@
             <div class="pt-widget-value">—</div>
             <div class="pt-widget-sub">Live numbers land in the next release.</div>
           {% else %}
-            <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Not connected</div>
-            <div class="pt-widget-sub">Ask an admin to link Clockify.</div>
+            <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Coming with payroll integration</div>
           {% endif %}
         {% elif w.widget_key == "dashboard.todays_tasks" %}
-          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">All clear</div>
-          <div class="pt-widget-sub">No tasks assigned right now.</div>
+          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Task assignments coming soon</div>
         {% elif w.widget_key == "dashboard.upcoming_shifts" %}
           <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">TBA</div>
-          <div class="pt-widget-sub">Schedule publishing lands soon.</div>
+          <div class="pt-widget-sub">Schedule will appear here when published.</div>
+        {% elif w.widget_key == "dashboard.supply_queue_count" %}
+          <div class="pt-widget-value">{{ supply_queue_count|default(0) }}</div>
+          <div class="pt-widget-sub">Open supply requests waiting for review.</div>
         {% else %}
           <div class="pt-widget-empty">{{ w.description or 'Coming soon.' }}</div>
         {% endif %}
