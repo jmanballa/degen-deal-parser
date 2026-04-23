@@ -1,3 +1,5 @@
+import ipaddress
+
 from functools import lru_cache
 from pathlib import Path
 from typing import List
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     session_secret: str = Field(default=DEFAULT_SESSION_SECRET, alias="SESSION_SECRET")
     public_base_url: str = Field(default="http://127.0.0.1:8000", alias="PUBLIC_BASE_URL")
     session_cookie_name: str = Field(default="degen_session", alias="SESSION_COOKIE_NAME")
-    session_https_only: bool = Field(default=False, alias="SESSION_HTTPS_ONLY")
+    session_https_only: bool = Field(default=True, alias="SESSION_HTTPS_ONLY")
     session_same_site: str = Field(default="strict", alias="SESSION_SAME_SITE")
     session_domain: str = Field(default="", alias="SESSION_DOMAIN")
     # 30 days — keeps iOS PWA launches logged in across Safari cookie sweeps.
@@ -207,6 +209,8 @@ class Settings(BaseSettings):
     employee_pii_key: str = Field(default="", alias="EMPLOYEE_PII_KEY")
     employee_email_hash_salt: str = Field(default="", alias="EMPLOYEE_EMAIL_HASH_SALT")
     employee_token_hmac_key: str = Field(default="", alias="EMPLOYEE_TOKEN_HMAC_KEY")
+    trust_x_forwarded_for: bool = Field(default=False, alias="TRUST_X_FORWARDED_FOR")
+    trusted_proxy_ips: str = Field(default="127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", alias="TRUSTED_PROXY_IPS")
     clockify_api_key: str = Field(default="", alias="CLOCKIFY_API_KEY")
     clockify_workspace_id: str = Field(default="", alias="CLOCKIFY_WORKSPACE_ID")
     session_hours: int = Field(default=8, alias="SESSION_HOURS")
@@ -264,8 +268,35 @@ class Settings(BaseSettings):
     def effective_worker_runtime_label(self) -> str:
         return (self.worker_runtime_label or "").strip() or "Ingest Worker"
 
+    @property
+    def trusted_proxy_networks(self) -> list[ipaddress._BaseNetwork]:
+        networks: list[ipaddress._BaseNetwork] = []
+        for raw_value in self.trusted_proxy_ips.split(","):
+            cleaned = raw_value.strip()
+            if not cleaned:
+                continue
+            try:
+                if "/" in cleaned:
+                    network = ipaddress.ip_network(cleaned, strict=False)
+                else:
+                    address = ipaddress.ip_address(cleaned)
+                    bits = 32 if address.version == 4 else 128
+                    network = ipaddress.ip_network(f"{cleaned}/{bits}", strict=False)
+            except ValueError:
+                continue
+            networks.append(network)
+        return networks
+
+    def is_trusted_proxy(self, host: str) -> bool:
+        try:
+            address = ipaddress.ip_address((host or "").strip())
+        except ValueError:
+            return False
+        return any(address in network for network in self.trusted_proxy_networks)
+
     def validate_runtime_secrets(self) -> None:
-        if not self.public_host_mode:
+        requires_hardened_runtime = self.public_host_mode or self.employee_portal_enabled
+        if not requires_hardened_runtime:
             return
 
         insecure_fields: list[str] = []
@@ -276,8 +307,9 @@ class Settings(BaseSettings):
 
         if insecure_fields:
             fields_text = ", ".join(insecure_fields)
+            mode_label = "employee portal" if self.employee_portal_enabled else "public host mode"
             raise RuntimeError(
-                f"Insecure configuration for public host mode: set real values for {fields_text} in .env before booting."
+                f"Insecure configuration for {mode_label}: set real values for {fields_text} in .env before booting."
             )
 
 

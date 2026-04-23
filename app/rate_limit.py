@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import threading
 import time
 from collections import defaultdict, deque
@@ -7,6 +8,8 @@ from typing import Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+from .config import get_settings
 
 _BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 _LOCK = threading.Lock()
@@ -40,8 +43,20 @@ def reset(key: Optional[str] = None) -> None:
 
 
 def _client_ip(request: Request) -> str:
-    if request.client and request.client.host:
-        return request.client.host
+    settings = get_settings()
+    client_host = request.client.host if request.client and request.client.host else ""
+    if settings.trust_x_forwarded_for and settings.is_trusted_proxy(client_host):
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        first_hop = forwarded_for.split(",", 1)[0].strip()
+        if first_hop:
+            try:
+                ipaddress.ip_address(first_hop)
+            except ValueError:
+                first_hop = ""
+        if first_hop:
+            return first_hop
+    if client_host:
+        return client_host
     return "unknown"
 
 
