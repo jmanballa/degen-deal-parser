@@ -170,13 +170,8 @@ def admin_employees_list(
     # The "Show inactive" toggle reveals TRUE inactives — terminated
     # employees who have a real password but are switched off.
     stmt = select(User).order_by(User.is_active.desc(), User.username)
-    if q:
-        like = f"%{q.strip().lower()}%"
-        stmt = (
-            select(User)
-            .where(User.username.like(like))
-            .order_by(User.is_active.desc(), User.username)
-        )
+    q_clean = (q or "").strip()
+    q_lower = q_clean.lower()
     if not include_inactive:
         # Keep active OR draft (is_active=False AND password_hash=''). Drafts
         # have an empty password_hash set by create_draft_employee.
@@ -224,6 +219,27 @@ def admin_employees_list(
                     draft_legal_names[uid] = decrypt_pii(prof.legal_name_enc) or ""
                 except ValueError:
                     draft_legal_names[uid] = ""
+    if q_clean:
+        filtered_rows: list[User] = []
+        q_hash = q_lower[:12]
+        for row in rows:
+            row_id = row.id or 0
+            if q_lower in (row.username or "").lower():
+                filtered_rows.append(row)
+                continue
+            if q_lower in (row.display_name or "").lower():
+                filtered_rows.append(row)
+                continue
+            if q_lower in (draft_legal_names.get(row_id) or "").lower():
+                filtered_rows.append(row)
+                continue
+            profile = profiles.get(row_id)
+            if profile and profile.email_lookup_hash:
+                lookup_hash = profile.email_lookup_hash.lower()
+                if q_lower == lookup_hash or q_hash == lookup_hash[:12]:
+                    filtered_rows.append(row)
+                    continue
+        rows = filtered_rows
     return templates.TemplateResponse(
         request,
         "team/admin/employees_list.html",

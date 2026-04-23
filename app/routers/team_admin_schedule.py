@@ -1418,6 +1418,8 @@ async def admin_schedule_generate_from_previous(
         if not prev_entries:
             return _redirect_back(week_start, "No storefront shifts on the previous week to copy.")
 
+        closures_this_week = _closure_map_for_range(session, first_day, last_day)
+
         existing_this_week = list(
             session.exec(
                 select(ShiftEntry).where(
@@ -1446,6 +1448,8 @@ async def admin_schedule_generate_from_previous(
             if entry.user_id not in kind_user_ids and entry.user_id not in roster_ids:
                 continue
             fut = entry.shift_date + timedelta(days=7)
+            if fut.isoformat() in closures_this_week:
+                continue
             if (entry.user_id, fut) in occupied:
                 continue
             session.add(
@@ -1951,6 +1955,15 @@ async def admin_schedule_roster_copy_previous(
             week_start, "Stream schedule is managed in the Stream Manager."
         )
     prev_week = week_start - timedelta(days=7)
+    closed_days = {
+        c.day_date
+        for c in session.exec(
+            select(StoreClosure).where(
+                StoreClosure.day_date >= week_start,
+                StoreClosure.day_date <= week_start + timedelta(days=6),
+            )
+        ).all()
+    }
 
     form_kind = (form.get("staff_kind") or "").strip().lower()
     kind_filter = form_kind if form_kind in STAFF_KINDS else None
@@ -2023,7 +2036,10 @@ async def admin_schedule_roster_copy_previous(
         )
     )
     session.commit()
+    flash = f"Copied {added} employee{'s' if added != 1 else ''} from last week."
+    if closed_days:
+        flash += f" {len(closed_days)} closed day{'s' if len(closed_days) != 1 else ''} stay marked closed."
     return _redirect_back(
         week_start,
-        f"Copied {added} employee{'s' if added != 1 else ''} from last week.",
+        flash,
     )

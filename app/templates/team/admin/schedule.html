@@ -832,7 +832,7 @@
             <input type="hidden" name="week" value="{{ ctx.week_start_iso }}"/>
             <input type="hidden" name="staff_kind" value="{{ kind_slug }}"/>
             <button class="ta-btn" type="submit" title="Copy the {{ ctx.prev_roster_count }} {{ kind_label|lower }} employee(s) from last week onto this week">
-                Copy last week ({{ ctx.prev_roster_count }})
+                Copy previous week ({{ ctx.prev_roster_count }})
             </button>
         </form>
         {% endif %}

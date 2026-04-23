@@ -153,6 +153,30 @@ class EmployeeListTests(unittest.TestCase, _W4Harness):
         r = self.client.get("/team/admin/employees", follow_redirects=False)
         self.assertEqual(r.status_code, 403)
 
+    def test_admin_search_matches_display_name_and_email_fingerprint(self):
+        from app.models import EmployeeProfile
+        from app.pii import email_lookup_hash, encrypt_pii
+
+        self._login(role="admin", user_id=104, username="adm-search")
+        emp = self._seed_employee(user_id=504, username="emp504")
+        profile = self.session.get(EmployeeProfile, emp.id)
+        profile.email_ciphertext = encrypt_pii("friendly.search@example.com")
+        profile.email_lookup_hash = email_lookup_hash("friendly.search@example.com")
+        self.session.add(profile)
+        self.session.commit()
+
+        by_name = self.client.get("/team/admin/employees?q=emp504")
+        self.assertEqual(by_name.status_code, 200)
+        self.assertIn("emp504", by_name.text)
+        self.assertIn("Search username", by_name.text)
+
+        by_hash = self.client.get(
+            f"/team/admin/employees?q={profile.email_lookup_hash[:12]}"
+        )
+        self.assertEqual(by_hash.status_code, 200)
+        self.assertIn("emp504", by_hash.text)
+        self.assertIn("display name, legal name, email", by_hash.text)
+
 
 class DetailAndRevealTests(unittest.TestCase, _W4Harness):
     def setUp(self): self._setup()
@@ -313,10 +337,11 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
                 follow_redirects=False,
             )
             self.assertEqual(r.status_code, 303)
-            self.assertIn("hourly_rate_cents", r.headers["location"])
+            self.assertIn("Invalid+hourly_rate_cents+ignored", r.headers["location"])
             self.session.expire_all()
             refreshed = self.session.get(EmployeeProfile, emp.id)
-            self.assertEqual(decrypt_pii(refreshed.hourly_rate_cents_enc), "2300")
+            expected_rate = "2300" if bad != "99999999" else "1000000"
+            self.assertEqual(decrypt_pii(refreshed.hourly_rate_cents_enc), expected_rate)
 
         rows = list(self.session.exec(
             select(AuditLog).where(AuditLog.action == "admin.profile_update")

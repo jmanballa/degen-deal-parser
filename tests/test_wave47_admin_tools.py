@@ -1002,6 +1002,95 @@ class AdminScheduleSaveTests(unittest.TestCase, _W47Harness):
         self.assertIn(f'id="sch-remove-storefront-{emps[2].id}"', page.text)  # Chris
         self.assertNotIn(f'id="sch-remove-storefront-{emps[1].id}"', page.text)  # Emily not copied
 
+    def test_roster_copy_previous_reports_closed_days_on_target_week(self):
+        from app.models import StoreClosure
+
+        admin = self._login_as("admin")
+        emps = self._active_employees()
+        monday = self._monday_of_this_week()
+        prev_monday = monday - timedelta(days=7)
+        self._roster([emps[0]], prev_monday, admin_id=admin.id)
+        self.session.add(
+            StoreClosure(
+                day_date=monday + timedelta(days=2),
+                reason="Closed for maintenance",
+                is_closed=True,
+            )
+        )
+        self.session.commit()
+
+        r = self.client.post(
+            "/team/admin/schedule/roster/copy-previous",
+            data={
+                "csrf_token": self._csrf(),
+                "week": monday.isoformat(),
+            },
+            follow_redirects=False,
+        )
+        self.assertIn(r.status_code, (302, 303))
+        self.assertIn("Copied+1+employee", r.headers["location"])
+        self.assertIn("1+closed+day+stay+marked+closed", r.headers["location"])
+
+    def test_generate_from_previous_skips_closed_days_and_reports_partial_copy(self):
+        from app.models import ShiftEntry, StoreClosure, classify_shift_label
+
+        admin = self._login_as("admin")
+        emps = self._active_employees()
+        monday = self._monday_of_this_week()
+        prev_monday = monday - timedelta(days=7)
+        prev_tuesday = prev_monday + timedelta(days=1)
+        prev_wednesday = prev_monday + timedelta(days=2)
+
+        self._roster([emps[0]], monday, admin_id=admin.id)
+        self.session.add(
+            ShiftEntry(
+                user_id=emps[0].id,
+                shift_date=prev_tuesday,
+                label="10:00 AM - 6:00 PM",
+                kind=classify_shift_label("10:00 AM - 6:00 PM"),
+                created_by_user_id=admin.id,
+            )
+        )
+        self.session.add(
+            ShiftEntry(
+                user_id=emps[0].id,
+                shift_date=prev_wednesday,
+                label="11:00 AM - 7:00 PM",
+                kind=classify_shift_label("11:00 AM - 7:00 PM"),
+                created_by_user_id=admin.id,
+            )
+        )
+        self.session.add(
+            StoreClosure(
+                day_date=monday + timedelta(days=2),
+                reason="Store closed for inventory",
+                is_closed=True,
+            )
+        )
+        self.session.commit()
+
+        r = self.client.post(
+            "/team/admin/schedule/generate-from-previous",
+            data={
+                "csrf_token": self._csrf(),
+                "week": monday.isoformat(),
+                "staff_kind": "storefront",
+            },
+            follow_redirects=False,
+        )
+        self.assertIn(r.status_code, (302, 303))
+        self.assertIn("Copied 1 storefront shift", r.headers["location"])
+        self.assertIn("Skipped 1 closed day", r.headers["location"])
+
+        self.session.expire_all()
+        copied_rows = list(
+            self.session.exec(
+                select(ShiftEntry).where(ShiftEntry.shift_date >= monday)
+            ).all()
+        )
+        self.assertEqual(len(copied_rows), 1)
+        self.assertEqual(copied_rows[0].shift_date, monday + timedelta(days=1))
+
     def test_save_creates_updates_and_clears_cells(self):
         from app.models import ShiftEntry, classify_shift_label
 
