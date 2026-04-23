@@ -598,6 +598,7 @@ var V2 = (function() {
             card_name: m.name || '',
             game: result.game || 'Pokemon',
             condition: 'NM',
+            set_id: m.set_id || '',
             set_name: m.set_name || '',
             card_number: m.number || '',
             image_url: m.image_url || '',
@@ -606,7 +607,8 @@ var V2 = (function() {
             variant: variant,
             notes: 'Scanner: Degen Eye v2',
             _available_variants: variants,
-            _source: 'v2'
+            _source: 'v2',
+            _v2_capture_id: result.capture_id || ((result.debug || {}).v2_capture_id) || ''
         };
         batch.push(item);
         saveBatch();

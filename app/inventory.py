@@ -7,6 +7,7 @@ push-to-shopify) require 'reviewer' or above.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import math
@@ -14,7 +15,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -32,7 +33,18 @@ from .card_scanner import identify_card_from_image, lookup_card_image_and_price
 from .cert_lookup import lookup_cert
 from .pokemon_scanner import run_pipeline as run_pokemon_pipeline, get_scan_history, fetch_tcg_categories, get_validation_result, text_search_cards
 from .degen_eye_v2 import get_v2_scan_history, run_v2_pipeline, run_v2_pipeline_stream
-from .phash_scanner import get_index_stats as phash_index_stats, has_index as phash_has_index
+from .degen_eye_v2_training import (
+    attach_confirmed_label,
+    attach_prediction,
+    capture_stats as training_capture_stats,
+    create_scan_capture,
+    train_confirmed_captures,
+)
+from .phash_scanner import (
+    get_index_stats as phash_index_stats,
+    has_index as phash_has_index,
+    reload_index as phash_reload_index,
+)
 from .price_cache import get_warm_stats as price_cache_stats, warm_price_cache
 from .config import get_settings
 from .db import get_session
@@ -114,6 +126,110 @@ def _require_reviewer(request: Request) -> Optional[Response]:
 
 def _current_user(request: Request):
     return _get_user(request)
+
+
+def _capture_user_payload(request: Request) -> dict[str, Any]:
+    user = _current_user(request)
+    if not user:
+        return {}
+    return {
+        "id": getattr(user, "id", None),
+        "username": getattr(user, "username", None),
+        "display_name": getattr(user, "display_name", None),
+        "role": getattr(user, "role", None),
+    }
+
+
+def _capture_request_meta(request: Request) -> dict[str, Any]:
+    return {
+        "user_agent": (request.headers.get("user-agent") or "")[:300],
+    }
+
+
+def _tag_v2_capture_result(payload: dict[str, Any], capture_id: Optional[str]) -> None:
+    if not capture_id or not isinstance(payload, dict):
+        return
+    payload["capture_id"] = capture_id
+    debug = payload.setdefault("debug", {})
+    if isinstance(debug, dict):
+        debug["v2_capture_id"] = capture_id
+
+
+def _truthy_form_value(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _render_v2_training_page(summary: Optional[dict[str, Any]] = None) -> str:
+    stats = training_capture_stats()
+    phash_stats = phash_index_stats()
+    summary_html = ""
+    if summary is not None:
+        summary_html = (
+            "<section>"
+            "<h2>Last Run</h2>"
+            f"<pre>{html.escape(json.dumps(summary, indent=2, default=str))}</pre>"
+            "</section>"
+        )
+    stats_json = html.escape(json.dumps(stats, indent=2, default=str))
+    phash_json = html.escape(json.dumps({
+        "card_count": phash_stats.get("card_count"),
+        "metadata": phash_stats.get("metadata"),
+        "index_path": phash_stats.get("index_path"),
+    }, indent=2, default=str))
+    return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Degen Eye v2 Training</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 24px; color: #0f172a; background: #f8fafc; }}
+    main {{ max-width: 920px; margin: 0 auto; }}
+    h1 {{ margin: 0 0 8px; font-size: 28px; }}
+    h2 {{ margin-top: 24px; font-size: 18px; }}
+    p {{ color: #475569; line-height: 1.45; }}
+    form, section {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-top: 16px; }}
+    label {{ display: block; font-weight: 700; margin: 12px 0 6px; }}
+    input[type="number"] {{ width: 120px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }}
+    .check {{ display: flex; gap: 8px; align-items: center; margin-top: 12px; }}
+    .check label {{ margin: 0; font-weight: 600; }}
+    button {{ margin-top: 16px; border: 0; border-radius: 6px; padding: 10px 14px; font-weight: 800; cursor: pointer; background: #111827; color: #fff; }}
+    button.secondary {{ background: #475569; }}
+    pre {{ white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px; overflow: auto; }}
+    a {{ color: #2563eb; font-weight: 700; text-decoration: none; }}
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="/degen_eye/v2">Back to scanner</a></p>
+  <h1>Degen Eye v2 Training</h1>
+  <p>Confirmed batch-review labels can be promoted into the local pHash index as real employee photo examples. Unconfirmed scans are saved for review and evaluation, but not trusted as labels.</p>
+  <form method="post" action="/degen_eye/v2/train-captures">
+    <label for="limit">Max confirmed captures to process</label>
+    <input id="limit" name="limit" type="number" min="1" max="2000" value="200">
+    <div class="check">
+      <input id="dry_run" name="dry_run" type="checkbox" value="true">
+      <label for="dry_run">Dry run only</label>
+    </div>
+    <div class="check">
+      <input id="include_indexed" name="include_indexed" type="checkbox" value="true">
+      <label for="include_indexed">Reprocess already-indexed captures</label>
+    </div>
+    <div class="check">
+      <input id="reload_current_worker" name="reload_current_worker" type="checkbox" value="true" checked>
+      <label for="reload_current_worker">Reload pHash index in this worker after training</label>
+    </div>
+    <button type="submit">Train From Confirmed Captures</button>
+  </form>
+  <form method="post" action="/degen_eye/v2/reload-index">
+    <button class="secondary" type="submit">Reload pHash Index Only</button>
+  </form>
+  {summary_html}
+  <section><h2>Capture Stats</h2><pre>{stats_json}</pre></section>
+  <section><h2>Index Stats</h2><pre>{phash_json}</pre></section>
+</main>
+</body>
+</html>"""
 
 
 # ---------------------------------------------------------------------------
@@ -927,7 +1043,18 @@ async def degen_eye_v2_scan(request: Request):
         return JSONResponse({"error": "Image is too large"}, status_code=413)
     category_id = (body.get("category_id") or "3").strip()
 
+    capture_id = await asyncio.to_thread(
+        create_scan_capture,
+        image_b64,
+        source="v2_scan",
+        category_id=category_id,
+        employee=_capture_user_payload(request),
+        request_meta=_capture_request_meta(request),
+    )
     result = await run_v2_pipeline(image_b64, category_id=category_id)
+    _tag_v2_capture_result(result, capture_id)
+    if capture_id:
+        await asyncio.to_thread(attach_prediction, capture_id, result)
     status_code = 422 if result.get("status") == "ERROR" else 200
     return JSONResponse(result, status_code=status_code)
 
@@ -956,14 +1083,23 @@ async def degen_eye_v2_scan_init(request: Request):
     category_id = (body.get("category_id") or "3").strip()
 
     scan_id = uuid.uuid4().hex
+    capture_id = await asyncio.to_thread(
+        create_scan_capture,
+        image_b64,
+        source="v2_stream",
+        category_id=category_id,
+        employee=_capture_user_payload(request),
+        scan_id=scan_id,
+        request_meta=_capture_request_meta(request),
+    )
     try:
-        _write_v2_pending_scan(scan_id, image_b64, category_id)
+        _write_v2_pending_scan(scan_id, image_b64, category_id, capture_id=capture_id)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except OSError as exc:
         logger.warning("[degen_eye_v2] failed to stage pending scan: %s", exc)
         return JSONResponse({"error": "Unable to stage scan"}, status_code=500)
-    return JSONResponse({"scan_id": scan_id})
+    return JSONResponse({"scan_id": scan_id, "capture_id": capture_id})
 
 
 # Small file-backed buffer so scan-init can hand a scan off to scan-stream
@@ -1018,7 +1154,13 @@ def _evict_stale_v2_pending() -> None:
                 logger.debug("[degen_eye_v2] unable to evict pending file %s", path, exc_info=True)
 
 
-def _write_v2_pending_scan(scan_id: str, image_b64: str, category_id: str) -> None:
+def _write_v2_pending_scan(
+    scan_id: str,
+    image_b64: str,
+    category_id: str,
+    *,
+    capture_id: Optional[str] = None,
+) -> None:
     if not _is_v2_scan_id(scan_id):
         raise ValueError("Invalid scan id")
     if len(image_b64) > _V2_MAX_SCAN_IMAGE_B64_CHARS:
@@ -1028,6 +1170,7 @@ def _write_v2_pending_scan(scan_id: str, image_b64: str, category_id: str) -> No
         "created_at": time.time(),
         "image": image_b64,
         "category_id": category_id,
+        "capture_id": capture_id,
     }
     path = _v2_pending_path(scan_id)
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
@@ -1042,7 +1185,7 @@ def _write_v2_pending_scan(scan_id: str, image_b64: str, category_id: str) -> No
         raise
 
 
-def _claim_v2_pending_scan(scan_id: str) -> Optional[tuple[str, str]]:
+def _claim_v2_pending_scan(scan_id: str) -> Optional[tuple[str, str, Optional[str]]]:
     if not _is_v2_scan_id(scan_id):
         return None
     _evict_stale_v2_pending()
@@ -1063,9 +1206,10 @@ def _claim_v2_pending_scan(scan_id: str) -> Optional[tuple[str, str]]:
             return None
         image_b64 = str(payload.get("image") or "")
         category_id = str(payload.get("category_id") or "3")
+        capture_id = str(payload.get("capture_id") or "").strip() or None
         if not image_b64:
             return None
-        return (image_b64, category_id)
+        return (image_b64, category_id, capture_id)
     except Exception as exc:
         logger.warning("[degen_eye_v2] failed to read pending scan %s: %s", scan_id, exc)
         return None
@@ -1097,13 +1241,17 @@ async def degen_eye_v2_scan_stream(request: Request, scan_id: str):
             {"error": "Unknown or expired scan_id; POST to /degen_eye/v2/scan-init first"},
             status_code=404,
         )
-    image_b64, category_id = pending
+    image_b64, category_id, capture_id = pending
 
     async def _event_source():
         import json as _json
         try:
             yield ": connected\n\n"
             async for event_name, payload in run_v2_pipeline_stream(image_b64, category_id):
+                if event_name in {"done", "error"}:
+                    _tag_v2_capture_result(payload, capture_id)
+                    if capture_id:
+                        await asyncio.to_thread(attach_prediction, capture_id, payload)
                 safe_payload = _json.dumps(payload, default=str)
                 yield f"event: {event_name}\ndata: {safe_payload}\n\n"
                 # Disconnection check — bail early if the client closed the tab.
@@ -1112,7 +1260,11 @@ async def degen_eye_v2_scan_stream(request: Request, scan_id: str):
                     return
         except Exception as exc:
             logger.exception("[degen_eye_v2] SSE pipeline crashed: %s", exc)
-            yield f"event: error\ndata: {{\"error\": {_json.dumps(str(exc))}}}\n\n"
+            error_payload = {"status": "ERROR", "error": str(exc), "debug": {"mode": "v2"}}
+            _tag_v2_capture_result(error_payload, capture_id)
+            if capture_id:
+                await asyncio.to_thread(attach_prediction, capture_id, error_payload)
+            yield f"event: error\ndata: {_json.dumps(error_payload, default=str)}\n\n"
 
     from fastapi.responses import StreamingResponse as _StreamingResponse
     return _StreamingResponse(
@@ -1182,9 +1334,50 @@ async def degen_eye_v2_stats(request: Request):
     return JSONResponse({
         "phash_index": phash_index_stats(),
         "price_cache": price_cache_stats(),
+        "training_captures": training_capture_stats(),
         "pending_scans": _count_v2_pending_scans(),
         "v2_history_entries": len(get_v2_scan_history()),
     })
+
+
+@router.get("/degen_eye/v2/training", response_class=HTMLResponse)
+async def degen_eye_v2_training_page(request: Request):
+    """Reviewer page for capture counts and one-click confirmed-capture training."""
+    if denial := _require_reviewer(request):
+        return denial
+    return HTMLResponse(_render_v2_training_page())
+
+
+@router.post("/degen_eye/v2/train-captures")
+async def degen_eye_v2_train_captures(request: Request):
+    """Promote confirmed employee captures into the pHash index."""
+    if denial := _require_reviewer(request):
+        return denial
+    try:
+        form = await request.form()
+    except Exception:
+        form = {}
+    try:
+        limit = int(form.get("limit") or 200)
+    except (TypeError, ValueError):
+        limit = 200
+    limit = max(1, min(limit, 2000))
+    dry_run = _truthy_form_value(form.get("dry_run"))
+    include_indexed = _truthy_form_value(form.get("include_indexed"))
+    reload_current_worker = _truthy_form_value(form.get("reload_current_worker"))
+
+    summary = await asyncio.to_thread(
+        train_confirmed_captures,
+        limit=limit,
+        include_indexed=include_indexed,
+        dry_run=dry_run,
+    )
+    if reload_current_worker and not dry_run:
+        summary["reloaded_current_worker_card_count"] = await asyncio.to_thread(phash_reload_index)
+    accept = request.headers.get("accept") or ""
+    if "text/html" in accept:
+        return HTMLResponse(_render_v2_training_page(summary))
+    return JSONResponse(summary)
 
 
 @router.get("/degen_eye/v2/history")
@@ -1306,6 +1499,18 @@ async def degen_eye_v2_warm(request: Request):
         return denial
     stats = await warm_price_cache()
     return JSONResponse(stats)
+
+
+@router.post("/degen_eye/v2/reload-index")
+async def degen_eye_v2_reload_index(request: Request):
+    """Reload the in-memory pHash index after an offline rebuild/training run."""
+    if denial := _require_reviewer(request):
+        return denial
+    card_count = await asyncio.to_thread(phash_reload_index)
+    payload = {"card_count": card_count, "phash_index": phash_index_stats()}
+    if "text/html" in (request.headers.get("accept") or ""):
+        return HTMLResponse(_render_v2_training_page({"reload": payload}))
+    return JSONResponse(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -1451,6 +1656,8 @@ async def inventory_batch_confirm(
         return JSONResponse({"error": "Expected a non-empty JSON array"}, status_code=400)
 
     created = []
+    confirmed_by = _capture_user_payload(request)
+    capture_label_updates: list[tuple[str, dict[str, Any], int]] = []
     for raw in body:
         if not isinstance(raw, dict):
             continue
@@ -1478,8 +1685,29 @@ async def inventory_batch_confirm(
         item.barcode = generate_barcode_value(item.id)
         session.add(item)
         created.append({"id": item.id, "barcode": item.barcode, "card_name": item.card_name})
+        capture_id = (raw.get("_v2_capture_id") or raw.get("capture_id") or "").strip()
+        if capture_id:
+            label = dict(raw)
+            label.update({
+                "card_name": item.card_name,
+                "game": item.game,
+                "set_name": item.set_name or "",
+                "card_number": item.card_number or "",
+                "condition": item.condition or "",
+                "image_url": item.image_url or "",
+                "auto_price": item.auto_price,
+                "notes": item.notes or "",
+            })
+            capture_label_updates.append((capture_id, label, int(item.id)))
 
     session.commit()
+    for capture_id, label, inventory_item_id in capture_label_updates:
+        attach_confirmed_label(
+            capture_id,
+            label,
+            inventory_item_id=inventory_item_id,
+            confirmed_by=confirmed_by,
+        )
     return JSONResponse({"created": len(created), "items": created})
 
 

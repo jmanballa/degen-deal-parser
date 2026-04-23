@@ -56,12 +56,22 @@ class PhashMatch:
     entry: PhashEntry
     distance: int
     confidence: str  # "HIGH" | "MEDIUM" | "LOW"
+    margin_to_next: Optional[int] = None
+    rank: int = 0
 
 
 _INDEX: Optional[list[PhashEntry]] = None
 _INDEX_LOCK = Lock()
 _INDEX_METADATA: dict[str, str] = {}
-_INDEX_PATH: Path = _DEFAULT_INDEX_PATH
+def _configured_index_path() -> Path:
+    raw = (os.getenv("DEGEN_EYE_V2_INDEX_PATH") or "").strip()
+    if not raw:
+        return _DEFAULT_INDEX_PATH
+    path = Path(raw)
+    return path if path.is_absolute() else (_ROOT / path)
+
+
+_INDEX_PATH: Path = _configured_index_path()
 
 
 HIGH_THRESHOLD = 6
@@ -221,10 +231,19 @@ def lookup(
         elif d < heap[0][3]:
             heapq.heapreplace(heap, item)
 
-    top = [
-        PhashMatch(entry=entry, distance=d, confidence=_band(d))
-        for _neg_d, _seq, entry, d in sorted(heap, key=lambda item: item[3])
-    ]
+    sorted_items = sorted(heap, key=lambda item: item[3])
+    distances = [item[3] for item in sorted_items]
+    top = []
+    for idx, (_neg_d, _seq, entry, d) in enumerate(sorted_items):
+        next_distance = distances[idx + 1] if idx + 1 < len(distances) else None
+        margin = (next_distance - d) if next_distance is not None else None
+        top.append(PhashMatch(
+            entry=entry,
+            distance=d,
+            confidence=_band(d),
+            margin_to_next=margin,
+            rank=idx + 1,
+        ))
 
     elapsed = (time.monotonic() - t_start) * 1000
     if top:

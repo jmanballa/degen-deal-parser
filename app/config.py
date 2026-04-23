@@ -197,6 +197,9 @@ class Settings(BaseSettings):
     ximilar_api_token: str = Field(default="", alias="XIMILAR_API_TOKEN")
     psa_api_key: str = Field(default="", alias="PSA_API_KEY")
     pokemon_tcg_api_key: str = Field(default="", alias="POKEMON_TCG_API_KEY")
+    degen_eye_v2_capture_enabled: bool = Field(default=True, alias="DEGEN_EYE_V2_CAPTURE_ENABLED")
+    degen_eye_v2_capture_dir: str = Field(default="data/v2_training_scans", alias="DEGEN_EYE_V2_CAPTURE_DIR")
+    degen_eye_v2_index_path: str = Field(default="data/phash_index.sqlite", alias="DEGEN_EYE_V2_INDEX_PATH")
 
     # Firecrawl (web scraping)
     firecrawl_api_key: str = Field(default="", alias="FIRECRAWL_API_KEY")

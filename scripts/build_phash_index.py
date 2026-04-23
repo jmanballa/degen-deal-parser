@@ -41,7 +41,10 @@ TCGDEX_BASE = "https://api.tcgdex.net/v2/en"
 POKEMONTCG_BASE = "https://api.pokemontcg.io/v2"
 
 DATA_DIR = _ROOT / "data"
-INDEX_PATH = DATA_DIR / "phash_index.sqlite"
+_INDEX_PATH_RAW = os.getenv("DEGEN_EYE_V2_INDEX_PATH") or str(DATA_DIR / "phash_index.sqlite")
+INDEX_PATH = Path(_INDEX_PATH_RAW)
+if not INDEX_PATH.is_absolute():
+    INDEX_PATH = _ROOT / INDEX_PATH
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,7 +91,7 @@ def _phash_to_blob(value: int) -> bytes:
 
 
 def _open_db() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(INDEX_PATH)
     conn.executescript(_SCHEMA)
     conn.commit()

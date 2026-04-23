@@ -153,6 +153,7 @@ def _elapsed(t0: float) -> float:
 def _phash_match_to_candidate(match: PhashMatch) -> ScoredCandidate:
     """Project a pHash match into the ScanResult candidate shape."""
     score = 100.0 if match.confidence == "HIGH" else (65.0 if match.confidence == "MEDIUM" else 40.0)
+    margin = f", margin={match.margin_to_next}" if match.margin_to_next is not None else ""
     return ScoredCandidate(
         id=match.entry.card_id,
         name=match.entry.name,
@@ -165,7 +166,7 @@ def _phash_match_to_candidate(match: PhashMatch) -> ScoredCandidate:
         tcgplayer_url=match.entry.tcgplayer_url,
         score=score,
         confidence=match.confidence,
-        match_reason=f"pHash d={match.distance}",
+        match_reason=f"pHash d={match.distance}{margin}",
     )
 
 
@@ -270,6 +271,43 @@ def _phash_top_sig(matches: list[PhashMatch]) -> Optional[tuple[str, str]]:
     name = (e.name or "").strip().lower()
     num = (e.number or "").split("/")[0].strip().lstrip("0")
     return (name, num) if (name or num) else None
+
+
+def _phash_exactness(matches: list[PhashMatch]) -> dict[str, Any]:
+    """Summarize whether pHash alone can safely pick one exact printing."""
+    if not matches:
+        return {
+            "top_distance": None,
+            "margin_to_next": None,
+            "tied_top_count": 0,
+            "same_art_reprint_risk": False,
+            "needs_verifier": True,
+        }
+    top = matches[0]
+    tied = [m for m in matches if m.distance == top.distance]
+    top_exact_sig = (
+        (top.entry.name or "").strip().lower(),
+        (top.entry.number or "").split("/")[0].strip().lstrip("0"),
+        (top.entry.set_id or "").strip().lower(),
+    )
+    different_same_distance = False
+    for m in tied[1:]:
+        sig = (
+            (m.entry.name or "").strip().lower(),
+            (m.entry.number or "").split("/")[0].strip().lstrip("0"),
+            (m.entry.set_id or "").strip().lower(),
+        )
+        if sig != top_exact_sig:
+            different_same_distance = True
+            break
+    margin = top.margin_to_next
+    return {
+        "top_distance": top.distance,
+        "margin_to_next": margin,
+        "tied_top_count": len(tied),
+        "same_art_reprint_risk": different_same_distance,
+        "needs_verifier": different_same_distance or margin is None or margin <= 1,
+    }
 
 
 async def _run_ximilar_fallback(
@@ -407,9 +445,12 @@ async def run_v2_pipeline(image_b64: str, category_id: str = "3") -> dict[str, A
                 "name": m.entry.name, "number": m.entry.number,
                 "set_name": m.entry.set_name, "distance": m.distance,
                 "confidence": m.confidence,
+                "margin_to_next": m.margin_to_next,
+                "rank": m.rank,
             }
             for m in matches[:5]
         ],
+        "exactness": _phash_exactness(matches),
     }
 
     if not matches:
@@ -462,7 +503,10 @@ async def run_v2_pipeline(image_b64: str, category_id: str = "3") -> dict[str, A
 
     # Stage 5: decide the final status
     top = candidates[0]
-    if top_match.confidence == "HIGH":
+    exactness = (v2_debug.get("phash") or {}).get("exactness") or {}
+    if exactness.get("same_art_reprint_risk") and not phash_ximilar_agree:
+        status = "AMBIGUOUS"
+    elif top_match.confidence == "HIGH":
         status = "MATCHED"
     elif top_match.confidence == "MEDIUM" and phash_ximilar_agree:
         status = "MATCHED"
@@ -571,9 +615,12 @@ async def run_v2_pipeline_stream(
                     "name": m.entry.name, "number": m.entry.number,
                     "set_name": m.entry.set_name, "distance": m.distance,
                     "confidence": m.confidence,
+                    "margin_to_next": m.margin_to_next,
+                    "rank": m.rank,
                 }
                 for m in matches[:5]
             ],
+            "exactness": _phash_exactness(matches),
         }
     else:
         v2_debug["phash"] = {"skipped": "index_not_built"}
@@ -653,8 +700,11 @@ async def run_v2_pipeline_stream(
 
     top_match = matches[0]
     phash_ximilar_agree = bool(v2_debug.get("phash_ximilar_agree"))
+    exactness = (v2_debug.get("phash") or {}).get("exactness") or {}
 
-    if top_match.confidence in ("HIGH", "MEDIUM"):
+    if exactness.get("same_art_reprint_risk") and not phash_ximilar_agree:
+        status = "AMBIGUOUS"
+    elif top_match.confidence in ("HIGH", "MEDIUM"):
         status = "MATCHED"
     elif top_match.confidence == "LOW" and phash_ximilar_agree:
         status = "MATCHED"
