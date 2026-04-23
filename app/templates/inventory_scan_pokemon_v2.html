@@ -95,12 +95,46 @@
         .lr-confidence.MEDIUM { background:rgba(255,152,0,.25); color:#ffb74d; }
         .lr-confidence.LOW { background:rgba(244,67,54,.25); color:#e57373; }
 
-        /* Bottom bar */
-        .bottom-bar { position:absolute; bottom:0; left:0; right:0; padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px)); background:linear-gradient(0deg, rgba(0,0,0,.85), rgba(0,0,0,.2)); display:flex; align-items:center; gap:10px; z-index:9; }
-        .batch-count { color:#fff; font-weight:700; font-size:14px; }
-        .batch-count .num { color:var(--accent); font-size:20px; margin-right:2px; }
-        .bottom-bar .btn { padding:10px 14px; border-radius:10px; font-size:13px; font-weight:700; border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.4); color:#fff; cursor:pointer; text-decoration:none; }
-        .bottom-bar .btn.primary { background:linear-gradient(180deg,var(--accent),var(--accent-strong)); border-color:transparent; }
+        /* Batch drawer (bottom sheet) */
+        .drawer {
+            position:fixed; left:0; right:0; bottom:0;
+            background:rgba(12,16,24,.96); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+            border-top:1px solid rgba(255,255,255,.08);
+            border-top-left-radius:16px; border-top-right-radius:16px;
+            box-shadow:0 -6px 28px rgba(0,0,0,.55);
+            max-height:72vh;
+            display:flex; flex-direction:column;
+            z-index:9;
+            transform:translateY(calc(100% - 62px - env(safe-area-inset-bottom,0px)));
+            transition:transform .28s ease-out;
+        }
+        .drawer.open { transform:translateY(0); }
+        .drawer-handle { padding:10px 0 4px; text-align:center; cursor:pointer; flex-shrink:0; -webkit-tap-highlight-color:transparent; }
+        .drawer-handle .bar { display:inline-block; width:44px; height:4px; border-radius:999px; background:rgba(255,255,255,.25); }
+        .drawer-handle:active .bar { background:rgba(255,255,255,.6); }
+        .drawer-peek { display:flex; align-items:center; gap:10px; padding:2px 16px 10px; flex-shrink:0; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+        .batch-count { color:#fff; font-weight:800; font-size:14px; }
+        .batch-count .num { color:var(--accent); font-size:22px; margin-right:3px; }
+        .drawer-total { color:var(--success); font-weight:800; font-size:13px; margin-left:6px; }
+        .drawer-peek .spacer { flex:1; }
+        .drawer-chevron { color:rgba(255,255,255,.5); font-size:14px; transition:transform .28s ease-out; }
+        .drawer.open .drawer-chevron { transform:rotate(180deg); }
+        .drawer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:8px 12px 0; }
+        .drawer-body:empty::after,
+        .drawer-body.empty::after { content:"No cards scanned yet."; display:block; text-align:center; padding:32px 10px; color:rgba(255,255,255,.28); font-size:13px; font-weight:500; }
+        .drawer-item { display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); border-radius:10px; padding:8px 10px; margin-bottom:6px; }
+        .drawer-item-img { width:34px; height:48px; border-radius:4px; object-fit:cover; background:rgba(255,255,255,.05); flex-shrink:0; }
+        .drawer-item-meta { flex:1; min-width:0; }
+        .drawer-item-name { font-weight:700; font-size:13px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .drawer-item-sub { color:var(--muted); font-size:11px; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .drawer-item-price { font-weight:800; font-size:13px; color:var(--success); white-space:nowrap; }
+        .drawer-item-remove { background:transparent; border:none; color:rgba(255,255,255,.3); font-size:18px; padding:0 6px; cursor:pointer; line-height:1; }
+        .drawer-item-remove:hover { color:var(--danger); }
+        .drawer-footer { flex-shrink:0; padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px)); border-top:1px solid rgba(255,255,255,.06); display:flex; gap:8px; background:rgba(0,0,0,.35); }
+        .drawer-footer .btn { flex:1; padding:11px 14px; border-radius:10px; font-size:13px; font-weight:800; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05); color:#fff; cursor:pointer; text-decoration:none; text-align:center; }
+        .drawer-footer .btn:disabled { opacity:.3; cursor:not-allowed; }
+        .drawer-footer .btn.primary { background:linear-gradient(180deg,var(--accent),var(--accent-strong)); border-color:transparent; }
+        .drawer-footer .btn.danger { color:var(--danger); border-color:rgba(244,67,54,.35); }
 
         /* Toasts */
         .toast-container { position:fixed; top:calc(56px + env(safe-area-inset-top,0px)); left:50%; transform:translateX(-50%); z-index:100; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
@@ -169,10 +203,20 @@
         </button>
     </div>
 
-    <div class="bottom-bar">
-        <div class="batch-count"><span class="num" id="batch-count">0</span> <span id="batch-word">cards</span> scanned</div>
-        <div style="flex:1"></div>
-        <a class="btn" href="/degen_eye" id="review-btn">Review &rarr;</a>
+    <!-- Batch drawer (tap the handle or peek row to expand) -->
+    <div class="drawer" id="drawer">
+        <div class="drawer-handle" id="drawer-handle"><span class="bar"></span></div>
+        <div class="drawer-peek" id="drawer-peek">
+            <span class="batch-count"><span class="num" id="batch-count">0</span> <span id="batch-word">cards</span></span>
+            <span class="drawer-total" id="batch-total"></span>
+            <span class="spacer"></span>
+            <span class="drawer-chevron">&uarr;</span>
+        </div>
+        <div class="drawer-body" id="drawer-body"></div>
+        <div class="drawer-footer">
+            <button type="button" class="btn danger" id="clear-btn" onclick="V2.clearBatch()">Clear</button>
+            <a class="btn primary" href="/inventory/scan/batch-review" id="review-btn">Review Batch &rarr;</a>
+        </div>
     </div>
 
     <div class="toast-container" id="toast-container"></div>
@@ -213,10 +257,96 @@ var V2 = (function() {
 
     function saveBatch() {
         try { localStorage.setItem('scan_batch', JSON.stringify(batch)); } catch (e) {}
-        var el = document.getElementById('batch-count');
-        var word = document.getElementById('batch-word');
-        if (el) el.textContent = String(batch.length);
-        if (word) word.textContent = batch.length === 1 ? 'card' : 'cards';
+        renderBatch();
+    }
+
+    function renderBatch() {
+        var countEl = document.getElementById('batch-count');
+        var wordEl = document.getElementById('batch-word');
+        var totalEl = document.getElementById('batch-total');
+        var body = document.getElementById('drawer-body');
+        var clearBtn = document.getElementById('clear-btn');
+        var reviewBtn = document.getElementById('review-btn');
+
+        if (countEl) countEl.textContent = String(batch.length);
+        if (wordEl) wordEl.textContent = batch.length === 1 ? 'card' : 'cards';
+
+        // Total (sum of auto_price across batch items that have a price)
+        var total = 0;
+        var priced = 0;
+        for (var i = 0; i < batch.length; i++) {
+            var p = Number(batch[i] && batch[i].auto_price);
+            if (isFinite(p) && p > 0) { total += p; priced++; }
+        }
+        if (totalEl) {
+            totalEl.textContent = priced > 0 ? ('$' + total.toFixed(2)) : '';
+        }
+        if (clearBtn) clearBtn.disabled = batch.length === 0;
+        if (reviewBtn) {
+            if (batch.length === 0) {
+                reviewBtn.setAttribute('aria-disabled', 'true');
+                reviewBtn.style.pointerEvents = 'none';
+                reviewBtn.style.opacity = '.35';
+            } else {
+                reviewBtn.removeAttribute('aria-disabled');
+                reviewBtn.style.pointerEvents = '';
+                reviewBtn.style.opacity = '';
+            }
+        }
+
+        if (!body) return;
+        if (!batch.length) {
+            body.classList.add('empty');
+            body.innerHTML = '';
+            return;
+        }
+        body.classList.remove('empty');
+        var html = '';
+        for (var j = batch.length - 1; j >= 0; j--) {
+            var item = batch[j] || {};
+            var name = escHtml(item.card_name || 'Unknown');
+            var sub = [];
+            if (item.set_name) sub.push(escHtml(item.set_name));
+            if (item.card_number) sub.push('#' + escHtml(item.card_number));
+            if (item.variant) sub.push(escHtml(item.variant));
+            if (item.condition) sub.push(escHtml(item.condition));
+            var subText = sub.join(' &middot; ');
+            var price = (item.auto_price != null) ? ('$' + Number(item.auto_price).toFixed(2)) : '';
+            var img = item.image_url ? '<img class="drawer-item-img" src="' + escHtml(item.image_url) + '" alt="" onerror="this.style.display=\'none\'">' : '<div class="drawer-item-img"></div>';
+            html += '<div class="drawer-item">' +
+                img +
+                '<div class="drawer-item-meta">' +
+                    '<div class="drawer-item-name">' + name + '</div>' +
+                    '<div class="drawer-item-sub">' + subText + '</div>' +
+                '</div>' +
+                '<div class="drawer-item-price">' + price + '</div>' +
+                '<button type="button" class="drawer-item-remove" data-idx="' + j + '" aria-label="Remove">&times;</button>' +
+            '</div>';
+        }
+        body.innerHTML = html;
+    }
+
+    function removeFromBatch(idx) {
+        if (idx < 0 || idx >= batch.length) return;
+        batch.splice(idx, 1);
+        saveBatch();
+    }
+
+    function clearBatch() {
+        if (!batch.length) return;
+        if (!confirm('Remove all ' + batch.length + ' cards from the batch?')) return;
+        batch = [];
+        saveBatch();
+    }
+
+    // Drawer open/close: tap the handle or peek area to toggle.
+    function _toggleDrawer() {
+        var d = document.getElementById('drawer');
+        if (d) d.classList.toggle('open');
+    }
+    function _openDrawer() {
+        var d = document.getElementById('drawer');
+        if (d) d.classList.add('open');
     }
 
     function showToast(text, cls, durationMs) {
@@ -604,6 +734,24 @@ var V2 = (function() {
             setCaptureMode(b.getAttribute('data-mode'));
         });
     });
+
+    // Drawer interactions: tap the handle OR the peek row to expand/collapse.
+    var _drawerHandle = document.getElementById('drawer-handle');
+    var _drawerPeek = document.getElementById('drawer-peek');
+    if (_drawerHandle) _drawerHandle.addEventListener('click', _toggleDrawer);
+    if (_drawerPeek) _drawerPeek.addEventListener('click', function(e) {
+        // Ignore clicks on the chevron / batch count text bubbling up (they're
+        // children) — the whole peek row is the tap target.
+        _toggleDrawer();
+    });
+    // Delegate remove-button clicks inside the drawer body
+    var _drawerBody = document.getElementById('drawer-body');
+    if (_drawerBody) _drawerBody.addEventListener('click', function(e) {
+        var btn = e.target && e.target.closest && e.target.closest('.drawer-item-remove');
+        if (!btn) return;
+        var idx = parseInt(btn.getAttribute('data-idx'), 10);
+        if (!isNaN(idx)) removeFromBatch(idx);
+    });
     // Apply persisted mode state immediately (before camera starts), but don't
     // fire the loop until the video stream is actually live.
     setCaptureMode(captureMode);
@@ -624,10 +772,20 @@ var V2 = (function() {
     }
     setupTap();
 
+    // When a new card is added via addToBatch, flash the drawer open so the
+    // user can see it land. We do this by wrapping addToBatch's saveBatch
+    // call — addToBatch already calls saveBatch(), so just hook after.
+    var _origAddToBatch = addToBatch;
+    addToBatch = function(result) {
+        _origAddToBatch(result);
+        _openDrawer();
+    };
+
     return {
         startCamera: startCamera,
         runScan: runScan,
-        setCaptureMode: setCaptureMode
+        setCaptureMode: setCaptureMode,
+        clearBatch: clearBatch
     };
 })();
 </script>
