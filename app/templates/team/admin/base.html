@@ -186,6 +186,7 @@
         <a class="ta-nav-link pt-link {% if active == 'pay-rates' %}active{% endif %}" href="/team/admin/employees/pay-rates">Compensation</a>
         <a class="ta-nav-link pt-link {% if active == 'clockify' %}active{% endif %}" href="/team/admin/clockify">Clockify</a>
         <a class="ta-nav-link pt-link {% if active == 'shift-tracker' %}active{% endif %}" href="/team/admin/shift-tracker">Shift Tracker</a>
+        <a class="ta-nav-link pt-link {% if active == 'labor-stats' %}active{% endif %}" href="/team/admin/labor-stats">Labor Stats</a>
         <a class="ta-nav-link pt-link {% if active == 'schedule' %}active{% endif %}" href="/team/admin/schedule">Schedule</a>
         {% set _can_admin_announcements = can_view_admin_announcements if can_view_admin_announcements is defined else request.state.can_view_admin_announcements|default(false) %}
         {% set _can_admin_timeoff = can_view_admin_timeoff if can_view_admin_timeoff is defined else request.state.can_view_admin_timeoff|default(false) %}

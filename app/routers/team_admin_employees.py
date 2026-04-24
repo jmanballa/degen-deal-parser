@@ -847,7 +847,6 @@ def admin_employee_pay_rates_page(
             "title": "Compensation",
             "current_user": current,
             "rows": rows,
-            "payroll_summary": _payroll_cost_summary(session),
             "compensation_types": COMPENSATION_TYPES,
             "compensation_type_labels": COMPENSATION_TYPE_LABELS,
             "payment_methods": PAYMENT_METHODS,

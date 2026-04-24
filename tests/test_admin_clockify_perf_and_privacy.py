@@ -43,6 +43,7 @@ class _FakeClockifyClient:
     def __init__(self, entries=None):
         self.entries = entries or []
         self.entry_calls = 0
+        self.ranges = []
 
     def workspace_info(self):
         return {"id": "workspace", "name": "Test Workspace"}
@@ -52,6 +53,7 @@ class _FakeClockifyClient:
 
     def get_user_time_entries(self, user_id, *, start_utc, end_utc, **_kw):
         self.entry_calls += 1
+        self.ranges.append({"user_id": user_id, "start_utc": start_utc, "end_utc": end_utc})
         return list(self.entries)
 
     def user_week_summary(self, user_id, *, today=None, settings=None):
@@ -401,3 +403,111 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
         self.assertIsNotNone(cached)
         self.assertEqual(cached.clockify_user_id, "clock-1")
         self.assertEqual(cached.user_id, 20)
+
+    def test_labor_stats_use_clockify_hours_and_salary_not_schedule(self):
+        from app.models import ClockifyTimeEntry, EmployeeProfile, User
+        from app.pii import encrypt_pii
+        from app.routers import team_admin_clockify as mod
+
+        self._seed_linked_employee()
+        hourly_profile = self.session.get(EmployeeProfile, 20)
+        hourly_profile.compensation_type = "hourly"
+        hourly_profile.hourly_rate_cents_enc = encrypt_pii("2500")
+        self.session.add(hourly_profile)
+        salary_user = User(
+            id=21,
+            username="salary",
+            password_hash="x",
+            password_salt="x",
+            display_name="Salary User",
+            role="employee",
+            is_active=True,
+        )
+        salary_profile = EmployeeProfile(
+            user_id=21,
+            compensation_type="monthly_salary",
+            monthly_salary_cents_enc=encrypt_pii("300000"),
+        )
+        self.session.add(salary_user)
+        self.session.add(salary_profile)
+        self.session.add(
+            ClockifyTimeEntry(
+                clockify_entry_id="labor-work",
+                clockify_user_id="clock-1",
+                user_id=20,
+                description="Floor work",
+                start_at=datetime(2026, 4, 21, 18, 0, tzinfo=timezone.utc),
+                end_at=datetime(2026, 4, 21, 20, 0, tzinfo=timezone.utc),
+                duration_seconds=7200,
+            )
+        )
+        self.session.add(
+            ClockifyTimeEntry(
+                clockify_entry_id="labor-break",
+                clockify_user_id="clock-1",
+                user_id=20,
+                description="Lunch break",
+                start_at=datetime(2026, 4, 21, 20, 0, tzinfo=timezone.utc),
+                end_at=datetime(2026, 4, 21, 20, 30, tzinfo=timezone.utc),
+                duration_seconds=1800,
+            )
+        )
+        self.session.commit()
+
+        stats = mod.build_labor_stats_summary(
+            self.session,
+            start_day=date(2026, 4, 20),
+            end_day=date(2026, 4, 21),
+            settings=self._settings(),
+            include_inactive=True,
+            now=datetime(2026, 4, 21, 22, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(stats["work_hours_label"], "2h")
+        self.assertEqual(stats["break_hours_label"], "30m")
+        self.assertEqual(stats["hourly_label"], "$50.00")
+        self.assertEqual(stats["salary_label"], "$200.00")
+        self.assertEqual(stats["total_label"], "$250.00")
+        daily = {row["day"].isoformat(): row for row in stats["daily_rows"]}
+        self.assertEqual(daily["2026-04-21"]["hourly_label"], "$50.00")
+        self.assertEqual(daily["2026-04-21"]["salary_label"], "$100.00")
+        self.assertEqual(daily["2026-04-21"]["total_label"], "$150.00")
+
+    def test_labor_stats_refresh_caches_historical_clockify_entries(self):
+        from app.models import ClockifyTimeEntry
+        from app.routers import team_admin_clockify as mod
+
+        self._seed_linked_employee()
+        client = _FakeClockifyClient(
+            entries=[
+                {
+                    "id": "historical-1",
+                    "description": "Old shift",
+                    "timeInterval": {
+                        "start": "2026-04-03T17:00:00Z",
+                        "end": "2026-04-03T21:00:00Z",
+                    },
+                }
+            ]
+        )
+
+        result = mod.refresh_clockify_labor_cache(
+            self.session,
+            client,
+            start_day=date(2026, 4, 1),
+            end_day=date(2026, 4, 7),
+            settings=self._settings(),
+            include_inactive=True,
+        )
+        cached = self.session.exec(
+            mod.select(ClockifyTimeEntry).where(
+                ClockifyTimeEntry.clockify_entry_id == "historical-1"
+            )
+        ).first()
+
+        self.assertEqual(result["cached_entries"], 1)
+        self.assertIsNotNone(cached)
+        self.assertEqual(cached.clockify_user_id, "clock-1")
+        self.assertEqual(cached.user_id, 20)
+        self.assertEqual(client.ranges[0]["start_utc"], datetime(2026, 4, 1, 7, 0, tzinfo=timezone.utc))
+        self.assertEqual(client.ranges[0]["end_utc"], datetime(2026, 4, 8, 7, 0, tzinfo=timezone.utc))

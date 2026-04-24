@@ -20,38 +20,10 @@
 <div class="ta-card">
     <h2>Bulk compensation</h2>
     <p style="font-size:13px; color:var(--lx-muted); margin:0;">
-        Choose who is paid, then fill in only the matching pay fields. Not paid users stay in the portal but are excluded from labor spend.
+        Choose who is paid, then fill in only the matching pay fields. Labor totals now live in Labor Stats and use actual Clockify time.
     </p>
-</div>
-
-<div class="ta-card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
-        <div>
-            <h2 style="margin-bottom:4px;">Labor spend</h2>
-            <p style="font-size:12px; color:var(--lx-muted); margin:0;">{{ payroll_summary.basis_label }}</p>
-        </div>
-        <div style="font-size:12px; color:var(--lx-muted); text-align:right;">
-            Monthly salary run rate<br/>
-            <strong style="font-size:18px; color:var(--lx-text);">{{ payroll_summary.monthly_salary_commitment_label }}</strong>
-        </div>
-    </div>
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
-        {% for period in payroll_summary.periods %}
-        <div style="border:1px solid var(--lx-br); border-radius:8px; padding:12px; background:var(--lx-s2);">
-            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--lx-muted);">{{ period.label }}</div>
-            <div style="font-size:24px; font-weight:750; color:var(--lx-text); margin-top:3px;">{{ period.total_label }}</div>
-            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">{{ period.range_label }}</div>
-            <div style="font-size:11px; color:var(--lx-muted); margin-top:8px;">
-                Salary {{ period.salary_label }} &middot; Hourly {{ period.hourly_label }}
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    <div style="font-size:12px; color:var(--lx-muted); margin-top:10px;">
-        {{ payroll_summary.salaried_count }} salaried &middot; {{ payroll_summary.hourly_count }} hourly &middot; {{ payroll_summary.unpaid_count }} not paid
-        {% if payroll_summary.missing_salary_count or payroll_summary.missing_hourly_rate_count %}
-            &middot; {{ payroll_summary.missing_salary_count }} missing salary &middot; {{ payroll_summary.missing_hourly_rate_count }} missing hourly rate
-        {% endif %}
+    <div style="margin-top:12px;">
+        <a class="ta-btn" href="/team/admin/labor-stats">Open Labor Stats</a>
     </div>
 </div>
 

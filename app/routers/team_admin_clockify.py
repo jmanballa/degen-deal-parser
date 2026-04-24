@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -68,6 +69,19 @@ CLOCKIFY_NAME_OVERRIDES = {
 _CLOCKIFY_WEEK_CACHE: dict[tuple[str, date], tuple[float, ClockifyWeekSummary]] = {}
 _CLOCKIFY_WEEK_CACHE_TTL_SECONDS = 60.0
 _BREAK_KEYWORDS = ("break", "lunch", "meal", "rest")
+_LABOR_STATS_DEFAULT_RANGE = "this_week"
+_LABOR_STATS_MAX_DAYS = 366
+_LABOR_STATS_PRESETS = (
+    {"key": "today", "label": "Today"},
+    {"key": "yesterday", "label": "Yesterday"},
+    {"key": "this_week", "label": "This week"},
+    {"key": "last_week", "label": "Last week"},
+    {"key": "last_7", "label": "Last 7 days"},
+    {"key": "this_month", "label": "This month"},
+    {"key": "last_month", "label": "Last month"},
+    {"key": "last_30", "label": "Last 30 days"},
+    {"key": "custom", "label": "Custom"},
+)
 
 
 def _mask_id(value: str) -> str:
@@ -188,14 +202,20 @@ def _employee_clockify_counts(employee_rows: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-def _employee_rows(session: Session) -> list[dict[str, Any]]:
+def _employee_rows(
+    session: Session,
+    *,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    result = session.exec(
+    stmt = (
         select(User, EmployeeProfile)
         .join(EmployeeProfile, EmployeeProfile.user_id == User.id, isouter=True)
-        .where((User.is_active == True) | (User.password_hash == ""))  # noqa: E712
         .order_by(User.display_name, User.username)
-    ).all()
+    )
+    if not include_inactive:
+        stmt = stmt.where((User.is_active == True) | (User.password_hash == ""))  # noqa: E712
+    result = session.exec(stmt).all()
     for employee, profile in result:
         out.append(
             {
@@ -1103,6 +1123,708 @@ def build_shift_tracker_pay_summary(
     }
 
 
+def _parse_boolish(value: Optional[str], *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    raw = str(value).strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
+def _parse_labor_day(value: Optional[str]) -> Optional[date]:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _labor_stats_window(
+    range_key: str,
+    *,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    today: Optional[date] = None,
+) -> dict[str, Any]:
+    today = today or date.today()
+    key = (range_key or _LABOR_STATS_DEFAULT_RANGE).strip().lower()
+    preset_keys = {row["key"] for row in _LABOR_STATS_PRESETS}
+    if key not in preset_keys:
+        key = _LABOR_STATS_DEFAULT_RANGE
+
+    if key == "today":
+        start_day = end_day = today
+    elif key == "yesterday":
+        start_day = end_day = today - timedelta(days=1)
+    elif key == "this_week":
+        start_day = today - timedelta(days=today.weekday())
+        end_day = today
+    elif key == "last_week":
+        this_week_start = today - timedelta(days=today.weekday())
+        start_day = this_week_start - timedelta(days=7)
+        end_day = this_week_start - timedelta(days=1)
+    elif key == "last_7":
+        start_day = today - timedelta(days=6)
+        end_day = today
+    elif key == "this_month":
+        start_day = today.replace(day=1)
+        end_day = today
+    elif key == "last_month":
+        month_start = today.replace(day=1)
+        end_day = month_start - timedelta(days=1)
+        start_day = end_day.replace(day=1)
+    elif key == "last_30":
+        start_day = today - timedelta(days=29)
+        end_day = today
+    else:
+        start_day = _parse_labor_day(start) or today
+        end_day = _parse_labor_day(end) or start_day
+        key = "custom"
+
+    if end_day > today:
+        end_day = today
+    if start_day > end_day:
+        start_day = end_day
+    if (end_day - start_day).days >= _LABOR_STATS_MAX_DAYS:
+        start_day = end_day - timedelta(days=_LABOR_STATS_MAX_DAYS - 1)
+    return {
+        "range_key": key,
+        "start_day": start_day,
+        "end_day": end_day,
+        "start_value": start_day.isoformat(),
+        "end_value": end_day.isoformat(),
+        "range_label": _format_labor_date_range(start_day, end_day),
+    }
+
+
+def _format_labor_date(value: date) -> str:
+    return value.strftime("%b %d, %Y").replace(" 0", " ")
+
+
+def _format_labor_date_range(start_day: date, end_day: date) -> str:
+    if start_day == end_day:
+        return _format_labor_date(start_day)
+    return f"{_format_labor_date(start_day)} - {_format_labor_date(end_day)}"
+
+
+def _format_labor_datetime(value: Optional[datetime], tzinfo) -> str:
+    if value is None:
+        return "No cache yet"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    local = value.astimezone(tzinfo)
+    return (
+        local.strftime("%b %d, %Y %I:%M %p")
+        .replace(" 0", " ")
+        .replace(" 0", " ")
+    )
+
+
+def _format_rate_label(cents_per_hour: int) -> str:
+    if cents_per_hour <= 0:
+        return "-"
+    return f"{_format_money_label(cents_per_hour)}/hr"
+
+
+def _format_percent_label(part: int, total: int) -> str:
+    if part <= 0 or total <= 0:
+        return "0%"
+    pct = (Decimal(part) / Decimal(total) * Decimal(100)).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    return f"{pct}%"
+
+
+def _clockify_range_bounds(
+    start_day: date,
+    end_day: date,
+    *,
+    settings=None,
+) -> tuple[datetime, datetime]:
+    start_local, _ = _clockify_day_bounds(start_day, settings=settings)
+    _, end_local = _clockify_day_bounds(end_day, settings=settings)
+    return start_local, end_local
+
+
+def _labor_stats_clockify_rows(
+    session: Session,
+    clockify_user_ids: list[str],
+    *,
+    start_local: datetime,
+    end_local: datetime,
+) -> list[ClockifyTimeEntry]:
+    if not clockify_user_ids:
+        return []
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
+    return list(
+        session.exec(
+            select(ClockifyTimeEntry).where(
+                ClockifyTimeEntry.clockify_user_id.in_(clockify_user_ids),
+                ClockifyTimeEntry.is_deleted == False,  # noqa: E712
+                ClockifyTimeEntry.start_at < end_utc,
+                or_(ClockifyTimeEntry.end_at == None, ClockifyTimeEntry.end_at > start_utc),  # noqa: E711
+            )
+        ).all()
+    )
+
+
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _clockify_seconds_by_day(
+    entry: ClockifyTimeEntry,
+    *,
+    start_local: datetime,
+    end_local: datetime,
+    now_utc: datetime,
+) -> dict[date, int]:
+    start_utc = _as_utc(entry.start_at)
+    if start_utc is None:
+        return {}
+    end_utc = _as_utc(entry.end_at)
+    if end_utc is None and entry.is_running:
+        end_utc = now_utc
+    if end_utc is None and entry.duration_seconds > 0:
+        end_utc = start_utc + timedelta(seconds=entry.duration_seconds)
+    if end_utc is None or end_utc <= start_utc:
+        return {}
+
+    tzinfo = start_local.tzinfo
+    entry_start = start_utc.astimezone(tzinfo)
+    entry_end = end_utc.astimezone(tzinfo)
+    clipped_start = max(entry_start, start_local)
+    clipped_end = min(entry_end, end_local)
+    if clipped_end <= clipped_start:
+        return {}
+
+    out: dict[date, int] = {}
+    cursor = clipped_start.date()
+    while cursor < end_local.date():
+        day_start = datetime.combine(cursor, datetime.min.time(), tzinfo=tzinfo)
+        day_end = day_start + timedelta(days=1)
+        overlap_start = max(clipped_start, day_start)
+        overlap_end = min(clipped_end, day_end)
+        if overlap_end > overlap_start:
+            out[cursor] = out.get(cursor, 0) + int(
+                (overlap_end - overlap_start).total_seconds()
+            )
+        if day_end >= clipped_end:
+            break
+        cursor += timedelta(days=1)
+    return out
+
+
+def _labor_employee_active_on(
+    user: User,
+    profile: Optional[EmployeeProfile],
+    day: date,
+    *,
+    include_inactive: bool,
+) -> bool:
+    if profile is not None:
+        if profile.hire_date and day < profile.hire_date:
+            return False
+        if profile.termination_date and day > profile.termination_date:
+            return False
+    if user.is_active or is_draft_user(user):
+        return True
+    if not include_inactive:
+        return False
+    return bool(profile and (profile.hire_date or profile.termination_date))
+
+
+def _labor_salary_cost_for_day(
+    *,
+    salary_cents: int,
+    user: User,
+    profile: EmployeeProfile,
+    day: date,
+    include_inactive: bool,
+) -> int:
+    if salary_cents <= 0:
+        return 0
+    if not include_inactive:
+        return _salary_cost_for_period(
+            salary_cents=salary_cents,
+            user=user,
+            profile=profile,
+            start_day=day,
+            end_day=day,
+        )
+    if not _labor_employee_active_on(
+        user, profile, day, include_inactive=include_inactive
+    ):
+        return 0
+    days_in_month = monthrange(day.year, day.month)[1]
+    amount = Decimal(salary_cents) / Decimal(days_in_month)
+    return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _blank_labor_day(day: date) -> dict[str, Any]:
+    return {
+        "day": day,
+        "day_label": _format_labor_date(day),
+        "work_seconds": 0,
+        "break_seconds": 0,
+        "hourly_cents": 0,
+        "salary_cents": 0,
+        "total_cents": 0,
+        "entry_count": 0,
+    }
+
+
+def _blank_labor_employee_row(
+    user: User,
+    profile: EmployeeProfile,
+    clockify_user_id: str,
+) -> dict[str, Any]:
+    compensation_type = _normalize_compensation_type(profile.compensation_type or "")
+    hourly_rate_cents = (
+        _decrypt_hourly_rate_cents(profile)
+        if compensation_type == COMPENSATION_TYPE_HOURLY
+        else None
+    )
+    salary_cents = (
+        _decrypt_monthly_salary_cents(profile)
+        if compensation_type == COMPENSATION_TYPE_MONTHLY
+        else None
+    )
+    return {
+        "employee": user,
+        "profile": profile,
+        "employee_name": user.display_name or user.username or "Employee",
+        "clockify_user_id": clockify_user_id,
+        "clockify_user_id_masked": _mask_id(clockify_user_id),
+        "compensation_type": compensation_type,
+        "pay_type_label": COMPENSATION_TYPE_LABELS.get(compensation_type, "Hourly"),
+        "hourly_rate_cents": hourly_rate_cents or 0,
+        "salary_cents": salary_cents or 0,
+        "rate_label": _format_rate_label(hourly_rate_cents or 0),
+        "salary_label": _format_money_label(salary_cents or 0)
+        if salary_cents
+        else "-",
+        "work_seconds": 0,
+        "break_seconds": 0,
+        "hourly_cents": 0,
+        "salary_cents_total": 0,
+        "total_cents": 0,
+        "entry_count": 0,
+        "work_entry_count": 0,
+        "break_entry_count": 0,
+        "missing_rate": compensation_type == COMPENSATION_TYPE_HOURLY
+        and hourly_rate_cents is None,
+        "missing_salary": compensation_type == COMPENSATION_TYPE_MONTHLY
+        and salary_cents is None,
+    }
+
+
+def _finalize_labor_rows(
+    *,
+    daily_rows: list[dict[str, Any]],
+    employee_rows: list[dict[str, Any]],
+    total_cents: int,
+) -> None:
+    for row in daily_rows:
+        row["total_cents"] = row["hourly_cents"] + row["salary_cents"]
+        row["work_hours_label"] = format_hours(row["work_seconds"])
+        row["break_hours_label"] = format_hours(row["break_seconds"])
+        row["hourly_label"] = _format_money_label(row["hourly_cents"])
+        row["salary_label"] = _format_money_label(row["salary_cents"])
+        row["total_label"] = _format_money_label(row["total_cents"])
+        row["share_label"] = _format_percent_label(row["total_cents"], total_cents)
+
+    for row in employee_rows:
+        row["total_cents"] = row["hourly_cents"] + row["salary_cents_total"]
+        row["work_hours_label"] = format_hours(row["work_seconds"])
+        row["break_hours_label"] = format_hours(row["break_seconds"])
+        row["hourly_label"] = _format_money_label(row["hourly_cents"])
+        row["salary_cost_label"] = _format_money_label(row["salary_cents_total"])
+        row["total_label"] = _format_money_label(row["total_cents"])
+        row["share_label"] = _format_percent_label(row["total_cents"], total_cents)
+    employee_rows.sort(
+        key=lambda row: (
+            -int(row["total_cents"]),
+            -int(row["work_seconds"]),
+            str(row["employee_name"]).lower(),
+        )
+    )
+
+
+def _labor_stats_core(
+    session: Session,
+    *,
+    start_day: date,
+    end_day: date,
+    settings=None,
+    employee_rows: Optional[list[dict[str, Any]]] = None,
+    include_inactive: bool = False,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    employees = (
+        employee_rows
+        if employee_rows is not None
+        else _employee_rows(session, include_inactive=include_inactive)
+    )
+    start_local, end_local = _clockify_range_bounds(
+        start_day, end_day, settings=settings
+    )
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    eligible_rows = [
+        row
+        for row in employees
+        if isinstance(row.get("user"), User)
+        and isinstance(row.get("profile"), EmployeeProfile)
+    ]
+    mapped_rows = [
+        row
+        for row in eligible_rows
+        if (row.get("clockify_user_id") or "").strip()
+    ]
+    mapped_clockify_ids = [
+        (row.get("clockify_user_id") or "").strip() for row in mapped_rows
+    ]
+    raw_entries = _labor_stats_clockify_rows(
+        session,
+        mapped_clockify_ids,
+        start_local=start_local,
+        end_local=end_local,
+    )
+    entries_by_clockify: dict[str, list[ClockifyTimeEntry]] = {}
+    for entry in raw_entries:
+        entries_by_clockify.setdefault(entry.clockify_user_id, []).append(entry)
+
+    daily_by_day: dict[date, dict[str, Any]] = {}
+    cursor = start_day
+    while cursor <= end_day:
+        daily_by_day[cursor] = _blank_labor_day(cursor)
+        cursor += timedelta(days=1)
+
+    employee_stats: dict[str, dict[str, Any]] = {}
+    total_hourly_cents = 0
+    total_salary_cents = 0
+    total_work_seconds = 0
+    total_break_seconds = 0
+    active_timer_count = 0
+    missing_hourly_rate_count = 0
+    missing_salary_count = 0
+    salary_people_count = 0
+    hourly_people_count = 0
+    unpaid_people_count = 0
+    latest_cache_at: Optional[datetime] = None
+
+    for source_row in eligible_rows:
+        user = source_row["user"]
+        profile = source_row["profile"]
+        clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
+        employee_key = clockify_user_id or f"user:{user.id}"
+        row = _blank_labor_employee_row(user, profile, clockify_user_id)
+        compensation_type = row["compensation_type"]
+        employee_stats[employee_key] = row
+
+        if compensation_type == COMPENSATION_TYPE_UNPAID:
+            unpaid_people_count += 1
+        elif compensation_type == COMPENSATION_TYPE_HOURLY:
+            hourly_people_count += 1
+            if row["missing_rate"]:
+                missing_hourly_rate_count += 1
+        elif compensation_type == COMPENSATION_TYPE_MONTHLY:
+            salary_people_count += 1
+            if row["missing_salary"]:
+                missing_salary_count += 1
+            else:
+                day_cursor = start_day
+                while day_cursor <= end_day:
+                    salary_cost = _labor_salary_cost_for_day(
+                        salary_cents=int(row["salary_cents"] or 0),
+                        user=user,
+                        profile=profile,
+                        day=day_cursor,
+                        include_inactive=include_inactive,
+                    )
+                    if salary_cost:
+                        row["salary_cents_total"] += salary_cost
+                        daily_by_day[day_cursor]["salary_cents"] += salary_cost
+                        total_salary_cents += salary_cost
+                    day_cursor += timedelta(days=1)
+
+        for entry in entries_by_clockify.get(clockify_user_id, []):
+            cache_at = _as_utc(entry.updated_at or entry.received_at)
+            if cache_at and (latest_cache_at is None or cache_at > latest_cache_at):
+                latest_cache_at = cache_at
+            if entry.is_running:
+                active_timer_count += 1
+            seconds_by_day = _clockify_seconds_by_day(
+                entry,
+                start_local=start_local,
+                end_local=end_local,
+                now_utc=now_utc,
+            )
+            if not seconds_by_day:
+                continue
+            is_break = _clockify_entry_is_break(entry)
+            row["entry_count"] += 1
+            if is_break:
+                row["break_entry_count"] += 1
+            else:
+                row["work_entry_count"] += 1
+            for day_key, seconds in seconds_by_day.items():
+                day_row = daily_by_day.get(day_key)
+                if day_row is None:
+                    continue
+                day_row["entry_count"] += 1
+                if is_break:
+                    row["break_seconds"] += seconds
+                    day_row["break_seconds"] += seconds
+                    total_break_seconds += seconds
+                    continue
+                row["work_seconds"] += seconds
+                day_row["work_seconds"] += seconds
+                total_work_seconds += seconds
+                if compensation_type == COMPENSATION_TYPE_HOURLY and row["hourly_rate_cents"]:
+                    hourly_cost = _cents_for_seconds(seconds, int(row["hourly_rate_cents"]))
+                    row["hourly_cents"] += hourly_cost
+                    day_row["hourly_cents"] += hourly_cost
+                    total_hourly_cents += hourly_cost
+
+    total_cents = total_hourly_cents + total_salary_cents
+    daily_rows = list(daily_by_day.values())
+    employee_rows_out = [
+        row
+        for row in employee_stats.values()
+        if row["hourly_cents"]
+        or row["salary_cents_total"]
+        or row["total_cents"]
+        or row["work_seconds"]
+        or row["break_seconds"]
+        or row["missing_rate"]
+        or row["missing_salary"]
+    ]
+    _finalize_labor_rows(
+        daily_rows=daily_rows,
+        employee_rows=employee_rows_out,
+        total_cents=total_cents,
+    )
+    effective_cents = (
+        int(
+            (Decimal(total_cents) * Decimal(3600) / Decimal(total_work_seconds)).quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP
+            )
+        )
+        if total_work_seconds > 0
+        else 0
+    )
+    timezone_name = str(getattr(start_local.tzinfo, "key", None) or start_local.tzinfo)
+    return {
+        "start_day": start_day,
+        "end_day": end_day,
+        "start_local": start_local,
+        "end_local": end_local,
+        "timezone_name": timezone_name,
+        "range_label": _format_labor_date_range(start_day, end_day),
+        "daily_rows": daily_rows,
+        "employee_rows": employee_rows_out,
+        "entry_count": len(raw_entries),
+        "mapped_count": len(mapped_rows),
+        "unmapped_count": max(0, len(eligible_rows) - len(mapped_rows)),
+        "hourly_people_count": hourly_people_count,
+        "salary_people_count": salary_people_count,
+        "unpaid_people_count": unpaid_people_count,
+        "missing_hourly_rate_count": missing_hourly_rate_count,
+        "missing_salary_count": missing_salary_count,
+        "active_timer_count": active_timer_count,
+        "work_seconds": total_work_seconds,
+        "break_seconds": total_break_seconds,
+        "hourly_cents": total_hourly_cents,
+        "salary_cents": total_salary_cents,
+        "total_cents": total_cents,
+        "work_hours_label": format_hours(total_work_seconds),
+        "break_hours_label": format_hours(total_break_seconds),
+        "hourly_label": _format_money_label(total_hourly_cents),
+        "salary_label": _format_money_label(total_salary_cents),
+        "total_label": _format_money_label(total_cents),
+        "effective_rate_label": _format_rate_label(effective_cents),
+        "latest_cache_label": _format_labor_datetime(latest_cache_at, start_local.tzinfo),
+        "basis_label": "Actual Clockify work entries plus compensation settings",
+    }
+
+
+def build_labor_stats_summary(
+    session: Session,
+    *,
+    start_day: date,
+    end_day: date,
+    settings=None,
+    employee_rows: Optional[list[dict[str, Any]]] = None,
+    include_inactive: bool = False,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    today = (now.astimezone(timezone.utc).date() if now else date.today())
+    selected = _labor_stats_core(
+        session,
+        start_day=start_day,
+        end_day=end_day,
+        settings=settings,
+        employee_rows=employee_rows,
+        include_inactive=include_inactive,
+        now=now,
+    )
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=6)
+    week_to_date = _labor_stats_core(
+        session,
+        start_day=week_start,
+        end_day=today,
+        settings=settings,
+        employee_rows=employee_rows,
+        include_inactive=include_inactive,
+        now=now,
+    )
+    full_week_salary_cents = 0
+    employees = (
+        employee_rows
+        if employee_rows is not None
+        else _employee_rows(session, include_inactive=include_inactive)
+    )
+    for source_row in employees:
+        user = source_row.get("user")
+        profile = source_row.get("profile")
+        if not isinstance(user, User) or not isinstance(profile, EmployeeProfile):
+            continue
+        if _normalize_compensation_type(profile.compensation_type or "") != COMPENSATION_TYPE_MONTHLY:
+            continue
+        salary_cents = _decrypt_monthly_salary_cents(profile)
+        if salary_cents is None:
+            continue
+        cursor = week_start
+        while cursor <= week_end:
+            full_week_salary_cents += _labor_salary_cost_for_day(
+                salary_cents=salary_cents,
+                user=user,
+                profile=profile,
+                day=cursor,
+                include_inactive=include_inactive,
+            )
+            cursor += timedelta(days=1)
+    estimated_week_cents = week_to_date["hourly_cents"] + full_week_salary_cents
+    selected["week_estimate"] = {
+        "range_label": _format_labor_date_range(week_start, week_end),
+        "total_label": _format_money_label(estimated_week_cents),
+        "hourly_to_date_label": _format_money_label(week_to_date["hourly_cents"]),
+        "salary_week_label": _format_money_label(full_week_salary_cents),
+        "basis_label": "Clocked hourly so far plus full-week salary accrual",
+    }
+    return selected
+
+
+def refresh_clockify_labor_cache(
+    session: Session,
+    client: ClockifyClient,
+    *,
+    start_day: date,
+    end_day: date,
+    settings=None,
+    employee_rows: Optional[list[dict[str, Any]]] = None,
+    include_inactive: bool = False,
+    source_event: str = "LABOR_STATS_REFRESH",
+) -> dict[str, Any]:
+    start_local, end_local = _clockify_range_bounds(
+        start_day, end_day, settings=settings
+    )
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
+    employees = (
+        employee_rows
+        if employee_rows is not None
+        else _employee_rows(session, include_inactive=include_inactive)
+    )
+    mapped_rows = [
+        row for row in employees if (row.get("clockify_user_id") or "").strip()
+    ]
+    refreshed_users = 0
+    cached_entries = 0
+    errors: list[str] = []
+    received_at = utcnow()
+
+    for row in mapped_rows:
+        clockify_user_id = (row.get("clockify_user_id") or "").strip()
+        try:
+            entries = client.get_user_time_entries(
+                clockify_user_id,
+                start_utc=start_utc,
+                end_utc=end_utc,
+                page_size=1000,
+                max_pages=20,
+            )
+        except (ClockifyApiError, ClockifyConfigError) as exc:
+            employee = row.get("user")
+            employee_name = (
+                getattr(employee, "display_name", None)
+                or getattr(employee, "username", None)
+                or _mask_id(clockify_user_id)
+            )
+            errors.append(f"{employee_name}: {exc}")
+            continue
+
+        seen_entry_ids: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            entry_payload = dict(entry)
+            entry_payload.setdefault("userId", clockify_user_id)
+            entry_id = str(entry.get("id") or "").strip()
+            if entry_id:
+                seen_entry_ids.add(entry_id)
+            cached = _upsert_clockify_time_entry_from_payload(
+                session,
+                {
+                    "workspaceId": getattr(settings, "clockify_workspace_id", ""),
+                    "timeEntry": entry_payload,
+                },
+                source_event=source_event,
+                settings=settings,
+                received_at=received_at,
+            )
+            if cached is not None:
+                cached_entries += 1
+
+        existing_rows = session.exec(
+            select(ClockifyTimeEntry).where(
+                ClockifyTimeEntry.clockify_user_id == clockify_user_id,
+                ClockifyTimeEntry.is_deleted == False,  # noqa: E712
+                ClockifyTimeEntry.start_at < end_utc,
+                or_(ClockifyTimeEntry.end_at == None, ClockifyTimeEntry.end_at > start_utc),  # noqa: E711
+            )
+        ).all()
+        for existing in existing_rows:
+            if existing.clockify_entry_id not in seen_entry_ids:
+                existing.is_deleted = True
+                existing.is_running = False
+                existing.updated_at = received_at
+                session.add(existing)
+        refreshed_users += 1
+
+    session.commit()
+    return {
+        "mapped_users": len(mapped_rows),
+        "refreshed_users": refreshed_users,
+        "cached_entries": cached_entries,
+        "error_count": len(errors),
+        "errors": errors,
+        "range_label": _format_labor_date_range(start_day, end_day),
+    }
+
+
 def refresh_clockify_shift_tracker_cache(
     session: Session,
     client: ClockifyClient,
@@ -1553,6 +2275,121 @@ async def admin_shift_tracker_refresh(
         )
     return RedirectResponse(
         "/team/admin/shift-tracker?" + urlencode({"flash": flash}),
+        status_code=303,
+    )
+
+
+@router.get("/team/admin/labor-stats", response_class=HTMLResponse)
+def admin_labor_stats_page(
+    request: Request,
+    range_key: str = Query(default=_LABOR_STATS_DEFAULT_RANGE, alias="range"),
+    start: Optional[str] = Query(default=None),
+    end: Optional[str] = Query(default=None),
+    show_inactive: Optional[str] = Query(default=None),
+    flash: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    denial, user = _permission_gate(request, session, "admin.employees.view")
+    if denial:
+        return denial
+    settings = get_settings()
+    configured = clockify_is_configured(settings)
+    include_inactive = _parse_boolish(show_inactive, default=True)
+    window = _labor_stats_window(range_key, start=start, end=end)
+    employees = _employee_rows(session, include_inactive=include_inactive)
+    stats = build_labor_stats_summary(
+        session,
+        start_day=window["start_day"],
+        end_day=window["end_day"],
+        settings=settings,
+        employee_rows=employees,
+        include_inactive=include_inactive,
+    )
+    return templates.TemplateResponse(
+        request,
+        "team/admin/labor_stats.html",
+        {
+            "request": request,
+            "title": "Labor Stats",
+            "current_user": user,
+            "configured": configured,
+            "labor_presets": _LABOR_STATS_PRESETS,
+            "window": window,
+            "stats": stats,
+            "include_inactive": include_inactive,
+            "flash": flash,
+            "error": error,
+            "csrf_token": issue_token(request),
+            "can_refresh": user.role == "admin",
+        },
+    )
+
+
+@router.post(
+    "/team/admin/labor-stats/refresh",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_labor_stats_refresh(
+    request: Request,
+    range_key: str = Form(default=_LABOR_STATS_DEFAULT_RANGE),
+    start: str = Form(default=""),
+    end: str = Form(default=""),
+    show_inactive: str = Form(default="1"),
+    session: Session = Depends(get_session),
+):
+    denial, _user = _admin_gate(request, session, "admin.employees.edit")
+    if denial:
+        return denial
+    settings = get_settings()
+    include_inactive = _parse_boolish(show_inactive, default=True)
+    window = _labor_stats_window(range_key, start=start, end=end)
+    qs_base = {
+        "range": window["range_key"],
+        "start": window["start_value"],
+        "end": window["end_value"],
+        "show_inactive": "1" if include_inactive else "0",
+    }
+    if not clockify_is_configured(settings):
+        qs = dict(qs_base)
+        qs["error"] = "CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID are required."
+        return RedirectResponse(
+            "/team/admin/labor-stats?" + urlencode(qs),
+            status_code=303,
+        )
+    employees = _employee_rows(session, include_inactive=include_inactive)
+    try:
+        result = refresh_clockify_labor_cache(
+            session,
+            clockify_client_from_settings(settings),
+            start_day=window["start_day"],
+            end_day=window["end_day"],
+            settings=settings,
+            employee_rows=employees,
+            include_inactive=include_inactive,
+        )
+    except (ClockifyApiError, ClockifyConfigError) as exc:
+        qs = dict(qs_base)
+        qs["error"] = str(exc)
+        return RedirectResponse(
+            "/team/admin/labor-stats?" + urlencode(qs),
+            status_code=303,
+        )
+    if result["error_count"]:
+        flash = (
+            f"Refreshed {result['refreshed_users']} of {result['mapped_users']} "
+            f"mapped employee(s) for {result['range_label']}. "
+            f"{result['error_count']} error(s); {result['cached_entries']} entries cached."
+        )
+    else:
+        flash = (
+            f"Refreshed {result['refreshed_users']} mapped employee(s) for "
+            f"{result['range_label']}; {result['cached_entries']} entries cached."
+        )
+    qs = dict(qs_base)
+    qs["flash"] = flash
+    return RedirectResponse(
+        "/team/admin/labor-stats?" + urlencode(qs),
         status_code=303,
     )
 
