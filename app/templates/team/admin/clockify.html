@@ -57,7 +57,7 @@
     </div>
 
     <p style="font-size:13px; color:var(--lx-muted); margin:0 0 12px;">
-        Sync links active employees to Clockify users by exact email match. Existing conflicting Clockify IDs are left untouched.
+        Email sync is optional. Use the manual matching table below when portal emails are not filled in yet.
     </p>
     {% if can_sync %}
     <form method="post" action="/team/admin/clockify/sync-users" style="margin:0;">
@@ -72,11 +72,156 @@
     {% endif %}
 </div>
 
-<div class="ta-card">
-    <h2>Manual fallback</h2>
-    <p style="font-size:13px; color:var(--lx-muted); margin:0;">
-        If an employee's email does not match Clockify, open their employee profile and paste the Clockify user ID manually.
-        Their My Hours page starts working as soon as that field is saved.
-    </p>
+<div class="ta-card" style="padding:0;">
+    <div style="padding:18px 22px 12px;">
+        <h2>Manual employee matching</h2>
+        <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+            Choose the matching Clockify person for each active portal account. Saving a blank value unlinks that employee.
+        </p>
+    </div>
+    <div style="overflow:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; min-width:820px;">
+            <thead>
+                <tr style="text-align:left; color:var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Employee</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Current match</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Set Clockify user</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br); width:90px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in employees %}
+                {% set employee = row.user %}
+                {% set current_clockify = clockify_user_map.get(row.clockify_user_id) if row.clockify_user_id else none %}
+                <tr>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        <a href="/team/admin/employees/{{ employee.id }}" style="color:#ff8a3d; font-weight:650;">
+                            {{ employee.display_name or employee.username }}
+                        </a>
+                        <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">{{ employee.username }} &middot; {{ employee.role }}</div>
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        {% if current_clockify %}
+                            <div style="font-weight:650;">{{ current_clockify.name or current_clockify.email or row.clockify_user_id }}</div>
+                            <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">
+                                {% if current_clockify.email %}{{ current_clockify.email }} &middot; {% endif %}{{ mask_id(row.clockify_user_id) }}
+                            </div>
+                        {% elif row.clockify_user_id %}
+                            <div style="font-weight:650;">Unknown Clockify user</div>
+                            <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">{{ mask_id(row.clockify_user_id) }}</div>
+                        {% else %}
+                            <span style="color:var(--lx-muted);">Not linked</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        <form method="post" action="/team/admin/clockify/manual-link" style="display:flex; align-items:center; gap:8px; margin:0;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                            <input type="hidden" name="user_id" value="{{ employee.id }}"/>
+                            <select name="clockify_user_id"
+                                    {% if not configured or not clockify_users %}disabled{% endif %}
+                                    style="width:100%; max-width:360px; padding:6px 8px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
+                                <option value="">Not linked</option>
+                                {% for cu in clockify_users %}
+                                    {% set cid = cu.id|string %}
+                                    {% set linked = linked_by_clockify.get(cid) %}
+                                    <option value="{{ cid }}"
+                                            {% if cid == row.clockify_user_id %}selected{% endif %}
+                                            {% if linked and linked.id != employee.id %}disabled{% endif %}>
+                                        {{ cu.name or cu.email or mask_id(cid) }}{% if cu.email %} &middot; {{ cu.email }}{% endif %}{% if linked and linked.id != employee.id %} &middot; linked to {{ linked.display_name or linked.username }}{% endif %}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <button class="ta-btn" type="submit" {% if not configured or not clockify_users %}disabled{% endif %}>Save</button>
+                        </form>
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);"></td>
+                </tr>
+                {% endfor %}
+                {% if not employees %}
+                <tr><td colspan="4" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No active employees found.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="ta-card" style="padding:0;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:18px 22px 12px; flex-wrap:wrap;">
+        <div>
+            <h2>Clockify people and data access</h2>
+            <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+                This shows every Clockify user the API can see, plus whether this week's time entries can be read.
+            </p>
+        </div>
+        {% if configured and clockify_users %}
+            {% if include_hours %}
+            <a class="ta-btn" href="/team/admin/clockify?include_hours=0">Hide hour preview</a>
+            {% else %}
+            <a class="ta-btn" href="/team/admin/clockify?include_hours=1">Load hour preview</a>
+            {% endif %}
+        {% endif %}
+    </div>
+    <div style="overflow:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; min-width:860px;">
+            <thead>
+                <tr style="text-align:left; color:var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Clockify user</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Status</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Linked employee</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">This week</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Entries</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in roster_preview %}
+                {% set linked = linked_by_clockify.get(row.id) %}
+                <tr>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        <div style="font-weight:650;">{{ row.name }}</div>
+                        <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">
+                            {% if row.email %}{{ row.email }} &middot; {% endif %}{{ row.id_masked }}
+                        </div>
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.status }}</td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        {% if linked %}
+                            <a href="/team/admin/employees/{{ linked.id }}" style="color:#ff8a3d;">{{ linked.display_name or linked.username }}</a>
+                        {% else %}
+                            <span style="color:var(--lx-muted);">Not linked</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        {% if row.data_error %}
+                            <span style="color:#fca5a5;">Error</span>
+                            <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">{{ row.data_error }}</div>
+                        {% elif include_hours %}
+                            <strong>{{ row.hours_label }}</strong>
+                            {% if row.running_count %}<span style="margin-left:6px; color:#86efac;">timer running</span>{% endif %}
+                        {% else %}
+                            <span style="color:var(--lx-muted);">Not loaded</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        {% if include_hours and not row.data_error %}
+                            {{ row.entry_count }}
+                        {% else %}
+                            <span style="color:var(--lx-muted);">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not roster_preview %}
+                <tr>
+                    <td colspan="5" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">
+                        {% if configured %}No Clockify users returned for this workspace.{% else %}Connect Clockify to load workspace users.{% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    {% if preview_capped %}
+    <p style="font-size:12px; color:var(--lx-muted); margin:12px 22px 18px;">Preview capped at 100 Clockify users.</p>
+    {% endif %}
 </div>
 {% endblock %}

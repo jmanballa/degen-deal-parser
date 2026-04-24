@@ -250,6 +250,178 @@ class ClockifyAdminSyncTests(unittest.TestCase):
         self.assertIsNotNone(audit)
         self.assertNotIn("alice@example.com", audit.details_json)
 
+    def test_manual_link_creates_profile_and_audits(self):
+        from app.models import AuditLog, EmployeeProfile, User
+        from app.routers.team_admin_clockify import set_employee_clockify_user_id
+
+        admin = User(
+            id=99,
+            username="admin",
+            password_hash="x",
+            password_salt="x",
+            role="admin",
+            is_active=True,
+        )
+        employee = User(
+            id=3,
+            username="manual",
+            display_name="Manual Match",
+            password_hash="x",
+            password_salt="x",
+            role="employee",
+            is_active=True,
+        )
+        self.session.add_all([admin, employee])
+        self.session.commit()
+
+        ok, message = set_employee_clockify_user_id(
+            self.session,
+            current_user=admin,
+            user_id=employee.id,
+            clockify_user_id="clock-manual",
+            ip_address="127.0.0.1",
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(message, "Clockify user linked.")
+        profile = self.session.get(EmployeeProfile, employee.id)
+        self.assertEqual(profile.clockify_user_id, "clock-manual")
+        audit = self.session.exec(
+            select(AuditLog).where(AuditLog.action == "admin.clockify.manual_link")
+        ).first()
+        self.assertIsNotNone(audit)
+        self.assertIn("clock-manual", audit.details_json)
+
+    def test_manual_link_rejects_duplicate_clockify_id(self):
+        from app.models import EmployeeProfile, User
+        from app.routers.team_admin_clockify import set_employee_clockify_user_id
+
+        admin = User(
+            id=99,
+            username="admin",
+            password_hash="x",
+            password_salt="x",
+            role="admin",
+            is_active=True,
+        )
+        linked = User(
+            id=4,
+            username="linked",
+            display_name="Already Linked",
+            password_hash="x",
+            password_salt="x",
+            role="employee",
+            is_active=True,
+        )
+        target = User(
+            id=5,
+            username="target",
+            display_name="Target",
+            password_hash="x",
+            password_salt="x",
+            role="employee",
+            is_active=True,
+        )
+        self.session.add_all([admin, linked, target])
+        self.session.add(EmployeeProfile(user_id=linked.id, clockify_user_id="clock-shared"))
+        self.session.commit()
+
+        ok, message = set_employee_clockify_user_id(
+            self.session,
+            current_user=admin,
+            user_id=target.id,
+            clockify_user_id="clock-shared",
+        )
+
+        self.assertFalse(ok)
+        self.assertIn("Already Linked", message)
+        self.assertIsNone(self.session.get(EmployeeProfile, target.id))
+
+    def test_clockify_admin_template_renders_manual_matching_and_roster(self):
+        from types import SimpleNamespace
+
+        from app.models import EmployeeProfile, User
+        from app.shared import templates
+
+        employee = User(
+            id=6,
+            username="portal-user",
+            display_name="Portal User",
+            password_hash="x",
+            password_salt="x",
+            role="employee",
+            is_active=True,
+        )
+        profile = EmployeeProfile(user_id=employee.id, clockify_user_id="clock-1")
+        html = templates.env.get_template("team/admin/clockify.html").render(
+            {
+                "request": SimpleNamespace(
+                    state=SimpleNamespace(),
+                    url=SimpleNamespace(path="/team/admin/clockify"),
+                ),
+                "title": "Clockify",
+                "current_user": SimpleNamespace(role="admin"),
+                "configured": True,
+                "workspace": {"name": "Degen Collectibles"},
+                "workspace_id_masked": "68a3...34d5",
+                "status_error": None,
+                "clockify_users": [
+                    {
+                        "id": "clock-1",
+                        "name": "Clock One",
+                        "email": "clock1@example.com",
+                    }
+                ],
+                "clockify_user_map": {
+                    "clock-1": {
+                        "id": "clock-1",
+                        "name": "Clock One",
+                        "email": "clock1@example.com",
+                    }
+                },
+                "roster_preview": [
+                    {
+                        "id": "clock-1",
+                        "id_masked": "cloc...ck-1",
+                        "name": "Clock One",
+                        "email": "clock1@example.com",
+                        "status": "ACTIVE",
+                        "hours_label": "3h",
+                        "entry_count": 2,
+                        "running_count": 0,
+                        "data_error": "",
+                    }
+                ],
+                "preview_capped": False,
+                "include_hours": True,
+                "employees": [
+                    {
+                        "user": employee,
+                        "profile": profile,
+                        "clockify_user_id": "clock-1",
+                    }
+                ],
+                "linked_by_clockify": {"clock-1": employee},
+                "counts": {
+                    "active_profiles": 1,
+                    "mapped": 1,
+                    "unmapped": 0,
+                    "with_email": 0,
+                },
+                "can_sync": True,
+                "mask_id": lambda value: value,
+                "flash": None,
+                "error": None,
+                "csrf_token": "token",
+            }
+        )
+
+        self.assertIn("Manual employee matching", html)
+        self.assertIn("Portal User", html)
+        self.assertIn("Clockify people and data access", html)
+        self.assertIn("Clock One", html)
+        self.assertIn("3h", html)
+
 
 if __name__ == "__main__":
     unittest.main()
