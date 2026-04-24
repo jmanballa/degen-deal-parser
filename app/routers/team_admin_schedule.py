@@ -73,6 +73,43 @@ def _build_cell_key(user_id: int, d: date) -> str:
     return f"cell__{user_id}__{d.isoformat()}"
 
 
+def _parse_cleared_cell_markers(raw: object) -> set[str]:
+    """Return explicit storefront clear markers from the form payload."""
+    if raw is None:
+        return set()
+    if isinstance(raw, (list, tuple)):
+        parsed = raw
+    else:
+        s = str(raw).strip()
+        if not s:
+            return set()
+        try:
+            parsed = json.loads(s)
+        except (TypeError, ValueError):
+            return set()
+    if not isinstance(parsed, list):
+        return set()
+    out: set[str] = set()
+    for item in parsed:
+        if not isinstance(item, str):
+            continue
+        marker = item.strip()
+        if re.fullmatch(r"\d+__\d{4}-\d{2}-\d{2}", marker):
+            out.add(marker)
+    return out
+
+
+def _should_apply_shift_cell_payload(
+    specs: list[dict],
+    existing_count: int,
+    explicitly_cleared: bool,
+) -> bool:
+    """Whether a submitted storefront cell payload should replace the DB rows."""
+    if not specs and existing_count > 0 and not explicitly_cleared:
+        return False
+    return True
+
+
 def _build_day_loc_key(d: date) -> str:
     return f"dayloc__{d.isoformat()}"
 
@@ -835,6 +872,7 @@ async def admin_schedule_save(
     if denial:
         return denial
     form = await request.form()
+    cleared_cells_set = _parse_cleared_cell_markers(form.get("cleared_cells"))
 
     week_raw = form.get("week") or ""
     week_start = _parse_week_start(week_raw)
@@ -949,6 +987,15 @@ async def admin_schedule_save(
                 continue
             raw = form.get(key) or ""
             specs = _parse_cell_payload(raw)
+            existing_list = entry_map.get((uid, d.isoformat()), [])
+            cell_marker = f"{uid}__{d.isoformat()}"
+            explicitly_cleared = cell_marker in cleared_cells_set
+            if not _should_apply_shift_cell_payload(
+                specs,
+                existing_count=len(existing_list),
+                explicitly_cleared=explicitly_cleared,
+            ):
+                continue
             # Legacy recur__ input applies to legacy single-label cells.
             if specs and specs[0].get("recur_n") is None:
                 try:
@@ -960,7 +1007,6 @@ async def admin_schedule_save(
             # Replace-the-cell semantics: delete existing rows, insert
             # the new set in order. This is the only way to handle multi-
             # shift cells without a second "which slot am I" handshake.
-            existing_list = entry_map.get((uid, d.isoformat()), [])
             prev_count = len(existing_list)
             new_count = len(specs)
 

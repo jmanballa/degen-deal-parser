@@ -1106,6 +1106,9 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <input type="hidden" name="week" value="{{ ctx.week_start_iso }}"/>
         <input type="hidden" name="staff_kind" value="{{ kind_slug }}"/>
+        {% if edit and kind_slug == 'storefront' %}
+        <input type="hidden" name="cleared_cells" value="[]"/>
+        {% endif %}
 
         <div class="ta-card sch-wrap" style="padding:10px;">
             <table class="sch-table">
@@ -1201,8 +1204,9 @@
                             data-kind-slug="{{ kind_slug }}">
                             {% if edit %}
                             {#
-                               Hidden JSON array input. One per cell regardless
-                               of kind. JS writes:
+                               Hidden JSON array input. One per cell so JS can
+                               find it, but empty cells render without a name
+                               until the admin touches them. JS writes:
                                  storefront → [{"label":"9 AM - 5 PM","recur":1}, ...]
                                  stream     → [{"start":"09:00","end":"17:00", ...}, ...]
                                Server `_parse_cell_payload` accepts both the
@@ -1212,12 +1216,14 @@
                             {% if kind_slug == 'stream' %}
                             <input type="hidden"
                                    class="sch-stream-input"
-                                   name="stream_cell__{{ u.id }}__{{ d.isoformat() }}"
+                                   data-cell-name="stream_cell__{{ u.id }}__{{ d.isoformat() }}"
+                                   {% if has_shifts %}name="stream_cell__{{ u.id }}__{{ d.isoformat() }}"{% endif %}
                                    value=""/>
                             {% else %}
                             <input type="hidden"
                                    class="sch-cell-input"
-                                   name="{{ build_cell_key(u.id, d) }}"
+                                   data-cell-name="{{ build_cell_key(u.id, d) }}"
+                                   {% if has_shifts %}name="{{ build_cell_key(u.id, d) }}"{% endif %}
                                    value=""/>
                             {% endif %}
                             <div class="sch-cell-stack {% if shift_count > 1 %}is-multi{% endif %}">
@@ -1820,6 +1826,77 @@
     var activeShiftList  = [];
     var activeEditIdx    = 0;
 
+    function inputSelectorForKind(kindSlug) {
+        return kindSlug === 'stream' ? '.sch-stream-input' : '.sch-cell-input';
+    }
+
+    function expectedInputName(cell, kindSlug) {
+        if (!cell) return '';
+        var uid = cell.dataset.userId || '';
+        var iso = cell.dataset.date || '';
+        if (!uid || !iso) return '';
+        return (kindSlug === 'stream' ? 'stream_cell__' : 'cell__') + uid + '__' + iso;
+    }
+
+    function ensureCellInput(cell, kindSlug) {
+        if (!cell) return null;
+        var cls = kindSlug === 'stream' ? 'sch-stream-input' : 'sch-cell-input';
+        var input = cell.querySelector('.' + cls);
+        if (!input) {
+            input = document.createElement('input');
+            input.type = 'hidden';
+            input.className = cls;
+            var stack = cell.querySelector('.sch-cell-stack');
+            if (stack && stack.parentNode) {
+                stack.parentNode.insertBefore(input, stack);
+            } else {
+                cell.appendChild(input);
+            }
+        }
+        var inputName = input.dataset.cellName || expectedInputName(cell, kindSlug);
+        if (inputName) {
+            input.dataset.cellName = inputName;
+            input.setAttribute('name', inputName);
+        }
+        return input;
+    }
+
+    function setDirty(cell) {
+        if (cell) cell.classList.add('is-dirty');
+        if (dirtyFlag) dirtyFlag.style.display = 'inline-block';
+    }
+
+    function clearedCellsInputFor(cell) {
+        var form = cell ? cell.closest('form[data-schgrid="storefront"]') : null;
+        return form ? form.querySelector('input[name="cleared_cells"]') : null;
+    }
+
+    function updateClearedCellMarker(cell, kindSlug, isCleared) {
+        if (kindSlug === 'stream' || !cell) return;
+        var marker = (cell.dataset.userId || '') + '__' + (cell.dataset.date || '');
+        if (marker === '__') return;
+        var input = clearedCellsInputFor(cell);
+        if (!input) return;
+        var current = [];
+        try {
+            current = JSON.parse(input.value || '[]');
+        } catch (_) {
+            current = [];
+        }
+        var seen = {};
+        if (Array.isArray(current)) {
+            current.forEach(function(item) {
+                if (typeof item === 'string') seen[item] = true;
+            });
+        }
+        if (isCleared) {
+            seen[marker] = true;
+        } else {
+            delete seen[marker];
+        }
+        input.value = JSON.stringify(Object.keys(seen).sort());
+    }
+
     function setStatus(status) {
         Array.prototype.forEach.call(tabsEl.children, function(btn) {
             btn.classList.toggle('is-active', btn.dataset.status === status);
@@ -1934,15 +2011,16 @@
     // patching individual pills) makes multi-shift add/remove trivial.
     // -----------------------------------------------------------------
     function renderCellFromList(cell, shifts, kindSlug) {
-        var input = cell.querySelector(kindSlug === 'stream' ? '.sch-stream-input' : '.sch-cell-input');
+        var input = ensureCellInput(cell, kindSlug);
         var stack = cell.querySelector('.sch-cell-stack');
         if (!input || !stack) return;
 
-        // Empty array → write "" so the server treats this as "cell
-        // cleared" rather than "no change". JSON "[]" would also work
-        // but "" matches legacy empty-cell semantics more cleanly.
+        // Empty array after an edit -> write "" and, for storefront cells,
+        // add an explicit cleared_cells marker. Untouched empty cells do not
+        // have a name and therefore do not submit at all.
         if (!shifts || !shifts.length) {
             input.value = '';
+            updateClearedCellMarker(cell, kindSlug, true);
             stack.classList.remove('is-multi');
             stack.innerHTML = '';
             var blank = document.createElement('button');
@@ -1957,6 +2035,7 @@
             blank.appendChild(plus);
             stack.appendChild(blank);
             bindPill(cell, blank);
+            setDirty(cell);
             return;
         }
 
@@ -1965,6 +2044,7 @@
         // the list they expect because different hidden inputs carry
         // the two shapes.
         input.value = JSON.stringify(shifts);
+        updateClearedCellMarker(cell, kindSlug, false);
 
         stack.innerHTML = '';
         stack.classList.toggle('is-multi', shifts.length > 1);
@@ -2025,15 +2105,14 @@
         stack.appendChild(addBtn);
         bindPill(cell, addBtn);
 
-        cell.classList.add('is-dirty');
-        if (dirtyFlag) dirtyFlag.style.display = 'inline-block';
+        setDirty(cell);
     }
 
     // Read the currently-rendered shift list for a cell. On first open
     // the hidden input is empty — we reconstruct from DOM. After any
     // edit the hidden input IS the source of truth.
     function readCellShifts(cell, kindSlug) {
-        var input = cell.querySelector(kindSlug === 'stream' ? '.sch-stream-input' : '.sch-cell-input');
+        var input = cell.querySelector(inputSelectorForKind(kindSlug));
         var raw = input ? (input.value || '') : '';
         if (raw) {
             try {
@@ -2223,7 +2302,7 @@
         var isStream = activeKindSlug === 'stream';
         modal.classList.toggle('is-stream', isStream);
 
-        activeInput = cell.querySelector(isStream ? '.sch-stream-input' : '.sch-cell-input');
+        activeInput = ensureCellInput(cell, activeKindSlug);
         if (!activeInput) return;
 
         // Pull the cell's current shift list (hidden-input JSON if set,
@@ -2389,7 +2468,7 @@
             // On a fully-cleared stream cell we still need to tell the
             // server to wipe the StreamSchedule rows. Use the explicit
             // clear flag; _save_stream_shifts accepts that shape.
-            var input = activeCell.querySelector('.sch-stream-input');
+            var input = ensureCellInput(activeCell, 'stream');
             if (input) input.value = JSON.stringify({ clear: true });
             var stack = activeCell.querySelector('.sch-cell-stack');
             if (stack) {
@@ -2408,8 +2487,7 @@
                 stack.appendChild(blank);
                 bindPill(activeCell, blank);
             }
-            activeCell.classList.add('is-dirty');
-            if (dirtyFlag) dirtyFlag.style.display = 'inline-block';
+            setDirty(activeCell);
         } else {
             renderCellFromList(activeCell, activeShiftList, activeKindSlug);
         }

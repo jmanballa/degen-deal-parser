@@ -259,6 +259,12 @@ class ScheduleMobileTests(unittest.TestCase):
         )
         try:
             cell_sel = self._cell_selector()
+            untouched_key = f"cell__{self.employee.id}__{(self.WEEK + timedelta(days=1)).isoformat()}"
+            self.assertEqual(
+                page.locator(f'input[name="{untouched_key}"]').count(),
+                0,
+                "untouched empty cells must not have named hidden inputs",
+            )
             # Scroll the horizontal grid so the target cell sits in the
             # visible pane, then dispatch a real `touchend` + `click`
             # the way a phone fires them. We dispatch (rather than use
@@ -343,6 +349,12 @@ class ScheduleMobileTests(unittest.TestCase):
             key = f"cell__{self.employee.id}__{self.WEEK.isoformat()}"
             self.assertIn(key, captured)
             self.assertIn("10:30 AM", captured[key])
+            self.assertNotIn(
+                untouched_key,
+                captured,
+                "saving one cell must not submit untouched empty cells",
+            )
+            self.assertEqual(captured.get("cleared_cells"), "[]")
             self.assertEqual(captured.get("staff_kind"), "storefront")
             self.assertEqual(captured.get("week"), self.WEEK.isoformat())
             self.assertTrue(captured.get("csrf_token"))
