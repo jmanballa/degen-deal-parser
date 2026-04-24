@@ -1,0 +1,299 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'employees' %}
+{% block content %}
+<style>
+    .tc-crumb {
+        font-size: 12px;
+        color: var(--lx-muted);
+        margin: -6px 0 14px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+    .tc-crumb a { color: #93c5fd; }
+    .tc-crumb a:hover { text-decoration: underline; }
+
+    .tc-hero {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 20px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(96,165,250,0.08), rgba(134,239,172,0.06));
+        border: 1px solid rgba(148,163,184,0.18);
+        margin-bottom: 18px;
+    }
+    .tc-hero-title { font-size: 18px; font-weight: 700; letter-spacing: 0.01em; }
+    .tc-hero-sub {
+        font-size: 12px;
+        color: var(--lx-muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-top: 4px;
+    }
+    .tc-nav { display: flex; gap: 6px; align-items: center; }
+    .tc-nav .ta-btn { padding: 6px 12px; font-size: 13px; }
+    .tc-nav .is-current { opacity: 0.55; pointer-events: none; }
+
+    .tc-tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+        margin-bottom: 18px;
+    }
+    .tc-tile {
+        background: var(--lx-s1);
+        border: 1px solid var(--lx-br);
+        border-radius: 12px;
+        padding: 14px 16px;
+    }
+    .tc-tile-label {
+        font-size: 10.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--lx-muted);
+        margin-bottom: 6px;
+    }
+    .tc-tile-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .tc-tile-sub { font-size: 11px; color: var(--lx-muted); margin-top: 4px; }
+    .tc-tile.tc-tile-accent { border-color: rgba(134,239,172,0.45); }
+    .tc-tile.tc-tile-muted .tc-tile-value { color: var(--lx-muted); font-size: 16px; }
+
+    .tc-banner {
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        font-size: 13px;
+        border: 1px solid rgba(148,163,184,0.25);
+        background: var(--lx-s1);
+    }
+    .tc-banner.warn { background: rgba(234,179,8,0.08); border-color: rgba(234,179,8,0.3); color: #fde68a; }
+    .tc-banner.danger { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+    .tc-banner.info { background: rgba(96,165,250,0.06); border-color: rgba(96,165,250,0.3); color: #bfdbfe; }
+    .tc-banner a { color: inherit; text-decoration: underline; }
+
+    .tc-days { display: flex; flex-direction: column; gap: 8px; }
+    .tc-day {
+        display: grid;
+        grid-template-columns: 88px 1fr 1.3fr 110px 180px;
+        gap: 14px;
+        padding: 12px 14px;
+        background: var(--lx-s1);
+        border: 1px solid var(--lx-br);
+        border-radius: 10px;
+        align-items: start;
+    }
+    .tc-day.is-today { border-color: rgba(96,165,250,0.5); background: rgba(96,165,250,0.04); }
+    .tc-day-head .tc-day-wd { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .tc-day-head .tc-day-date { font-size: 11px; color: var(--lx-muted); margin-top: 2px; }
+
+    .tc-sched-pills, .tc-entries { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+    .tc-pill-shift {
+        display: inline-flex;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        max-width: fit-content;
+    }
+    .tc-pill-shift.sch-k-work      { background: #86efac; color: #0f1a10; }
+    .tc-pill-shift.sch-k-all_day   { background: #86efac; color: #111; }
+    .tc-pill-shift.sch-k-off       { background: #a8a29e; color: #1c1917; }
+    .tc-pill-shift.sch-k-show      { background: #60a5fa; color: #0b1220; }
+    .tc-pill-shift.sch-k-request   { background: #f87171; color: #1a0000; }
+    .tc-pill-shift.sch-k-stream    { background: #bbf7d0; color: #0f1a10; }
+    .tc-pill-shift.sch-k-if_needed { background: #bbf7d0; color: #0f1a10; font-style: italic; }
+    .tc-pill-shift.is-empty { background: transparent; color: var(--lx-muted); border: 1px dashed rgba(148,163,184,0.3); }
+
+    .tc-entry-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 0;
+        font-variant-numeric: tabular-nums;
+    }
+    .tc-entry-time { font-weight: 600; }
+    .tc-entry-dur { color: var(--lx-muted); font-size: 11px; }
+    .tc-entry-note { font-size: 10.5px; color: #fcd34d; }
+    .tc-entry-note.running { color: #86efac; }
+
+    .tc-day-hours { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .tc-day-hours-sched { font-size: 11px; color: var(--lx-muted); margin-top: 3px; }
+
+    .tc-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tc-pill {
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .tc-pill.tone-ok { background: rgba(134,239,172,0.18); color: #86efac; }
+    .tc-pill.tone-warn { background: rgba(234,179,8,0.18); color: #fde68a; }
+    .tc-pill.tone-danger { background: rgba(239,68,68,0.18); color: #fca5a5; }
+    .tc-pill.tone-info { background: rgba(96,165,250,0.18); color: #93c5fd; }
+
+    .tc-bar-wrap {
+        margin-top: 6px;
+        position: relative;
+        height: 6px;
+        background: rgba(148,163,184,0.1);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .tc-bar-sched { position: absolute; top: 0; bottom: 0; background: rgba(148,163,184,0.35); border-radius: 999px; }
+    .tc-bar-actual { position: absolute; top: 0; bottom: 0; background: #86efac; border-radius: 999px; opacity: 0.75; }
+
+    .tc-empty-day { color: var(--lx-muted); font-size: 12px; font-style: italic; }
+
+    @media (max-width: 760px) {
+        .tc-day { grid-template-columns: 1fr; gap: 6px; }
+        .tc-tile-value { font-size: 18px; }
+    }
+</style>
+
+<div class="tc-crumb">
+    <a href="/team/admin/employees">Employees</a>
+    <span>›</span>
+    <a href="/team/admin/employees/{{ employee.id }}">{{ employee_name }}</a>
+    <span>›</span>
+    <span>Timecards</span>
+</div>
+
+<div class="tc-hero">
+    <div>
+        <div class="tc-hero-sub">Weekly timecard</div>
+        <div class="tc-hero-title">{{ employee_name }} · {{ week_label }}</div>
+        <div class="tc-hero-sub" style="margin-top:6px;">Times in {{ timezone_label }} · week starts Monday</div>
+    </div>
+    <div class="tc-nav">
+        <a class="ta-btn" href="/team/admin/employees/{{ employee.id }}/timecards?week={{ prev_week_iso }}">← Prev</a>
+        <a class="ta-btn {% if is_this_week %}is-current{% endif %}" href="/team/admin/employees/{{ employee.id }}/timecards?week={{ this_week_iso }}">Today</a>
+        <a class="ta-btn" href="/team/admin/employees/{{ employee.id }}/timecards?week={{ next_week_iso }}">Next →</a>
+    </div>
+</div>
+
+{% if not clockify_configured %}
+<div class="tc-banner warn">
+    Clockify is not configured. <a href="/team/admin/clockify">Set it up on the Clockify admin page</a> to pull this employee's actual hours.
+</div>
+{% elif not profile_mapped %}
+<div class="tc-banner warn">
+    This employee isn't mapped to a Clockify user. <a href="/team/admin/clockify">Map them on the Clockify admin page</a> to show actual hours alongside the schedule.
+</div>
+{% elif api_error %}
+<div class="tc-banner danger">
+    Couldn't load hours from Clockify right now.
+    <div style="font-size:11px; font-family:ui-monospace,Menlo,monospace; margin-top:4px; color:#fecaca;">{{ api_error }}</div>
+</div>
+{% endif %}
+
+<div class="tc-tiles">
+    <div class="tc-tile tc-tile-accent">
+        <div class="tc-tile-label">Actual hours</div>
+        <div class="tc-tile-value">{{ actual_total_label }}</div>
+        <div class="tc-tile-sub">
+            {% if running_count %}
+                <span style="color:#86efac;">{{ running_count }} running</span> ·
+            {% endif %}
+            {{ shifts_worked }} clocked day{% if shifts_worked != 1 %}s{% endif %}
+        </div>
+    </div>
+    <div class="tc-tile">
+        <div class="tc-tile-label">Scheduled hours</div>
+        <div class="tc-tile-value">{{ scheduled_total_hours }}h</div>
+        <div class="tc-tile-sub">From shift grid (work + all-day)</div>
+    </div>
+    {% if labor_rate_missing %}
+    <div class="tc-tile tc-tile-muted">
+        <div class="tc-tile-label">Labor cost</div>
+        <div class="tc-tile-value">— (rate not set)</div>
+        <div class="tc-tile-sub">Add an hourly rate on the profile</div>
+    </div>
+    {% else %}
+    <div class="tc-tile">
+        <div class="tc-tile-label">Labor cost</div>
+        <div class="tc-tile-value">{{ labor_total_label }}</div>
+        <div class="tc-tile-sub">Actual hours × hourly rate</div>
+    </div>
+    {% endif %}
+    <div class="tc-tile">
+        <div class="tc-tile-label">Shifts worked</div>
+        <div class="tc-tile-value">{{ shifts_worked }}</div>
+        <div class="tc-tile-sub">Distinct clocked days</div>
+    </div>
+</div>
+
+{% if not has_any_scheduled and not has_any_actual and not api_error %}
+<div class="tc-banner info">
+    No shifts scheduled and no Clockify entries for this week.
+</div>
+{% endif %}
+
+<div class="tc-days">
+    {% for row in day_rows %}
+    <div class="tc-day {% if row.is_today %}is-today{% endif %}">
+        <div class="tc-day-head">
+            <div class="tc-day-wd">{{ row.weekday_label }}</div>
+            <div class="tc-day-date">{{ row.date_label }}</div>
+        </div>
+        <div class="tc-sched-pills">
+            {% if row.shifts %}
+                {% for shift in row.shifts %}
+                <span class="tc-pill-shift sch-k-{{ shift.kind or 'blank' }}">
+                    {% if shift.label %}{{ shift.label }}{% else %}{{ shift.kind or '—' }}{% endif %}
+                </span>
+                {% endfor %}
+            {% else %}
+                <span class="tc-pill-shift is-empty">Not scheduled</span>
+            {% endif %}
+        </div>
+        <div class="tc-entries">
+            {% if row.entry_rows %}
+                {% for entry in row.entry_rows %}
+                <div class="tc-entry-row">
+                    <span class="tc-entry-time">{{ entry.start_label }} – {{ entry.end_label }}</span>
+                    <span class="tc-entry-dur">{{ entry.duration_label }}</span>
+                    {% if entry.description %}
+                    <span class="tc-entry-desc" style="font-size:11px; color:var(--lx-muted);">{{ entry.description }}</span>
+                    {% endif %}
+                    {% if entry.note %}
+                    <span class="tc-entry-note {% if entry.running %}running{% endif %}">{{ entry.note }}</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="tc-empty-day">No Clockify entries</div>
+            {% endif %}
+        </div>
+        <div>
+            <div class="tc-day-hours">{{ row.actual_label }}</div>
+            <div class="tc-day-hours-sched">sched {{ row.scheduled_hours }}h</div>
+            {% if row.scheduled_hours or row.actual_seconds %}
+            {% set denom = 12 * 3600 %}
+            {% set sched_sec = (row.scheduled_hours * 3600)|int %}
+            {% set sched_w = (sched_sec / denom * 100)|round(1) %}
+            {% set actual_w = (row.actual_seconds / denom * 100)|round(1) %}
+            <div class="tc-bar-wrap" title="scheduled vs actual (up to 12h full)">
+                <div class="tc-bar-sched" style="left:0; width:{{ sched_w if sched_w < 100 else 100 }}%"></div>
+                <div class="tc-bar-actual" style="left:0; width:{{ actual_w if actual_w < 100 else 100 }}%"></div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="tc-pills">
+            {% for pill in row.pills %}
+            <span class="tc-pill tone-{{ pill.tone }}">{{ pill.label }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div style="margin-top:18px; font-size:11px; color:var(--lx-muted);">
+    Anomaly rules: late arrival if clock-in is more than {{ 15 }} minutes after scheduled start; left early if clock-out is more than {{ 15 }} minutes before scheduled end. Past scheduled days with no clock entries are flagged as no-shows.
+</div>
+{% endblock %}

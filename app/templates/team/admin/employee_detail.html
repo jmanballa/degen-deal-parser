@@ -3,6 +3,12 @@
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
 
+<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+    <a class="ta-btn" href="/team/admin/employees/{{ employee.id }}/timecards" style="background:linear-gradient(135deg,#86efac22,#60a5fa22); border-color:rgba(134,239,172,0.45); color:#bbf7d0;">
+        📅 View weekly timecards →
+    </a>
+</div>
+
 {% if is_draft %}
 <div class="ta-card" style="background:rgba(96,165,250,0.08); border-color:rgba(96,165,250,0.3);">
     <h2 style="color:#93c5fd; display:flex; align-items:center; gap:10px;">
