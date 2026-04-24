@@ -56,6 +56,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_local_web_pg.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\run_hosted.ps1
 ```
 
+### Machine B deployment rule
+
+- Machine B is on auto-deploy from GitHub. After code is pushed to the deploy branch, do **not** SSH into Machine B just to run `git pull`, compile, or restart services.
+- Only SSH into Machine B when the user explicitly asks, when debugging production-only behavior, or when a change requires one-off data inspection/migration that auto-deploy cannot perform.
+- If you need to verify a deploy, prefer checking the app health/logs after the auto-deploy has had time to finish instead of manually pulling code.
+
 ### Script reference
 
 | Script | Purpose |
