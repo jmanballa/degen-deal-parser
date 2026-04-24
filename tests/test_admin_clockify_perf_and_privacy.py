@@ -31,12 +31,12 @@ def _fresh_engine():
 
 
 class _FakeRequest:
-    def __init__(self, current_user):
+    def __init__(self, current_user, path="/team/admin/clockify"):
         self.state = SimpleNamespace(current_user=current_user)
         self.session: dict[str, str] = {}
         self.headers: dict[str, str] = {}
         self.client = SimpleNamespace(host="testclient")
-        self.url = SimpleNamespace(path="/team/admin/clockify", scheme="http", netloc="testserver")
+        self.url = SimpleNamespace(path=path, scheme="http", netloc="testserver")
 
 
 class _FakeClockifyClient:
@@ -117,7 +117,7 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
             clockify_timezone="America/Los_Angeles",
         )
 
-    def _render(self, *, include_hours="0", live_status="0", entries=None):
+    def _render(self, *, include_hours="0", entries=None):
         from app.routers import team_admin_clockify as mod
 
         fake_client = _FakeClockifyClient(entries=entries)
@@ -126,7 +126,18 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
             response = mod.admin_clockify_page(
                 _FakeRequest(self.admin),
                 include_hours=include_hours,
-                live_status=live_status,
+                session=self.session,
+            )
+        return response.body.decode("utf-8"), fake_client
+
+    def _render_shift_tracker(self):
+        from app.routers import team_admin_clockify as mod
+
+        fake_client = _FakeClockifyClient()
+        with patch.object(mod, "get_settings", return_value=self._settings()), \
+             patch.object(mod, "clockify_client_from_settings", return_value=fake_client):
+            response = mod.admin_shift_tracker_page(
+                _FakeRequest(self.admin, path="/team/admin/shift-tracker"),
                 session=self.session,
             )
         return response.body.decode("utf-8"), fake_client
@@ -157,10 +168,10 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
     def test_page_does_not_fetch_live_status_by_default(self):
         self._seed_linked_employee()
 
-        html, client = self._render(include_hours="0", live_status="0")
+        html, client = self._render(include_hours="0")
 
-        self.assertIn("Load live status", html)
-        self.assertIn("Live status is only loaded on demand", html)
+        self.assertNotIn("Live clock-ins", html)
+        self.assertIn("Manual employee matching", html)
         self.assertEqual(client.entry_calls, 0)
 
     def test_page_fetches_hours_when_explicitly_requested(self):
@@ -248,8 +259,8 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
         self.assertEqual(row["status"], "Clocked in")
         self.assertEqual(row["current_start_label"], "1:00 PM")
         self.assertEqual(row["running_duration_label"], "2h")
-        self.assertEqual(row["today_total_label"], "2h 30m")
-        self.assertEqual(row["break_label"], "Taken")
+        self.assertEqual(row["today_total_label"], "2h")
+        self.assertEqual(row["break_label"], "Taken (30m)")
 
     def test_live_status_marks_current_break(self):
         from app.routers import team_admin_clockify as mod
@@ -278,7 +289,8 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
         self.assertEqual(row["status"], "On break")
         self.assertEqual(row["current_start_label"], "2:45 PM")
         self.assertEqual(row["running_duration_label"], "15m")
-        self.assertEqual(row["break_label"], "On break now")
+        self.assertEqual(row["today_total_label"], "0m")
+        self.assertEqual(row["break_label"], "On break now (15m)")
 
     def test_live_status_uses_cached_webhook_entries_before_api(self):
         from app.models import ClockifyTimeEntry
@@ -301,8 +313,91 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
             fake_datetime.now.return_value = datetime(2026, 4, 24, 22, 0, tzinfo=timezone.utc)
             fake_datetime.combine.side_effect = datetime.combine
             fake_datetime.min = datetime.min
-            html, client = self._render(include_hours="0", live_status="1")
+            html, client = self._render_shift_tracker()
 
         self.assertIn("Clocked in", html)
         self.assertIn("2h", html)
         self.assertEqual(client.entry_calls, 0)
+
+    def test_shift_tracker_adds_hourly_labor_from_cached_entries(self):
+        from app.models import ClockifyTimeEntry, EmployeeProfile
+        from app.pii import encrypt_pii
+
+        self._seed_linked_employee()
+        profile = self.session.get(EmployeeProfile, 20)
+        profile.compensation_type = "hourly"
+        profile.hourly_rate_cents_enc = encrypt_pii("2500")
+        self.session.add(profile)
+        self.session.add(
+            ClockifyTimeEntry(
+                clockify_entry_id="cached-closed",
+                clockify_user_id="clock-1",
+                user_id=20,
+                description="Cached work",
+                start_at=datetime(2026, 4, 24, 18, 0, tzinfo=timezone.utc),
+                end_at=datetime(2026, 4, 24, 20, 0, tzinfo=timezone.utc),
+                duration_seconds=7200,
+                is_running=False,
+            )
+        )
+        self.session.add(
+            ClockifyTimeEntry(
+                clockify_entry_id="cached-break",
+                clockify_user_id="clock-1",
+                user_id=20,
+                description="Lunch break",
+                start_at=datetime(2026, 4, 24, 20, 0, tzinfo=timezone.utc),
+                end_at=datetime(2026, 4, 24, 20, 30, tzinfo=timezone.utc),
+                duration_seconds=1800,
+                is_running=False,
+            )
+        )
+        self.session.commit()
+
+        with patch("app.routers.team_admin_clockify.date") as fake_date, \
+             patch("app.routers.team_admin_clockify.datetime") as fake_datetime:
+            fake_date.today.return_value = date(2026, 4, 24)
+            fake_datetime.now.return_value = datetime(2026, 4, 24, 22, 0, tzinfo=timezone.utc)
+            fake_datetime.combine.side_effect = datetime.combine
+            fake_datetime.min = datetime.min
+            html, client = self._render_shift_tracker()
+
+        self.assertIn("$50.00", html)
+        self.assertIn("Taken (30m)", html)
+        self.assertIn("Hourly today", html)
+        self.assertEqual(client.entry_calls, 0)
+
+    def test_manual_refresh_caches_entries_without_user_id_in_payload(self):
+        from app.models import ClockifyTimeEntry
+        from app.routers import team_admin_clockify as mod
+
+        self._seed_linked_employee()
+        client = _FakeClockifyClient(
+            entries=[
+                {
+                    "id": "refresh-1",
+                    "description": "Packing",
+                    "timeInterval": {
+                        "start": "2026-04-24T18:00:00Z",
+                        "end": "2026-04-24T19:00:00Z",
+                    },
+                }
+            ]
+        )
+
+        result = mod.refresh_clockify_shift_tracker_cache(
+            self.session,
+            client,
+            settings=self._settings(),
+            today=date(2026, 4, 24),
+        )
+        cached = self.session.exec(
+            mod.select(ClockifyTimeEntry).where(
+                ClockifyTimeEntry.clockify_entry_id == "refresh-1"
+            )
+        ).first()
+
+        self.assertEqual(result["cached_entries"], 1)
+        self.assertIsNotNone(cached)
+        self.assertEqual(cached.clockify_user_id, "clock-1")
+        self.assertEqual(cached.user_id, 20)

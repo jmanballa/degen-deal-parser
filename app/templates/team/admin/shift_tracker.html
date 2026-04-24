@@ -1,0 +1,130 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'shift-tracker' %}
+{% block content %}
+{% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+{% if error %}<div class="ta-flash warn">{{ error }}</div>{% endif %}
+
+<div class="ta-card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+        <div>
+            <h2>Shift Tracker</h2>
+            <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+                Cached from Clockify webhooks. Manual refresh is available when you want to reconcile today's timers.
+            </p>
+        </div>
+        <form method="post" action="/team/admin/shift-tracker/refresh" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+            <button class="ta-btn" type="submit"
+                    {% if not configured or not counts.mapped or not can_refresh %}disabled{% endif %}
+                    style="{% if configured and counts.mapped and can_refresh %}background:#3b82f6; color:white; border-color:#3b82f6;{% else %}opacity:.55; cursor:not-allowed;{% endif %}">
+                Manual refresh
+            </button>
+        </form>
+    </div>
+    <div style="font-size:12px; color:var(--lx-muted); margin-top:10px;">
+        {{ live.mapped_count }} mapped employee{% if live.mapped_count != 1 %}s{% endif %} &middot;
+        {{ live.unmapped_count }} unmapped &middot;
+        {{ live.date_label }} &middot;
+        updated {{ live.generated_at_label }} {{ live.timezone_name }}
+    </div>
+    {% if not configured %}
+    <p style="font-size:12px; color:var(--lx-muted); margin:10px 0 0;">Webhook cache can still display shifts. Manual refresh needs CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID.</p>
+    {% elif not can_refresh %}
+    <p style="font-size:12px; color:var(--lx-muted); margin:10px 0 0;">Only admins can run a manual Clockify refresh.</p>
+    {% endif %}
+</div>
+
+<div class="ta-card">
+    <h2>Live pay tracker</h2>
+    <div style="display:grid; grid-template-columns:repeat(6, minmax(120px, 1fr)); gap:10px; margin-top:12px;">
+        <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
+            <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Clocked in</div>
+            <div style="font-size:24px; font-weight:750;">{{ pay_summary.clocked_in_count }}</div>
+        </div>
+        <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
+            <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">On break</div>
+            <div style="font-size:24px; font-weight:750;">{{ pay_summary.on_break_count }}</div>
+        </div>
+        <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
+            <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Tracked today</div>
+            <div style="font-size:24px; font-weight:750;">{{ pay_summary.tracked_hours_label }}</div>
+        </div>
+        <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
+            <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Hourly today</div>
+            <div style="font-size:24px; font-weight:750;">{{ pay_summary.hourly_today_label }}</div>
+        </div>
+        <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
+            <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Salary today</div>
+            <div style="font-size:24px; font-weight:750;">{{ pay_summary.salary_today_label }}</div>
+        </div>
+        <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
+            <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Total today</div>
+            <div style="font-size:24px; font-weight:750;">{{ pay_summary.total_today_label }}</div>
+        </div>
+    </div>
+    <p style="font-size:12px; color:var(--lx-muted); margin:12px 0 0;">
+        {{ pay_summary.basis_label }}. {{ pay_summary.salaried_count }} salaried, {{ pay_summary.hourly_count }} hourly, {{ pay_summary.unpaid_count }} unpaid.
+        {% if pay_summary.missing_hourly_rate_count or pay_summary.missing_salary_count %}
+        Missing rates: {{ pay_summary.missing_hourly_rate_count }} hourly, {{ pay_summary.missing_salary_count }} salary.
+        {% endif %}
+    </p>
+</div>
+
+<div class="ta-card" style="padding:0;">
+    <div style="padding:18px 22px 12px;">
+        <h2>Current shifts</h2>
+        <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+            Clock-in status, elapsed time, breaks, and today's cached labor cost for mapped Clockify employees.
+        </p>
+    </div>
+    {% if not counts.mapped %}
+    <p style="font-size:13px; color:var(--lx-muted); margin:0; padding:0 22px 18px;">Match employees to Clockify users before using the shift tracker.</p>
+    {% else %}
+    <div style="overflow:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; min-width:1040px;">
+            <thead>
+                <tr style="text-align:left; color:var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Employee</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Status</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Clock-in time</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Working for</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Today total</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Break</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Pay type</th>
+                    <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Labor today</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in live.rows %}
+                <tr>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        {% if row.employee %}
+                            <a href="/team/admin/employees/{{ row.employee.id }}" style="color:#ff8a3d; font-weight:650;">{{ row.employee_name }}</a>
+                        {% else %}
+                            <strong>{{ row.employee_name }}</strong>
+                        {% endif %}
+                        <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">{{ row.clockify_user_id_masked }}</div>
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                        <strong style="color:{{ row.status_color }};">{{ row.status }}</strong>
+                        {% if row.error %}
+                            <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">{{ row.error }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.current_start_label }}</td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.running_duration_label }}</td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.today_total_label }}</td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br); color:{{ row.break_color }};">{{ row.break_label }}</td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.pay_type_label }}</td>
+                    <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.labor_cost_label }}</td>
+                </tr>
+                {% endfor %}
+                {% if not live.rows %}
+                <tr><td colspan="8" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No cached shift data yet.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

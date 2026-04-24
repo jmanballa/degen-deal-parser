@@ -8,6 +8,7 @@ import os
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlencode
@@ -45,6 +46,16 @@ from ..models import (
 from ..pii import decrypt_pii
 from ..shared import templates
 from .team_admin import _admin_gate, _permission_gate
+from .team_admin_employees import (
+    COMPENSATION_TYPE_HOURLY,
+    COMPENSATION_TYPE_LABELS,
+    COMPENSATION_TYPE_MONTHLY,
+    COMPENSATION_TYPE_UNPAID,
+    _decrypt_hourly_rate_cents,
+    _decrypt_monthly_salary_cents,
+    _normalize_compensation_type,
+    _salary_cost_for_period,
+)
 
 router = APIRouter()
 
@@ -873,6 +884,7 @@ def build_clockify_live_status(
         )
         base = {
             "employee": employee,
+            "profile": row.get("profile"),
             "employee_name": display_name,
             "clockify_user_id": clockify_user_id,
             "clockify_user_id_masked": _mask_id(clockify_user_id),
@@ -886,6 +898,12 @@ def build_clockify_live_status(
             "break_color": "var(--lx-muted)",
             "entry_count": 0,
             "error": "",
+            "today_total_seconds": 0,
+            "break_seconds": 0,
+            "running_seconds": 0,
+            "pay_type_label": "Not paid",
+            "labor_cost_label": "$0.00",
+            "labor_cost_cents": 0,
             "rank": 4,
         }
         try:
@@ -923,33 +941,48 @@ def build_clockify_live_status(
         running_entries = [entry for entry in summary.entries if entry.running]
         running_entry = running_entries[-1] if running_entries else None
         break_entries = [entry for entry in summary.entries if _clockify_entry_is_break(entry)]
+        break_seconds = sum(entry.duration_seconds for entry in break_entries)
+        work_seconds = sum(
+            entry.duration_seconds
+            for entry in summary.entries
+            if not _clockify_entry_is_break(entry)
+        )
         break_taken = any(entry.duration_seconds > 0 for entry in break_entries)
         running_is_break = bool(running_entry and _clockify_entry_is_break(running_entry))
-        base["today_total_label"] = format_hours(summary.total_seconds)
+        base["today_total_seconds"] = work_seconds
+        base["break_seconds"] = break_seconds
+        base["today_total_label"] = format_hours(work_seconds)
         base["entry_count"] = len(summary.entries)
 
         if running_entry is not None:
+            base["running_seconds"] = running_entry.duration_seconds
             base["current_start_label"] = _format_clockify_time(running_entry.start_local)
             base["running_duration_label"] = format_hours(running_entry.duration_seconds)
             if running_is_break:
                 base["status"] = "On break"
                 base["status_key"] = "on_break"
                 base["status_color"] = "#facc15"
-                base["break_label"] = "On break now"
+                base["break_label"] = f"On break now ({format_hours(break_seconds)})"
                 base["break_color"] = "#facc15"
                 base["rank"] = 0
             else:
                 base["status"] = "Clocked in"
                 base["status_key"] = "clocked_in"
                 base["status_color"] = "#86efac"
-                base["break_label"] = "Taken" if break_taken else "No break yet"
+                base["break_label"] = (
+                    f"Taken ({format_hours(break_seconds)})"
+                    if break_taken
+                    else "No break yet"
+                )
                 base["break_color"] = "#86efac" if break_taken else "var(--lx-muted)"
                 base["rank"] = 1
         elif summary.total_seconds > 0:
             base["status"] = "Clocked out"
             base["status_key"] = "clocked_out"
             base["status_color"] = "var(--lx-text)"
-            base["break_label"] = "Taken" if break_taken else "No break"
+            base["break_label"] = (
+                f"Taken ({format_hours(break_seconds)})" if break_taken else "No break"
+            )
             base["break_color"] = "#86efac" if break_taken else "var(--lx-muted)"
             base["rank"] = 3
 
@@ -965,6 +998,195 @@ def build_clockify_live_status(
         "timezone_name": timezone_name,
         "date_label": day.strftime("%b %d, %Y").replace(" 0", " "),
         "generated_at_label": _format_clockify_time(generated_at),
+    }
+
+
+def _format_money_label(cents: int) -> str:
+    return f"${Decimal(cents) / Decimal(100):,.2f}"
+
+
+def _cents_for_seconds(seconds: int, rate_cents: int) -> int:
+    if seconds <= 0 or rate_cents <= 0:
+        return 0
+    amount = (Decimal(seconds) / Decimal(3600)) * Decimal(rate_cents)
+    return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def build_shift_tracker_pay_summary(
+    session: Session,
+    live: dict[str, Any],
+    *,
+    employee_rows: Optional[list[dict[str, Any]]] = None,
+    today: Optional[date] = None,
+) -> dict[str, Any]:
+    """Attach pay data to cached Clockify rows and build today's labor total."""
+    day = today or date.today()
+    employees = employee_rows if employee_rows is not None else _employee_rows(session)
+    salary_today_cents = 0
+    hourly_today_cents = 0
+    salaried_count = 0
+    hourly_count = 0
+    unpaid_count = 0
+    missing_salary_count = 0
+    missing_hourly_rate_count = 0
+
+    for employee_row in employees:
+        user = employee_row.get("user")
+        profile = employee_row.get("profile")
+        if not isinstance(user, User) or not isinstance(profile, EmployeeProfile):
+            continue
+        compensation_type = _normalize_compensation_type(profile.compensation_type or "")
+        if compensation_type == COMPENSATION_TYPE_UNPAID:
+            unpaid_count += 1
+            continue
+        if compensation_type == COMPENSATION_TYPE_MONTHLY:
+            salaried_count += 1
+            salary_cents = _decrypt_monthly_salary_cents(profile)
+            if salary_cents is None:
+                missing_salary_count += 1
+                continue
+            salary_today_cents += _salary_cost_for_period(
+                salary_cents=salary_cents,
+                user=user,
+                profile=profile,
+                start_day=day,
+                end_day=day,
+            )
+        elif compensation_type == COMPENSATION_TYPE_HOURLY:
+            hourly_count += 1
+            if _decrypt_hourly_rate_cents(profile) is None:
+                missing_hourly_rate_count += 1
+
+    clocked_in_count = 0
+    on_break_count = 0
+    total_seconds = 0
+    for row in live.get("rows", []):
+        profile = row.get("profile")
+        compensation_type = _normalize_compensation_type(
+            profile.compensation_type if isinstance(profile, EmployeeProfile) else ""
+        )
+        row["pay_type_label"] = COMPENSATION_TYPE_LABELS.get(
+            compensation_type, "Hourly"
+        )
+        row["labor_cost_cents"] = 0
+        row["labor_cost_label"] = "$0.00"
+        if row.get("status_key") == "clocked_in":
+            clocked_in_count += 1
+        elif row.get("status_key") == "on_break":
+            on_break_count += 1
+        seconds = int(row.get("today_total_seconds") or 0)
+        total_seconds += seconds
+        if compensation_type == COMPENSATION_TYPE_HOURLY:
+            rate_cents = _decrypt_hourly_rate_cents(profile)
+            if rate_cents is not None:
+                cost_cents = _cents_for_seconds(seconds, rate_cents)
+                row["labor_cost_cents"] = cost_cents
+                row["labor_cost_label"] = _format_money_label(cost_cents)
+                hourly_today_cents += cost_cents
+        elif compensation_type == COMPENSATION_TYPE_MONTHLY:
+            row["labor_cost_label"] = "Included in salary"
+
+    total_today_cents = salary_today_cents + hourly_today_cents
+    return {
+        "clocked_in_count": clocked_in_count,
+        "on_break_count": on_break_count,
+        "tracked_hours_label": format_hours(total_seconds),
+        "hourly_today_label": _format_money_label(hourly_today_cents),
+        "salary_today_label": _format_money_label(salary_today_cents),
+        "total_today_label": _format_money_label(total_today_cents),
+        "salaried_count": salaried_count,
+        "hourly_count": hourly_count,
+        "unpaid_count": unpaid_count,
+        "missing_salary_count": missing_salary_count,
+        "missing_hourly_rate_count": missing_hourly_rate_count,
+        "basis_label": "Webhook cache for hourly timers + daily salary accrual",
+    }
+
+
+def refresh_clockify_shift_tracker_cache(
+    session: Session,
+    client: ClockifyClient,
+    *,
+    settings=None,
+    today: Optional[date] = None,
+    employee_rows: Optional[list[dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    day = today or date.today()
+    start_local, end_local = _clockify_day_bounds(day, settings=settings)
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
+    employees = employee_rows if employee_rows is not None else _employee_rows(session)
+    mapped_rows = [
+        row for row in employees if (row.get("clockify_user_id") or "").strip()
+    ]
+    refreshed_users = 0
+    cached_entries = 0
+    errors: list[str] = []
+    received_at = utcnow()
+
+    for row in mapped_rows:
+        clockify_user_id = (row.get("clockify_user_id") or "").strip()
+        try:
+            entries = client.get_user_time_entries(
+                clockify_user_id,
+                start_utc=start_utc,
+                end_utc=end_utc,
+            )
+        except (ClockifyApiError, ClockifyConfigError) as exc:
+            employee = row.get("user")
+            employee_name = (
+                getattr(employee, "display_name", None)
+                or getattr(employee, "username", None)
+                or _mask_id(clockify_user_id)
+            )
+            errors.append(f"{employee_name}: {exc}")
+            continue
+
+        seen_entry_ids: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            entry_payload = dict(entry)
+            entry_payload.setdefault("userId", clockify_user_id)
+            entry_id = str(entry.get("id") or "").strip()
+            if entry_id:
+                seen_entry_ids.add(entry_id)
+            cached = _upsert_clockify_time_entry_from_payload(
+                session,
+                {
+                    "workspaceId": getattr(settings, "clockify_workspace_id", ""),
+                    "timeEntry": entry_payload,
+                },
+                source_event="MANUAL_REFRESH",
+                settings=settings,
+                received_at=received_at,
+            )
+            if cached is not None:
+                cached_entries += 1
+
+        existing_rows = session.exec(
+            select(ClockifyTimeEntry).where(
+                ClockifyTimeEntry.clockify_user_id == clockify_user_id,
+                ClockifyTimeEntry.is_deleted == False,  # noqa: E712
+                ClockifyTimeEntry.start_at < end_utc,
+                or_(ClockifyTimeEntry.end_at == None, ClockifyTimeEntry.end_at > start_utc),  # noqa: E711
+            )
+        ).all()
+        for existing in existing_rows:
+            if existing.clockify_entry_id not in seen_entry_ids:
+                existing.is_deleted = True
+                existing.is_running = False
+                existing.updated_at = received_at
+                session.add(existing)
+        refreshed_users += 1
+
+    session.commit()
+    return {
+        "mapped_users": len(mapped_rows),
+        "refreshed_users": refreshed_users,
+        "cached_entries": cached_entries,
+        "error_count": len(errors),
+        "errors": errors,
     }
 
 
@@ -1176,7 +1398,6 @@ def admin_clockify_page(
     flash: Optional[str] = None,
     error: Optional[str] = None,
     include_hours: str = Query(default="0"),
-    live_status: str = Query(default="0"),
     session: Session = Depends(get_session),
 ):
     denial, user = _permission_gate(request, session, "admin.employees.view")
@@ -1193,7 +1414,6 @@ def admin_clockify_page(
     preview_capped = False
     client: Optional[ClockifyClient] = None
     include_hour_preview = include_hours not in ("0", "false", "no", "off")
-    load_live_status = live_status not in ("0", "false", "no", "off")
     if configured:
         try:
             client = clockify_client_from_settings(settings)
@@ -1217,14 +1437,6 @@ def admin_clockify_page(
     employees = _employee_rows(session)
     linked_by_clockify = _employee_link_map(employees)
     counts = _employee_clockify_counts(employees)
-    live = None
-    if configured and client is not None and load_live_status:
-        live = build_clockify_live_status(
-            session,
-            client,
-            settings=settings,
-            employee_rows=employees,
-        )
     return templates.TemplateResponse(
         request,
         "team/admin/clockify.html",
@@ -1241,8 +1453,6 @@ def admin_clockify_page(
             "roster_preview": roster_preview,
             "preview_capped": preview_capped,
             "include_hours": include_hour_preview,
-            "live_status": load_live_status,
-            "live": live,
             "employees": employees,
             "linked_by_clockify": linked_by_clockify,
             "counts": counts,
@@ -1252,6 +1462,98 @@ def admin_clockify_page(
             "error": error,
             "csrf_token": issue_token(request),
         },
+    )
+
+
+@router.get("/team/admin/shift-tracker", response_class=HTMLResponse)
+def admin_shift_tracker_page(
+    request: Request,
+    flash: Optional[str] = None,
+    error: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    denial, user = _permission_gate(request, session, "admin.employees.view")
+    if denial:
+        return denial
+    settings = get_settings()
+    configured = clockify_is_configured(settings)
+    employees = _employee_rows(session)
+    counts = _employee_clockify_counts(employees)
+    live = build_clockify_live_status(
+        session,
+        None,
+        settings=settings,
+        employee_rows=employees,
+    )
+    pay_summary = build_shift_tracker_pay_summary(
+        session,
+        live,
+        employee_rows=employees,
+    )
+    return templates.TemplateResponse(
+        request,
+        "team/admin/shift_tracker.html",
+        {
+            "request": request,
+            "title": "Shift Tracker",
+            "current_user": user,
+            "configured": configured,
+            "counts": counts,
+            "live": live,
+            "pay_summary": pay_summary,
+            "flash": flash,
+            "error": error,
+            "csrf_token": issue_token(request),
+            "can_refresh": user.role == "admin",
+        },
+    )
+
+
+@router.post(
+    "/team/admin/shift-tracker/refresh",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_shift_tracker_refresh(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, _user = _admin_gate(request, session, "admin.employees.edit")
+    if denial:
+        return denial
+    settings = get_settings()
+    if not clockify_is_configured(settings):
+        return RedirectResponse(
+            "/team/admin/shift-tracker?"
+            + urlencode(
+                {"error": "CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID are required."}
+            ),
+            status_code=303,
+        )
+    try:
+        result = refresh_clockify_shift_tracker_cache(
+            session,
+            clockify_client_from_settings(settings),
+            settings=settings,
+        )
+    except (ClockifyApiError, ClockifyConfigError) as exc:
+        return RedirectResponse(
+            "/team/admin/shift-tracker?" + urlencode({"error": str(exc)}),
+            status_code=303,
+        )
+    if result["error_count"]:
+        flash = (
+            f"Refreshed {result['refreshed_users']} of {result['mapped_users']} "
+            f"mapped employee(s). {result['error_count']} error(s); "
+            f"{result['cached_entries']} entries cached."
+        )
+    else:
+        flash = (
+            f"Refreshed {result['refreshed_users']} mapped employee(s); "
+            f"{result['cached_entries']} entries cached."
+        )
+    return RedirectResponse(
+        "/team/admin/shift-tracker?" + urlencode({"flash": flash}),
+        status_code=303,
     )
 
 
