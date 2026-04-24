@@ -115,7 +115,7 @@ async def team_timeoff_post(
     overlapping = session.exec(
         select(TimeOffRequest)
         .where(TimeOffRequest.submitted_by_user_id == user.id)
-        .where(TimeOffRequest.status == "submitted")
+        .where(TimeOffRequest.status.in_(("submitted", "approved")))
         .where(TimeOffRequest.start_date <= parsed_end)
         .where(TimeOffRequest.end_date >= parsed_start)
     ).first()

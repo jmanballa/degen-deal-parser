@@ -94,6 +94,7 @@ class EmployeePortalHomepageTests(unittest.TestCase):
         label: str,
         *,
         sort_order: int = 0,
+        kind: str | None = None,
     ):
         from app.models import ShiftEntry, classify_shift_label
 
@@ -101,7 +102,7 @@ class EmployeePortalHomepageTests(unittest.TestCase):
             user_id=user_id,
             shift_date=shift_date,
             label=label,
-            kind=classify_shift_label(label),
+            kind=kind or classify_shift_label(label),
             sort_order=sort_order,
             created_by_user_id=user_id,
         )
@@ -214,6 +215,30 @@ class EmployeePortalHomepageTests(unittest.TestCase):
         self.assertIn("Today shift", html)
         self.assertIn("Future shift", html)
 
+    def test_upcoming_shifts_excludes_request_kind(self):
+        from app.models import SHIFT_KIND_REQUEST, SHIFT_KIND_WORK
+
+        user = self._login_as("employee", user_id=302, username="upcoming")
+        today = date.today()
+        self._seed_shift(
+            user.id,
+            today + timedelta(days=1),
+            "10-6",
+            kind=SHIFT_KIND_WORK,
+        )
+        self._seed_shift(
+            user.id,
+            today + timedelta(days=2),
+            "Approved leave",
+            kind=SHIFT_KIND_REQUEST,
+        )
+
+        html = self._dashboard_html()
+
+        self.assertEqual(html.count('class="pt-upcoming-shift"'), 1)
+        self.assertIn("10-6", html)
+        self.assertNotIn("Approved leave", html)
+
     def test_upcoming_shifts_empty_state(self):
         self._login_as("employee", user_id=401, username="empty")
 
@@ -239,6 +264,25 @@ class EmployeePortalHomepageTests(unittest.TestCase):
         self.assertIn("Amy", html)
         self.assertIn("Ben", html)
         self.assertLess(html.index("Amy"), html.index("Ben"))
+
+    def test_today_staffing_excludes_approved_timeoff(self):
+        from app.models import SHIFT_KIND_REQUEST, SHIFT_KIND_WORK
+
+        self._login_as("manager", user_id=504, username="manager")
+        worker_a = self._seed_user(505, username="amy2", display_name="Amy Worker")
+        worker_b = self._seed_user(506, username="ben2", display_name="Ben Off")
+        today = date.today()
+        self._seed_shift(worker_a.id, today, "10-6", kind=SHIFT_KIND_WORK)
+        self._seed_shift(worker_b.id, today, "Approved leave", kind=SHIFT_KIND_REQUEST)
+
+        html = self._dashboard_html()
+
+        self.assertIn("Who's on today", html)
+        self.assertEqual(html.count('class="pt-today-staff-row"'), 1)
+        self.assertIn("Amy Worker", html)
+        self.assertIn("10-6", html)
+        self.assertNotIn("Ben Off", html)
+        self.assertNotIn("Approved leave", html)
 
     def test_today_staffing_hidden_for_employee(self):
         employee = self._login_as("employee", user_id=601, username="employee")

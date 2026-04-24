@@ -260,6 +260,28 @@ class TeamTimeOffTests(unittest.TestCase):
         self.assertIn("pending+request", response.headers["location"])
         self.assertEqual(len(self.session.exec(select(TimeOffRequest)).all()), 1)
 
+    def test_submit_blocked_by_existing_approved_overlap(self):
+        from app.models import TimeOffRequest
+
+        user = self._seed_user(24)
+        start = date.today() + timedelta(days=20)
+        self._seed_request(
+            user,
+            start=start,
+            end=start + timedelta(days=2),
+            status="approved",
+        )
+
+        response = self._submit(
+            user,
+            start=start + timedelta(days=1),
+            end=start + timedelta(days=3),
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("pending+request", response.headers["location"])
+        self.assertEqual(len(self.session.exec(select(TimeOffRequest)).all()), 1)
+
     def test_submit_requires_csrf(self):
         from app.csrf import require_csrf
         from app.routers import team_timeoff

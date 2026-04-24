@@ -7,8 +7,9 @@
 {% if can_create %}
 <div class="ta-card">
     <h2>Post announcement</h2>
-    <form method="post" action="/team/admin/announcements" style="display:grid; gap:14px;">
+    <form id="announcement-form" method="post" action="/team/admin/announcements" style="display:grid; gap:14px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <input type="hidden" name="tz_offset_minutes" id="tz-offset-minutes">
         <label style="display:grid; gap:6px; font-size:12px; color:var(--lx-muted);">
             Title
             <input name="title" maxlength="200" required
@@ -86,4 +87,14 @@
         </tbody>
     </table>
 </div>
+<script>
+  (function() {
+    var form = document.getElementById('announcement-form');
+    if (!form) return;
+    form.addEventListener('submit', function() {
+      var off = document.getElementById('tz-offset-minutes');
+      if (off) off.value = String(new Date().getTimezoneOffset());
+    });
+  })();
+</script>
 {% endblock %}

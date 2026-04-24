@@ -13,7 +13,7 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
@@ -87,9 +87,12 @@ def admin_timeoff_list(
             if user.id is not None
         }
 
-    counts = {status_name: 0 for status_name in VALID_STATUSES}
-    for row in session.exec(select(TimeOffRequest)).all():
-        counts[row.status] = counts.get(row.status, 0) + 1
+    count_rows = session.exec(
+        select(TimeOffRequest.status, func.count()).group_by(TimeOffRequest.status)
+    ).all()
+    counts = {status_name: int(count) for status_name, count in count_rows}
+    for status_name in VALID_STATUSES:
+        counts.setdefault(status_name, 0)
 
     return templates.TemplateResponse(
         request,

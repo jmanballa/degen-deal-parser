@@ -8,7 +8,7 @@ app.routers.team.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import quote_plus
 
@@ -63,7 +63,10 @@ def _clean_text(
     return clean, None
 
 
-def _parse_expires_at(value: object) -> tuple[Optional[datetime], Optional[str]]:
+def _parse_expires_at(
+    value: object,
+    tz_offset_minutes: Optional[str] = None,
+) -> tuple[Optional[datetime], Optional[str]]:
     if isinstance(value, bytes):
         try:
             raw = value.decode("utf-8")
@@ -85,7 +88,13 @@ def _parse_expires_at(value: object) -> tuple[Optional[datetime], Optional[str]]
     except ValueError:
         return None, "Expiration must be a valid ISO date and time."
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        try:
+            offset_minutes = int(str(tz_offset_minutes or "").strip() or "0")
+        except ValueError:
+            offset_minutes = 0
+        parsed = (parsed + timedelta(minutes=offset_minutes)).replace(
+            tzinfo=timezone.utc
+        )
     else:
         parsed = parsed.astimezone(timezone.utc)
     return parsed, None
@@ -184,6 +193,7 @@ async def admin_announcements_create(
     body: str = Form(default=""),
     pinned: Optional[str] = Form(default=None),
     expires_at: str = Form(default=""),
+    tz_offset_minutes: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
 ):
     denial, current = _permission_gate(
@@ -206,7 +216,10 @@ async def admin_announcements_create(
     )
     if body_error:
         return _flash_redirect(body_error)
-    parsed_expires_at, expires_error = _parse_expires_at(expires_at)
+    parsed_expires_at, expires_error = _parse_expires_at(
+        expires_at,
+        tz_offset_minutes,
+    )
     if expires_error:
         return _flash_redirect(expires_error)
 
@@ -275,7 +288,7 @@ async def admin_announcements_archive(
         AuditLog(
             actor_user_id=current.id,
             action="announcement.archived",
-            resource_key="admin.announcements.create",
+            resource_key="admin.announcements.view",
             details_json=json.dumps(
                 {
                     "announcement_id": announcement_id,

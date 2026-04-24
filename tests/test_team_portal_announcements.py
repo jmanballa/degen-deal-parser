@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
@@ -34,6 +34,14 @@ def _fresh_engine():
     )
     SQLModel.metadata.create_all(engine)
     return engine
+
+
+def _utc(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class _FakeRequest:
@@ -118,7 +126,16 @@ class TeamAnnouncementTests(unittest.TestCase):
         self.session.refresh(row)
         return row
 
-    def _create(self, user, *, title: object, body: object, pinned=None, expires_at=""):
+    def _create(
+        self,
+        user,
+        *,
+        title: object,
+        body: object,
+        pinned=None,
+        expires_at="",
+        tz_offset_minutes: str | None = None,
+    ):
         from app.routers import team_admin_announcements as admin_announcements
 
         request = _FakeRequest(user, path="/team/admin/announcements")
@@ -129,6 +146,7 @@ class TeamAnnouncementTests(unittest.TestCase):
                 body=body,
                 pinned=pinned,
                 expires_at=expires_at,
+                tz_offset_minutes=tz_offset_minutes,
                 session=self.session,
             )
         )
@@ -255,6 +273,45 @@ class TeamAnnouncementTests(unittest.TestCase):
         self.assertEqual(audit.actor_user_id, admin.id)
         self.assertEqual(audit.resource_key, "admin.announcements.create")
 
+    def test_expires_at_respects_client_timezone_offset(self):
+        from app.models import TeamAnnouncement
+
+        admin = self._seed_user(18, role="admin", username="tzadmin")
+
+        response = self._create(
+            admin,
+            title="Closing early",
+            body="Heads up.",
+            expires_at="2026-04-30T17:00",
+            tz_offset_minutes="420",
+        )
+
+        self.assertEqual(response.status_code, 303)
+        row = self.session.exec(select(TeamAnnouncement)).one()
+        self.assertEqual(
+            _utc(row.expires_at),
+            datetime(2026, 5, 1, 0, 0, tzinfo=timezone.utc),
+        )
+
+    def test_expires_at_backward_compat_when_no_tz_offset(self):
+        from app.models import TeamAnnouncement
+
+        admin = self._seed_user(19, role="admin", username="utctzadmin")
+
+        response = self._create(
+            admin,
+            title="UTC expiration",
+            body="Heads up.",
+            expires_at="2026-04-30T17:00",
+        )
+
+        self.assertEqual(response.status_code, 303)
+        row = self.session.exec(select(TeamAnnouncement)).one()
+        self.assertEqual(
+            _utc(row.expires_at),
+            datetime(2026, 4, 30, 17, 0, tzinfo=timezone.utc),
+        )
+
     def test_create_requires_title_and_body(self):
         from app.models import TeamAnnouncement
 
@@ -365,7 +422,7 @@ class TeamAnnouncementTests(unittest.TestCase):
             select(AuditLog).where(AuditLog.action == "announcement.archived")
         ).one()
         self.assertEqual(audit.actor_user_id, admin.id)
-        self.assertEqual(audit.resource_key, "admin.announcements.create")
+        self.assertEqual(audit.resource_key, "admin.announcements.view")
 
     def test_dashboard_with_no_announcements_does_not_render_empty_card(self):
         employee = self._seed_user(15, role="employee", username="reader5")

@@ -19,7 +19,7 @@ from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from .. import permissions as perms
@@ -39,6 +39,11 @@ from ..db import get_session
 from ..models import (
     AuditLog,
     EmployeeProfile,
+    SHIFT_KIND_ALL,
+    SHIFT_KIND_BLANK,
+    SHIFT_KIND_OFF,
+    SHIFT_KIND_REQUEST,
+    SHIFT_KIND_WORK,
     ScheduleDayNote,
     ShiftEntry,
     SupplyRequest,
@@ -480,6 +485,7 @@ def _nav_context(session: Session, user: User) -> dict:
 
 @router.get("/team/dashboard")
 def team_dashboard_alias():
+    # Unauthenticated-safe: this only redirects to /team/, which is auth-gated.
     return RedirectResponse("/team/", status_code=303)
 
 
@@ -493,12 +499,12 @@ def team_dashboard(
         return denial
     widgets = perms.allowed_widgets_for(session, user)
     clockify_ready = bool((get_settings().clockify_api_key or "").strip())
-    supply_queue_count = len(
+    supply_queue_count = int(
         session.exec(
-            select(SupplyRequest).where(
-                SupplyRequest.status.in_(("pending", "submitted"))
-            )
-        ).all()
+            select(func.count())
+            .select_from(SupplyRequest)
+            .where(SupplyRequest.status.in_(("pending", "submitted")))
+        ).one()
     )
     today = date.today()
     return templates.TemplateResponse(
@@ -634,6 +640,11 @@ def _upcoming_shifts_for(
             select(ShiftEntry)
             .where(ShiftEntry.user_id == user.id)
             .where(ShiftEntry.shift_date >= today)
+            .where(
+                ~ShiftEntry.kind.in_(
+                    (SHIFT_KIND_REQUEST, SHIFT_KIND_OFF, SHIFT_KIND_BLANK)
+                )
+            )
             .order_by(ShiftEntry.shift_date, ShiftEntry.sort_order, ShiftEntry.id)
             .limit(3)
         ).all()
@@ -679,6 +690,7 @@ def _today_staffing_for(
         session.exec(
             select(ShiftEntry)
             .where(ShiftEntry.shift_date == today)
+            .where(ShiftEntry.kind.in_((SHIFT_KIND_WORK, SHIFT_KIND_ALL)))
             .order_by(ShiftEntry.sort_order, ShiftEntry.id)
         ).all()
     )
