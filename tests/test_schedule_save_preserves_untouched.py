@@ -23,6 +23,7 @@ os.environ.setdefault("EMPLOYEE_PII_KEY", Fernet.generate_key().decode("ascii"))
 os.environ.setdefault("EMPLOYEE_EMAIL_HASH_SALT", "schedule-save-salt")
 os.environ.setdefault("EMPLOYEE_TOKEN_HMAC_KEY", "schedule-save-hmac-" + "x" * 24)
 os.environ.setdefault("SESSION_SECRET", "schedule-save-secret-" + "x" * 32)
+os.environ.setdefault("ADMIN_PASSWORD", "schedule-save-admin-password")
 
 
 WEEK = date(2026, 4, 27)

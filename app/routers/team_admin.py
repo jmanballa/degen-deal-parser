@@ -42,6 +42,9 @@ def _admin_gate(request: Request, session: Session, resource_key: str):
         return HTMLResponse(
             "You do not have permission to view this page.", status_code=403
         ), None
+    request.state.can_view_admin_announcements = has_permission(
+        session, user, "admin.announcements.view"
+    )
     return None, user
 
 
@@ -68,6 +71,9 @@ def _permission_gate(request: Request, session: Session, resource_key: str):
         return HTMLResponse(
             "You do not have permission to view this page.", status_code=403
         ), None
+    request.state.can_view_admin_announcements = has_permission(
+        session, user, "admin.announcements.view"
+    )
     return None, user
 
 

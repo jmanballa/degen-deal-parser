@@ -1,0 +1,89 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'announcements' %}
+
+{% block content %}
+{% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+
+{% if can_create %}
+<div class="ta-card">
+    <h2>Post announcement</h2>
+    <form method="post" action="/team/admin/announcements" style="display:grid; gap:14px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <label style="display:grid; gap:6px; font-size:12px; color:var(--lx-muted);">
+            Title
+            <input name="title" maxlength="200" required
+                   style="width:100%; padding:10px 12px; border:1px solid var(--lx-br); border-radius:8px; background:var(--lx-s2); color:var(--lx-text); font:inherit;">
+        </label>
+        <label style="display:grid; gap:6px; font-size:12px; color:var(--lx-muted);">
+            Body
+            <textarea name="body" maxlength="4000" required rows="5"
+                      style="width:100%; padding:10px 12px; border:1px solid var(--lx-br); border-radius:8px; background:var(--lx-s2); color:var(--lx-text); font:inherit; resize:vertical;"></textarea>
+        </label>
+        <div style="display:flex; gap:18px; align-items:end; flex-wrap:wrap;">
+            <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:var(--lx-text); padding-bottom:8px;">
+                <input type="checkbox" name="pinned" value="1">
+                Pinned
+            </label>
+            <label style="display:grid; gap:6px; font-size:12px; color:var(--lx-muted); min-width:240px;">
+                Expires
+                <input type="datetime-local" name="expires_at"
+                       style="width:100%; padding:9px 12px; border:1px solid var(--lx-br); border-radius:8px; background:var(--lx-s2); color:var(--lx-text); font:inherit;">
+            </label>
+            <button class="ta-btn" type="submit" style="margin-left:auto;">Publish</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<div class="ta-card" style="padding:0;">
+    <table style="width:100%; font-size:13px; border-collapse:collapse;">
+        <thead>
+            <tr style="text-align:left; color:var(--lx-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Published</th>
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Announcement</th>
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">By</th>
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Status</th>
+                <th style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ann in announcements %}
+            {% set status = statuses.get(ann.id, 'active') %}
+            {% set author = authors.get(ann.created_by_user_id) %}
+            <tr>
+                <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br); white-space:nowrap;">
+                    {{ ann.published_at.strftime('%Y-%m-%d') }}
+                </td>
+                <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <strong>{{ ann.title }}</strong>
+                        {% if ann.pinned %}<span class="ta-chip">Pinned</span>{% endif %}
+                    </div>
+                    <div style="color:var(--lx-muted); font-size:12px; margin-top:4px; white-space:pre-line;">{{ ann.body[:240] }}{% if ann.body|length > 240 %}...{% endif %}</div>
+                    {% if ann.expires_at %}
+                      <div style="color:var(--lx-muted); font-size:11px; margin-top:4px;">Expires {{ ann.expires_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                    {% endif %}
+                </td>
+                <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">
+                    {% if author %}{{ author.display_name or author.username }}{% else %}User {{ ann.created_by_user_id }}{% endif %}
+                </td>
+                <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br); text-transform:capitalize;">{{ status }}</td>
+                <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br); white-space:nowrap;">
+                    {% if can_create and ann.is_active %}
+                        <form method="post" action="/team/admin/announcements/{{ ann.id }}/archive" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                            <button class="ta-btn danger" type="submit">Archive</button>
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% if not announcements %}
+            <tr>
+                <td colspan="5" style="padding:20px 14px; text-align:center; color:var(--lx-muted);">No announcements yet.</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

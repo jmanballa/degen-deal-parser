@@ -32,6 +32,29 @@
     </div>
 </div>
 
+{% set announcements_preview = active_announcements|default([]) %}
+{% if announcements_preview %}
+  <div class="pt-card pt-announcements-preview" style="margin-top:20px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:12px;">
+      <div class="pt-card-title">Announcements</div>
+      <a class="pt-link" href="/team/announcements" style="font-size:13px;">Read more</a>
+    </div>
+    <div style="display:grid; gap:12px;">
+      {% for ann in announcements_preview[:3] %}
+        <div style="padding-top:{% if not loop.first %}12px{% else %}0{% endif %}; border-top:{% if not loop.first %}1px solid var(--pt-border){% else %}0{% endif %};">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="font-weight:700;">{{ ann.title }}</div>
+            {% if ann.pinned %}<span class="pt-chip">Pinned</span>{% endif %}
+          </div>
+          <div class="pt-card-sub" style="margin-top:4px;">
+            {{ ann.body[:200] }}{% if ann.body|length > 200 %}...{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
 {% if widgets %}
   <div class="pt-widget-grid" style="margin-top:20px;">
     {% for w in widgets %}

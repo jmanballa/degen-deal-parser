@@ -27,6 +27,7 @@ os.environ.setdefault("EMPLOYEE_PORTAL_ENABLED", "true")
 os.environ.setdefault("EMPLOYEE_PII_KEY", Fernet.generate_key().decode("ascii"))
 os.environ.setdefault("EMPLOYEE_EMAIL_HASH_SALT", "unit-test-salt-mobilenav")
 os.environ.setdefault("EMPLOYEE_TOKEN_HMAC_KEY", "unit-test-hmac-mobilenav")
+os.environ.setdefault("ADMIN_PASSWORD", "unit-test-admin-password-mobilenav")
 
 
 def _fresh_engine():

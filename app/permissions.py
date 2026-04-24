@@ -27,6 +27,7 @@ RESOURCE_KEYS: List[str] = [
     "page.policies",
     "page.hours",
     "page.schedule",
+    "page.announcements",
     "page.supply_requests",
     "page.admin.employees",
     "page.admin.invites",
@@ -62,6 +63,9 @@ RESOURCE_KEYS: List[str] = [
     # Wave 4.7 — schedule admin surface
     "admin.schedule.view",
     "admin.schedule.edit",
+    # Wave C — announcements admin surface
+    "admin.announcements.view",
+    "admin.announcements.create",
     "page.admin.schedule",
 ]
 
@@ -72,6 +76,7 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "page.policies": "Policies page",
     "page.hours": "Hours page",
     "page.schedule": "Schedule page",
+    "page.announcements": "Announcements page",
     "page.supply_requests": "Supply requests page",
     "page.admin.employees": "Admin · Employees",
     "page.admin.invites": "Admin · Invites",
@@ -102,6 +107,8 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "admin.supply.approve": "Admin · Approve supply request",
     "admin.schedule.view": "Admin · View schedule grid",
     "admin.schedule.edit": "Admin · Edit schedule grid",
+    "admin.announcements.view": "Admin · View announcements management",
+    "admin.announcements.create": "Admin · Create/archive announcements",
     "page.admin.schedule": "Admin · Schedule",
 }
 

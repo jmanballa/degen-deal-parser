@@ -1,0 +1,29 @@
+{% extends "team/base.html" %}
+
+{% block content %}
+{% set rows = announcements|default([]) %}
+{% if rows %}
+  <div style="display:grid; gap:16px;">
+    {% for ann in rows %}
+      {% set author = authors.get(ann.created_by_user_id) if authors is defined else None %}
+      <article class="pt-card">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+          <h2 class="pt-card-title" style="font-size:20px; letter-spacing:0; text-transform:none; color:var(--pt-text); margin:0;">
+            {{ ann.title }}
+          </h2>
+          {% if ann.pinned %}<span class="pt-chip">Pinned</span>{% endif %}
+        </div>
+        <div class="pt-card-sub" style="margin-top:8px;">
+          {{ ann.published_at.strftime('%b %d, %Y') }}
+          {% if author %} · {{ author.display_name or author.username }}{% endif %}
+        </div>
+        <div style="margin-top:14px; line-height:1.6; white-space:pre-line;">{{ ann.body }}</div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="pt-card">
+    <div class="pt-card-sub">No announcements right now.</div>
+  </div>
+{% endif %}
+{% endblock %}

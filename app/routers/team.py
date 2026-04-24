@@ -19,6 +19,7 @@ from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from .. import permissions as perms
@@ -41,6 +42,7 @@ from ..models import (
     ScheduleDayNote,
     ShiftEntry,
     SupplyRequest,
+    TeamAnnouncement,
     User,
     utcnow,
 )
@@ -424,6 +426,7 @@ def _nav_context(session: Session, user: User) -> dict:
     keys = (
         ("dashboard", "page.dashboard", "/team/"),
         ("hours", "page.hours", "/team/hours"),
+        ("announcements", "page.announcements", "/team/announcements"),
         ("schedule", "page.schedule", schedule_href),
         ("policies", "page.policies", "/team/policies"),
         ("supply", "page.supply_requests", "/team/supply"),
@@ -442,6 +445,11 @@ def _nav_context(session: Session, user: User) -> dict:
         ("invites", "page.admin.invites", "/team/admin/invites"),
         ("permissions", "page.admin.permissions", "/team/admin/permissions"),
         ("supply-queue", "page.admin.supply", "/team/admin/supply"),
+        (
+            "announcements-admin",
+            "admin.announcements.view",
+            "/team/admin/announcements",
+        ),
     )
     admin_nav = []
     for name, key, href in admin_keys:
@@ -504,8 +512,78 @@ def team_dashboard(
             "supply_queue_count": supply_queue_count,
             "upcoming_shifts": _upcoming_shifts_for(session, user, today=today),
             "today_staffing": _today_staffing_for(session, today=today),
+            "active_announcements": _active_announcements_for(session, limit=3),
             "today_date": today,
             "now_hour": utcnow().hour,
+            "csrf_token": issue_token(request),
+            **_nav_context(session, user),
+        },
+    )
+
+
+def _active_announcements_for(
+    session: Session,
+    *,
+    limit: Optional[int] = None,
+) -> list[TeamAnnouncement]:
+    now = utcnow()
+    stmt = (
+        select(TeamAnnouncement)
+        .where(TeamAnnouncement.is_active == True)  # noqa: E712
+        .where(
+            or_(
+                TeamAnnouncement.expires_at.is_(None),
+                TeamAnnouncement.expires_at > now,
+            )
+        )
+        .order_by(
+            TeamAnnouncement.pinned.desc(),
+            TeamAnnouncement.published_at.desc(),
+            TeamAnnouncement.id.desc(),
+        )
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(session.exec(stmt).all())
+
+
+@router.get("/team/announcements", response_class=HTMLResponse)
+def team_announcements(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(
+        request, session, resource_key="page.announcements"
+    )
+    if denial:
+        return denial
+
+    announcements = _active_announcements_for(session)
+    creator_ids = {
+        row.created_by_user_id
+        for row in announcements
+        if row.created_by_user_id is not None
+    }
+    authors: dict[int, User] = {}
+    if creator_ids:
+        authors = {
+            author.id: author
+            for author in session.exec(
+                select(User).where(User.id.in_(creator_ids))
+            ).all()
+            if author.id is not None
+        }
+
+    return templates.TemplateResponse(
+        request,
+        "team/announcements.html",
+        {
+            "request": request,
+            "title": "Announcements",
+            "active": "announcements",
+            "current_user": user,
+            "announcements": announcements,
+            "authors": authors,
             "csrf_token": issue_token(request),
             **_nav_context(session, user),
         },
