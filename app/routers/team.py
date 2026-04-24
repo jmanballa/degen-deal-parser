@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from datetime import date
 from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -33,7 +35,15 @@ from ..auth import (
 from ..config import get_settings
 from ..csrf import issue_token, require_csrf, rotate_token
 from ..db import get_session
-from ..models import AuditLog, EmployeeProfile, SupplyRequest, User, utcnow
+from ..models import (
+    AuditLog,
+    EmployeeProfile,
+    ScheduleDayNote,
+    ShiftEntry,
+    SupplyRequest,
+    User,
+    utcnow,
+)
 from ..pii import decrypt_pii, encrypt_pii
 from ..rate_limit import rate_limited_or_429
 from ..shared import templates
@@ -480,6 +490,7 @@ def team_dashboard(
             )
         ).all()
     )
+    today = date.today()
     return templates.TemplateResponse(
         request,
         "team/dashboard.html",
@@ -491,11 +502,142 @@ def team_dashboard(
             "widgets": widgets,
             "clockify_ready": clockify_ready,
             "supply_queue_count": supply_queue_count,
+            "upcoming_shifts": _upcoming_shifts_for(session, user, today=today),
+            "today_staffing": _today_staffing_for(session, today=today),
+            "today_date": today,
             "now_hour": utcnow().hour,
             "csrf_token": issue_token(request),
             **_nav_context(session, user),
         },
     )
+
+
+_SHIFT_START_RE = re.compile(
+    r"^\s*(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>a|am|p|pm)?\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_shift_start_minutes(label: str) -> Optional[int]:
+    """Best-effort sort key for schedule labels like "10:30 AM - 6 PM"."""
+    match = _SHIFT_START_RE.search((label or "").strip())
+    if not match:
+        return None
+    hour = int(match.group("hour"))
+    minute = int(match.group("minute") or "0")
+    if minute > 59:
+        return None
+    ampm = (match.group("ampm") or "").lower()
+    if ampm.startswith("p"):
+        if hour != 12:
+            hour += 12
+    elif ampm.startswith("a"):
+        if hour == 12:
+            hour = 0
+    elif 1 <= hour <= 5:
+        # Store shifts written as "3-7" usually mean afternoon.
+        hour += 12
+    if hour > 23:
+        return None
+    return hour * 60 + minute
+
+
+def _upcoming_shifts_for(
+    session: Session,
+    user: User,
+    *,
+    today: Optional[date] = None,
+) -> list[dict[str, Any]]:
+    today = today or date.today()
+    shifts = list(
+        session.exec(
+            select(ShiftEntry)
+            .where(ShiftEntry.user_id == user.id)
+            .where(ShiftEntry.shift_date >= today)
+            .order_by(ShiftEntry.shift_date, ShiftEntry.sort_order, ShiftEntry.id)
+            .limit(3)
+        ).all()
+    )
+    if not shifts:
+        return []
+
+    dates = sorted({shift.shift_date for shift in shifts})
+    notes = {
+        note.day_date: note
+        for note in session.exec(
+            select(ScheduleDayNote).where(ScheduleDayNote.day_date.in_(dates))
+        ).all()
+    }
+    out: list[dict[str, Any]] = []
+    for shift in shifts:
+        day_note_row = notes.get(shift.shift_date)
+        day_note = None
+        if day_note_row is not None:
+            day_note = (
+                (day_note_row.location_label or "").strip()
+                or (day_note_row.notes or "").strip()
+                or None
+            )
+        out.append(
+            {
+                "shift_date": shift.shift_date,
+                "label": shift.label,
+                "kind": shift.kind,
+                "day_note": day_note,
+            }
+        )
+    return out
+
+
+def _today_staffing_for(
+    session: Session,
+    *,
+    today: Optional[date] = None,
+) -> list[dict[str, Any]]:
+    today = today or date.today()
+    shifts = list(
+        session.exec(
+            select(ShiftEntry)
+            .where(ShiftEntry.shift_date == today)
+            .order_by(ShiftEntry.sort_order, ShiftEntry.id)
+        ).all()
+    )
+    if not shifts:
+        return []
+
+    user_ids = sorted({shift.user_id for shift in shifts})
+    users = {
+        user.id: user
+        for user in session.exec(select(User).where(User.id.in_(user_ids))).all()
+    }
+    grouped: dict[int, dict[str, Any]] = {}
+    first_start: dict[int, int] = {}
+    for shift in shifts:
+        scheduled_user = users.get(shift.user_id)
+        display_name = (
+            (scheduled_user.display_name or scheduled_user.username)
+            if scheduled_user is not None
+            else f"User {shift.user_id}"
+        )
+        row = grouped.setdefault(
+            shift.user_id,
+            {"display_name": display_name, "shifts": []},
+        )
+        row["shifts"].append((shift.label or "").strip() or "Shift")
+        start = _parse_shift_start_minutes(shift.label)
+        if start is not None:
+            first_start[shift.user_id] = min(start, first_start.get(shift.user_id, start))
+
+    def sort_key(item: tuple[int, dict[str, Any]]) -> tuple[bool, int, str]:
+        user_id, row = item
+        start = first_start.get(user_id)
+        return (
+            start is None,
+            start if start is not None else 0,
+            str(row["display_name"]).casefold(),
+        )
+
+    return [row for _, row in sorted(grouped.items(), key=sort_key)]
 
 
 def _profile_for(session: Session, user_id: int) -> EmployeeProfile:

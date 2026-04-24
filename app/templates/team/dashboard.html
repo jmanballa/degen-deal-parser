@@ -45,10 +45,29 @@
             <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Coming with payroll integration</div>
           {% endif %}
         {% elif w.widget_key == "dashboard.todays_tasks" %}
-          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Task assignments coming soon</div>
+          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Task assignments pending</div>
         {% elif w.widget_key == "dashboard.upcoming_shifts" %}
-          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">TBA</div>
-          <div class="pt-widget-sub">Schedule will appear here when published.</div>
+          {% set shifts = upcoming_shifts|default([]) %}
+          {% if shifts %}
+            <div style="display:grid; gap:10px;">
+              {% for shift in shifts %}
+                <div class="pt-upcoming-shift" style="display:grid; gap:3px; padding-top:{% if not loop.first %}10px{% else %}0{% endif %}; border-top:{% if not loop.first %}1px solid var(--pt-border){% else %}0{% endif %};">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                    <span style="font-size:13px; font-weight:700;">
+                      {% if shift.shift_date == today_date %}Today{% else %}{{ shift.shift_date.strftime('%a %b %d') }}{% endif %}
+                    </span>
+                    <span style="font-size:12px; color:var(--pt-muted);">{{ shift.kind|replace('_', ' ') }}</span>
+                  </div>
+                  <div style="font-size:16px; font-weight:650;">{{ shift.label or 'Shift' }}</div>
+                  {% if shift.day_note %}
+                    <div class="pt-widget-sub">{{ shift.day_note }}</div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">No upcoming shifts</div>
+          {% endif %}
         {% elif w.widget_key == "dashboard.supply_queue_count" %}
           <div class="pt-widget-value">{{ supply_queue_count|default(0) }}</div>
           <div class="pt-widget-sub">Open supply requests waiting for review.</div>
@@ -62,6 +81,25 @@
   <div class="pt-card" style="margin-top:20px;">
     <div class="pt-card-title">You're all set.</div>
     <div class="pt-card-sub">Your admin hasn't enabled any dashboard widgets for your role yet. Everything you need is in the left sidebar.</div>
+  </div>
+{% endif %}
+
+{% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
+  {% set staffing = today_staffing|default([]) %}
+  <div class="pt-card" style="margin-top:20px;">
+    <div class="pt-card-title">Who's on today</div>
+    {% if staffing %}
+      <div style="display:grid; gap:10px; margin-top:12px;">
+        {% for row in staffing %}
+          <div class="pt-today-staff-row" style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:10px 0; border-top:{% if not loop.first %}1px solid var(--pt-border){% else %}0{% endif %};">
+            <div style="font-weight:700;">{{ row.display_name }}</div>
+            <div style="font-size:13px; color:var(--pt-muted); text-align:right;">{{ row.shifts|join(', ') }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="pt-card-sub" style="margin-top:8px;">Nobody scheduled today</div>
+    {% endif %}
   </div>
 {% endif %}
 
