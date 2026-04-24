@@ -389,30 +389,89 @@ def _clockify_webhook_secret() -> str:
     env_value = (os.getenv("CLOCKIFY_WEBHOOK_SECRET") or "").strip()
     if env_value:
         return env_value
+    return _env_file_value("CLOCKIFY_WEBHOOK_SECRET")
+
+
+def _clockify_webhook_signing_secret() -> str:
+    env_value = (os.getenv("CLOCKIFY_WEBHOOK_SIGNING_SECRET") or "").strip()
+    if env_value:
+        return env_value
+    return _env_file_value("CLOCKIFY_WEBHOOK_SIGNING_SECRET")
+
+
+def _env_file_value(key_name: str) -> str:
     try:
         for line in Path(".env").read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("#") or "=" not in stripped:
                 continue
             key, value = stripped.split("=", 1)
-            if key.strip() == "CLOCKIFY_WEBHOOK_SECRET":
+            if key.strip() == key_name:
                 return value.strip().strip('"').strip("'")
     except OSError:
         return ""
     return ""
 
 
-def _require_clockify_webhook_secret(request: Request, supplied_secret: str) -> None:
-    expected = _clockify_webhook_secret()
-    if not expected:
-        raise HTTPException(status_code=503, detail="Clockify webhook secret is not configured.")
-    candidates = [
-        supplied_secret,
+def _strip_bearer(value: str) -> str:
+    value = (value or "").strip()
+    if value.lower().startswith("bearer "):
+        return value[7:].strip()
+    return value
+
+
+def _clockify_url_secret_candidates(request: Request, supplied_secret: str) -> list[str]:
+    return [
+        (supplied_secret or "").strip(),
         request.headers.get("X-Degen-Webhook-Secret", ""),
-        request.headers.get("X-Clockify-Webhook-Secret", ""),
         request.headers.get("X-Webhook-Secret", ""),
     ]
-    if not any(hmac.compare_digest(expected, (candidate or "").strip()) for candidate in candidates):
+
+
+def _clockify_signing_secret_candidates(request: Request) -> list[str]:
+    raw_values = [
+        request.headers.get("Authorization", ""),
+        request.headers.get("X-Clockify-Webhook-Token", ""),
+        request.headers.get("Clockify-Webhook-Token", ""),
+        request.headers.get("X-Clockify-Webhook-Signature", ""),
+        request.headers.get("Clockify-Webhook-Signature", ""),
+        request.headers.get("X-Clockify-Signature", ""),
+        request.headers.get("Clockify-Signature", ""),
+        request.headers.get("X-Webhook-Signature", ""),
+        request.headers.get("Webhook-Signature", ""),
+        request.headers.get("X-Webhook-Token", ""),
+        request.headers.get("Webhook-Token", ""),
+        request.headers.get("X-Auth-Token", ""),
+        request.headers.get("Auth-Token", ""),
+        request.headers.get("authToken", ""),
+    ]
+    return [_strip_bearer(value) for value in raw_values if (value or "").strip()]
+
+
+def _require_clockify_webhook_secret(request: Request, supplied_secret: str) -> None:
+    expected_url_secret = _clockify_webhook_secret()
+    expected_signing_secret = _clockify_webhook_signing_secret()
+    if not expected_url_secret and not expected_signing_secret:
+        raise HTTPException(status_code=503, detail="Clockify webhook secret is not configured.")
+
+    url_secret_ok = bool(
+        expected_url_secret
+        and any(
+            hmac.compare_digest(expected_url_secret, (candidate or "").strip())
+            for candidate in _clockify_url_secret_candidates(request, supplied_secret)
+        )
+    )
+    signing_candidates = _clockify_signing_secret_candidates(request)
+    signing_secret_ok = bool(
+        expected_signing_secret
+        and any(
+            hmac.compare_digest(expected_signing_secret, candidate)
+            for candidate in signing_candidates
+        )
+    )
+    if expected_signing_secret and signing_candidates and not signing_secret_ok:
+        raise HTTPException(status_code=403, detail="Invalid Clockify webhook signing secret.")
+    if not url_secret_ok and not signing_secret_ok:
         raise HTTPException(status_code=403, detail="Invalid Clockify webhook secret.")
 
 

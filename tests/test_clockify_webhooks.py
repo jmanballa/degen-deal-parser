@@ -41,6 +41,7 @@ def _load_app():
 class ClockifyWebhookTests(unittest.TestCase):
     def setUp(self):
         os.environ["CLOCKIFY_WEBHOOK_SECRET"] = "test-clockify-secret"
+        os.environ["CLOCKIFY_WEBHOOK_SIGNING_SECRET"] = "clockify-signing-secret"
         self.engine = _fresh_engine()
         self.session = Session(self.engine)
         self.app_main = _load_app()
@@ -62,6 +63,7 @@ class ClockifyWebhookTests(unittest.TestCase):
         self.app_main.app.dependency_overrides.clear()
         self.session.close()
         os.environ.pop("CLOCKIFY_WEBHOOK_SECRET", None)
+        os.environ.pop("CLOCKIFY_WEBHOOK_SIGNING_SECRET", None)
 
     def _seed_linked_employee(self):
         from app.models import EmployeeProfile, User
@@ -84,6 +86,24 @@ class ClockifyWebhookTests(unittest.TestCase):
     def test_clockify_webhook_rejects_bad_secret(self):
         response = self.client.post(
             "/webhooks/clockify?secret=wrong",
+            json={"event": "NEW_TIMER_STARTED"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_clockify_webhook_accepts_clockify_signing_secret_header(self):
+        response = self.client.post(
+            "/webhooks/clockify",
+            headers={"X-Clockify-Webhook-Token": "clockify-signing-secret"},
+            json={"id": "event-signed", "event": "NEW_TIMER_STARTED"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_clockify_webhook_rejects_bad_signing_secret_even_with_url_secret(self):
+        response = self.client.post(
+            "/webhooks/clockify?secret=test-clockify-secret",
+            headers={"X-Clockify-Webhook-Token": "wrong-signing-secret"},
             json={"event": "NEW_TIMER_STARTED"},
         )
 
@@ -192,4 +212,3 @@ class ClockifyWebhookTests(unittest.TestCase):
         entry = self.session.exec(select(ClockifyTimeEntry)).one()
         self.assertTrue(entry.is_deleted)
         self.assertFalse(entry.is_running)
-
