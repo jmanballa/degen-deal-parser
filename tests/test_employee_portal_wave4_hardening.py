@@ -12,10 +12,13 @@ Covers:
 """
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import os
 import unittest
+from contextlib import contextmanager
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -26,6 +29,7 @@ from sqlmodel import Session, create_engine, select
 os.environ.setdefault("EMPLOYEE_PORTAL_ENABLED", "true")
 os.environ.setdefault("EMPLOYEE_PII_KEY", Fernet.generate_key().decode("ascii"))
 os.environ.setdefault("EMPLOYEE_EMAIL_HASH_SALT", "unit-test-salt")
+os.environ.setdefault("EMPLOYEE_TOKEN_HMAC_KEY", "unit-test-token-hmac-key")
 os.environ.setdefault("SESSION_SECRET", "test-secret-wave45-" + "x" * 32)
 
 
@@ -488,6 +492,54 @@ class ResetConsumeRoundTripTests(unittest.TestCase, _Harness):
         self.assertIsNotNone(logged_in)
         self.assertEqual(logged_in.id, 8001)
 
+    def test_consume_reset_token_voids_sibling_unused_tokens(self):
+        from app.auth import (
+            _hash_token,
+            _token_lookup_hmac,
+            consume_password_reset_token,
+            hash_password,
+        )
+        from app.models import PasswordResetToken, User, utcnow
+
+        old_hash, old_salt = hash_password("OldPassword1!")
+        target = User(
+            id=8003,
+            username="sibling_reset",
+            password_hash=old_hash,
+            password_salt=old_salt,
+            display_name="Sibling",
+            role="employee",
+            is_active=True,
+        )
+        self.session.add(target)
+        now = utcnow()
+        active_raw = "active-reset-token"
+        sibling_raw = "sibling-reset-token"
+        active = PasswordResetToken(
+            token_hash=_hash_token(active_raw),
+            token_lookup_hmac=_token_lookup_hmac(active_raw),
+            user_id=target.id,
+            expires_at=now + timedelta(hours=1),
+        )
+        sibling = PasswordResetToken(
+            token_hash=_hash_token(sibling_raw),
+            token_lookup_hmac=_token_lookup_hmac(sibling_raw),
+            user_id=target.id,
+            expires_at=now + timedelta(hours=1),
+        )
+        self.session.add(active)
+        self.session.add(sibling)
+        self.session.commit()
+
+        consume_password_reset_token(
+            self.session, active_raw, new_password="BrandNewSecret9!"
+        )
+
+        self.session.expire_all()
+        self.assertIsNotNone(self.session.get(PasswordResetToken, active.id).used_at)
+        self.assertIsNotNone(self.session.get(PasswordResetToken, sibling.id).used_at)
+        self.assertIsNotNone(self.session.get(User, target.id).password_changed_at)
+
 
 # ---------------------------------------------------------------------------
 # End-to-end: admin invite → new user accepts → authenticates
@@ -588,6 +640,167 @@ class PurgeIdempotencyTests(unittest.TestCase, _Harness):
             select(AuditLog).where(AuditLog.action == "account.purged")
         ).all())
         self.assertEqual(rows, [])
+
+
+class PasswordSessionInvalidationTests(unittest.TestCase, _Harness):
+    def setUp(self): self._setup()
+    def tearDown(self): self._teardown()
+
+    @contextmanager
+    def _managed_session_for_request_user(self):
+        session = Session(self.engine)
+        try:
+            yield session
+        finally:
+            session.close()
+
+    def test_other_session_dies_after_password_change(self):
+        from app.auth import change_user_password, hash_password
+        from app.models import User
+        from app.shared import get_request_user
+
+        old_password = "OldPassword1234!"
+        pwd_hash, pwd_salt = hash_password(old_password)
+        user = User(
+            id=8701,
+            username="session_rotate",
+            password_hash=pwd_hash,
+            password_salt=pwd_salt,
+            display_name="Session Rotate",
+            role="employee",
+            is_active=True,
+        )
+        self.session.add(user)
+        self.session.commit()
+        stale_session = {"user_id": user.id, "password_changed_at": None}
+
+        change_user_password(
+            self.session,
+            self.session.get(User, user.id),
+            current_password=old_password,
+            new_password="NewPassword5678!",
+        )
+
+        with patch("app.shared.managed_session", self._managed_session_for_request_user):
+            found = get_request_user(SimpleNamespace(scope={"session": stale_session}))
+
+        self.assertIsNone(found)
+        self.assertEqual(stale_session, {})
+
+
+class ProfileSelfUpdateHardeningTests(unittest.TestCase, _Harness):
+    def setUp(self): self._setup()
+    def tearDown(self): self._teardown()
+
+    def _profile_form(self, **overrides):
+        data = {
+            "preferred_name": "",
+            "legal_name": "",
+            "email": "",
+            "phone": "",
+            "emergency_contact_name": "",
+            "emergency_contact_phone": "",
+            "address_street": "",
+            "address_city": "",
+            "address_state": "",
+            "address_zip": "",
+        }
+        data.update(overrides)
+        return data
+
+    def test_profile_save_overwrites_corrupt_pii_blob(self):
+        from app.models import EmployeeProfile
+        from app.pii import decrypt_pii
+        from app.routers.team import team_profile_post
+
+        emp = self._seed_employee(user_id=8801, username="corrupt_pii")
+        profile = self.session.get(EmployeeProfile, emp.id)
+        profile.legal_name_enc = b"not-a-valid-fernet-token"
+        self.session.add(profile)
+        self.session.commit()
+        request = SimpleNamespace(
+            state=SimpleNamespace(current_user=emp),
+            client=SimpleNamespace(host="testclient"),
+            headers={},
+        )
+
+        response = asyncio.run(
+            team_profile_post(
+                request,
+                **self._profile_form(legal_name="Fixed Legal Name"),
+                session=self.session,
+            )
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.session.expire_all()
+        refreshed = self.session.get(EmployeeProfile, emp.id)
+        self.assertEqual(decrypt_pii(refreshed.legal_name_enc), "Fixed Legal Name")
+
+    def test_profile_post_is_rate_limited_per_user(self):
+        from app.routers.team import team_profile_post
+
+        emp = self._seed_employee(user_id=8802, username="profile_rate")
+        request = SimpleNamespace(
+            state=SimpleNamespace(current_user=emp),
+            client=SimpleNamespace(host="testclient"),
+            headers={},
+        )
+
+        for _ in range(20):
+            response = asyncio.run(
+                team_profile_post(
+                    request,
+                    **self._profile_form(preferred_name="Profile Rate"),
+                    session=self.session,
+                )
+            )
+            self.assertNotEqual(response.status_code, 429)
+
+        limited = asyncio.run(
+            team_profile_post(
+                request,
+                **self._profile_form(preferred_name="Profile Rate"),
+                session=self.session,
+            )
+        )
+        self.assertEqual(limited.status_code, 429)
+
+
+class RevealRateLimitTests(unittest.TestCase, _Harness):
+    def setUp(self): self._setup()
+    def tearDown(self): self._teardown()
+
+    def test_admin_reveal_is_rate_limited_per_actor(self):
+        from app import rate_limit
+        from app.routers.team_admin_employees import admin_employee_reveal
+
+        admin = self._login(role="admin", user_id=8901, username="reveal_admin")
+        emp = self._seed_employee(user_id=8902, username="reveal_emp")
+        request = SimpleNamespace(
+            state=SimpleNamespace(current_user=admin),
+            client=SimpleNamespace(host="testclient"),
+            headers={},
+            session={},
+        )
+
+        for _ in range(30):
+            allowed = rate_limit.check(
+                f"reveal:{admin.id}:testclient",
+                max_requests=30,
+                window_seconds=900,
+            )
+            self.assertTrue(allowed)
+
+        limited = asyncio.run(
+            admin_employee_reveal(
+                request,
+                emp.id,
+                field="phone",
+                session=self.session,
+            )
+        )
+        self.assertEqual(limited.status_code, 429)
 
 
 class ProxyAwareRateLimitTests(unittest.TestCase):
