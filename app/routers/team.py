@@ -20,11 +20,13 @@ from typing import Any, Optional, Tuple
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from .. import permissions as perms
 from ..auth import (
     BadCurrentPasswordError,
+    LoginRateLimitedError,
     WeakPasswordError,
     authenticate_user,
     change_user_password,
@@ -58,7 +60,7 @@ from ..models import (
     User,
     utcnow,
 )
-from ..pii import decrypt_pii, encrypt_pii
+from ..pii import PIIDecryptError, decrypt_pii, encrypt_pii
 from ..rate_limit import rate_limited_or_429
 from ..shared import templates
 
@@ -136,6 +138,11 @@ def _safe_next(value: Optional[str]) -> str:
     return ""
 
 
+def _password_changed_session_value(user: User) -> Optional[str]:
+    changed_at = getattr(user, "password_changed_at", None)
+    return changed_at.isoformat() if changed_at is not None else None
+
+
 @router.get("/team/login", response_class=HTMLResponse)
 def team_login_page(
     request: Request,
@@ -203,7 +210,12 @@ async def team_login_post(
             status_code=303,
         )
 
-    user = authenticate_user(session, username, password, ip_address=ip)
+    try:
+        user = authenticate_user(
+            session, username, password, request=request, ip_address=ip
+        )
+    except LoginRateLimitedError as exc:
+        return exc.response
     if not user:
         return RedirectResponse(
             f"/team/login?error=Invalid+username+or+password{next_qs}",
@@ -211,6 +223,7 @@ async def team_login_post(
         )
 
     request.session["user_id"] = user.id
+    request.session["password_changed_at"] = _password_changed_session_value(user)
     rotate_token(request)  # m1 — bind a fresh CSRF to the authenticated session
     if next_url:
         return RedirectResponse(next_url, status_code=303)
@@ -304,6 +317,7 @@ async def team_invite_accept_post(
             f"/team/invite/accept/{token}?error={str(exc)}", status_code=303
         )
     request.session["user_id"] = user.id
+    request.session["password_changed_at"] = _password_changed_session_value(user)
     rotate_token(request)
     redirect_url = "/team/?flash=Welcome+to+the+team!"
     if session.info.pop("invite_email_skipped_due_to_clash", False):
@@ -819,6 +833,13 @@ async def team_profile_post(
     denial, user = _require_employee(request, session, resource_key="page.profile")
     if denial:
         return denial
+    if limited := rate_limited_or_429(
+        request,
+        key_prefix=f"team:profile:{user.id}",
+        max_requests=20,
+        window_seconds=900,
+    ):
+        return limited
     profile = _profile_for(session, user.id)
     now = utcnow()
     changed: list[str] = []
@@ -834,7 +855,10 @@ async def team_profile_post(
         changed.append("preferred_name")
 
     def _maybe_set_enc(attr: str, raw: str, label: str) -> None:
-        current = decrypt_pii(getattr(profile, attr)) or ""
+        try:
+            current = decrypt_pii(getattr(profile, attr)) or ""
+        except (PIIDecryptError, ValueError):
+            current = ""
         raw_s = (raw or "").strip()
         if raw_s != current:
             setattr(profile, attr, encrypt_pii(raw_s) if raw_s else None)
@@ -856,7 +880,10 @@ async def team_profile_post(
     # Email needs both the ciphertext AND the lookup hash kept in sync.
     from ..pii import email_lookup_hash as _email_hash
     new_email = (email or "").strip().lower()
-    current_email = decrypt_pii(profile.email_ciphertext) or ""
+    try:
+        current_email = decrypt_pii(profile.email_ciphertext) or ""
+    except (PIIDecryptError, ValueError):
+        current_email = ""
     if new_email != current_email:
         if new_email:
             new_hash = _email_hash(new_email)
@@ -903,7 +930,11 @@ async def team_profile_post(
                 ip_address=(request.client.host if request.client else None),
             )
         )
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            return RedirectResponse("/team/profile?flash=email_taken", status_code=303)
     return RedirectResponse("/team/profile?flash=Saved.", status_code=303)
 
 
