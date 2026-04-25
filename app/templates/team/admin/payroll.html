@@ -1,0 +1,269 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'payroll' %}
+{% block extra_head %}
+<style>
+    .pay-toolbar {
+        display: grid;
+        grid-template-columns: minmax(150px, 1fr) minmax(130px, 160px) minmax(130px, 160px) auto auto auto;
+        gap: 10px;
+        align-items: end;
+    }
+    .pay-field label {
+        display: block;
+        font-size: 11px;
+        color: var(--lx-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 5px;
+    }
+    .pay-field select,
+    .pay-field input[type="date"] {
+        width: 100%;
+        min-height: 36px;
+        padding: 7px 9px;
+        border-radius: 8px;
+        border: 1px solid var(--lx-br);
+        background: var(--lx-s2);
+        color: var(--lx-text);
+        font: inherit;
+        font-size: 13px;
+    }
+    .pay-check {
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--lx-muted);
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .pay-metrics {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(130px, 1fr));
+        gap: 10px;
+    }
+    .pay-metric {
+        min-width: 0;
+        padding: 12px;
+        border-radius: 8px;
+        background: var(--lx-s2);
+        border: 1px solid var(--lx-br);
+    }
+    .pay-metric-label {
+        font-size: 11px;
+        color: var(--lx-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .pay-metric-value {
+        margin-top: 4px;
+        font-size: 24px;
+        line-height: 1.1;
+        font-weight: 750;
+        color: var(--lx-text);
+        overflow-wrap: anywhere;
+    }
+    .pay-metric-note {
+        margin-top: 5px;
+        font-size: 11px;
+        color: var(--lx-muted);
+        line-height: 1.35;
+    }
+    .pay-table-wrap { overflow: auto; }
+    .pay-table {
+        width: 100%;
+        min-width: 1120px;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .pay-table th {
+        padding: 10px 14px;
+        border-top: 1px solid var(--lx-br);
+        border-bottom: 1px solid var(--lx-br);
+        text-align: left;
+        color: var(--lx-muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+    }
+    .pay-table td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--lx-br);
+        white-space: nowrap;
+        vertical-align: top;
+    }
+    .pay-note { white-space: normal; max-width: 280px; color: var(--lx-muted); }
+    .pay-pill {
+        display: inline-flex;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .pay-pill.ok { color: #86efac; background: rgba(134,239,172,0.16); }
+    .pay-pill.warn { color: #fde68a; background: rgba(234,179,8,0.16); }
+    .pay-pill.danger { color: #fca5a5; background: rgba(239,68,68,0.16); }
+    @media (max-width: 1100px) {
+        .pay-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pay-toolbar .ta-btn { width: 100%; text-align: center; }
+        .pay-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 560px) {
+        .pay-toolbar { grid-template-columns: 1fr; }
+        .pay-metrics { grid-template-columns: 1fr; }
+        .pay-metric-value { font-size: 22px; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+{% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+{% if error %}<div class="ta-flash warn">{{ error }}</div>{% endif %}
+
+<div class="ta-card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
+        <div>
+            <h2>Payroll Export</h2>
+            <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+                Approved hours, Clockify paid time, salary accrual, and notes for {{ payroll.range_label }}.
+            </p>
+        </div>
+        <div style="font-size:12px; color:var(--lx-muted); text-align:right;">
+            Latest cache<br/>
+            <strong style="font-size:14px; color:var(--lx-text);">{{ payroll.stats.latest_cache_label }}</strong>
+        </div>
+    </div>
+
+    <form method="get" action="/team/admin/payroll" class="pay-toolbar">
+        <div class="pay-field">
+            <label for="pay-range">Window</label>
+            <select id="pay-range" name="range">
+                {% for preset in labor_presets %}
+                <option value="{{ preset.key }}" {% if window.range_key == preset.key %}selected{% endif %}>{{ preset.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="pay-field">
+            <label for="pay-start">Start</label>
+            <input id="pay-start" type="date" name="start" value="{{ window.start_value }}"/>
+        </div>
+        <div class="pay-field">
+            <label for="pay-end">End</label>
+            <input id="pay-end" type="date" name="end" value="{{ window.end_value }}"/>
+        </div>
+        <label class="pay-check">
+            <input type="hidden" name="show_inactive" value="0"/>
+            <input type="checkbox" name="show_inactive" value="1" {% if include_inactive %}checked{% endif %} style="accent-color:#3b82f6;"/>
+            Include inactive
+        </label>
+        <button class="ta-btn" type="submit">Apply</button>
+        <a class="ta-btn" href="/team/admin/payroll/export.csv?range={{ window.range_key }}&start={{ window.start_value }}&end={{ window.end_value }}&show_inactive={{ '1' if include_inactive else '0' }}">Export CSV</a>
+    </form>
+
+    <form method="post" action="/team/admin/payroll/lock" style="margin:12px 0 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <input type="hidden" name="range_key" value="{{ window.range_key }}"/>
+        <input type="hidden" name="start" value="{{ window.start_value }}"/>
+        <input type="hidden" name="end" value="{{ window.end_value }}"/>
+        <input type="hidden" name="show_inactive" value="{{ '1' if include_inactive else '0' }}"/>
+        <button class="ta-btn" type="submit"
+                {% if not can_lock or payroll.totals.active_days == 0 %}disabled{% endif %}
+                style="{% if can_lock and payroll.totals.active_days %}background:#3b82f6; color:white; border-color:#3b82f6;{% else %}opacity:.55; cursor:not-allowed;{% endif %}">
+            Lock payroll window
+        </button>
+        <span style="font-size:12px; color:var(--lx-muted);">
+            Locking marks active payroll days as locked and skips rejected timecards.
+        </span>
+    </form>
+</div>
+
+<div class="ta-card">
+    <div class="pay-metrics">
+        <div class="pay-metric">
+            <div class="pay-metric-label">Total pay</div>
+            <div class="pay-metric-value">{{ payroll.stats.total_label }}</div>
+            <div class="pay-metric-note">{{ payroll.range_label }}</div>
+        </div>
+        <div class="pay-metric">
+            <div class="pay-metric-label">Paid hours</div>
+            <div class="pay-metric-value">{{ payroll.stats.work_hours_label }}</div>
+            <div class="pay-metric-note">Breaks {{ payroll.stats.break_hours_label }}</div>
+        </div>
+        <div class="pay-metric">
+            <div class="pay-metric-label">Approved</div>
+            <div class="pay-metric-value">{{ payroll.totals.approved }}/{{ payroll.totals.active_days }}</div>
+            <div class="pay-metric-note">{{ payroll.totals.locked }} locked</div>
+        </div>
+        <div class="pay-metric">
+            <div class="pay-metric-label">Needs attention</div>
+            <div class="pay-metric-value">{{ payroll.totals.pending + payroll.totals.rejected }}</div>
+            <div class="pay-metric-note">{{ payroll.totals.pending }} pending, {{ payroll.totals.rejected }} needs fix</div>
+        </div>
+        <div class="pay-metric">
+            <div class="pay-metric-label">Rows</div>
+            <div class="pay-metric-value">{{ payroll.rows|length }}</div>
+            <div class="pay-metric-note">{{ payroll.stats.mapped_count }} mapped employees</div>
+        </div>
+    </div>
+    <p style="font-size:12px; color:#fde68a; margin:12px 0 0;">{{ payroll.raises_note }}</p>
+</div>
+
+<div class="ta-card" style="padding:0;">
+    <div style="padding:18px 22px 12px;">
+        <h2>Payroll rows</h2>
+    </div>
+    <div class="pay-table-wrap">
+        <table class="pay-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Pay type</th>
+                    <th>Paid hours</th>
+                    <th>Breaks</th>
+                    <th>Hourly</th>
+                    <th>Salary</th>
+                    <th>Total</th>
+                    <th>Approvals</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in payroll.rows %}
+                <tr>
+                    <td>
+                        <a href="/team/admin/employees/{{ row.employee.id }}" style="color:#ff8a3d; font-weight:650;">{{ row.employee_name }}</a>
+                        <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">
+                            {% if row.clockify_user_id %}{{ row.clockify_user_id_masked }}{% else %}Not mapped{% endif %}
+                        </div>
+                    </td>
+                    <td>{{ row.pay_type_label }}</td>
+                    <td>{{ row.work_hours_label }}</td>
+                    <td>{{ row.break_hours_label }}</td>
+                    <td>{{ row.hourly_label }}</td>
+                    <td>{{ row.salary_cost_label }}</td>
+                    <td><strong>{{ row.total_label }}</strong></td>
+                    <td>
+                        {% if row.rejected_day_count %}
+                        <span class="pay-pill danger">{{ row.rejected_day_count }} fix</span>
+                        {% elif row.pending_day_count %}
+                        <span class="pay-pill warn">{{ row.pending_day_count }} pending</span>
+                        {% else %}
+                        <span class="pay-pill ok">ready</span>
+                        {% endif %}
+                        <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">
+                            {{ row.approved_day_count }} approved, {{ row.locked_day_count }} locked, {{ row.active_day_count }} active
+                        </div>
+                    </td>
+                    <td class="pay-note">{{ row.approval_note_label or "-" }}</td>
+                </tr>
+                {% endfor %}
+                {% if not payroll.rows %}
+                <tr><td colspan="9" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No payroll rows for this window.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

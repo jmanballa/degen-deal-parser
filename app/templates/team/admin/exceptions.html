@@ -1,0 +1,168 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'exceptions' %}
+{% block extra_head %}
+<style>
+    .ex-hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+    .ex-nav {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .ex-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(120px, 1fr));
+        gap: 10px;
+    }
+    .ex-metric {
+        padding: 12px;
+        border-radius: 8px;
+        background: var(--lx-s2);
+        border: 1px solid var(--lx-br);
+    }
+    .ex-label {
+        font-size: 11px;
+        color: var(--lx-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .ex-value {
+        margin-top: 4px;
+        font-size: 24px;
+        font-weight: 750;
+    }
+    .ex-table-wrap { overflow: auto; }
+    .ex-table {
+        width: 100%;
+        min-width: 900px;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .ex-table th {
+        padding: 10px 14px;
+        border-top: 1px solid var(--lx-br);
+        border-bottom: 1px solid var(--lx-br);
+        text-align: left;
+        color: var(--lx-muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+    }
+    .ex-table td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--lx-br);
+        vertical-align: top;
+    }
+    .ex-pill {
+        display: inline-flex;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+    }
+    .ex-pill.danger { color: #fca5a5; background: rgba(239,68,68,0.16); }
+    .ex-pill.warn { color: #fde68a; background: rgba(234,179,8,0.16); }
+    .ex-pill.info { color: #93c5fd; background: rgba(96,165,250,0.16); }
+    .ex-detail { color: var(--lx-muted); max-width: 440px; line-height: 1.35; }
+    @media (max-width: 720px) {
+        .ex-nav, .ex-nav .ta-btn { width: 100%; }
+        .ex-nav { display: grid; grid-template-columns: repeat(3, 1fr); }
+        .ex-nav .ta-btn { text-align: center; }
+        .ex-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+        .ex-metrics { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="ta-card">
+    <div class="ex-hero">
+        <div>
+            <h2>Exceptions Inbox</h2>
+            <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+                Payroll and timecard issues for {{ exceptions.week_label }}.
+            </p>
+        </div>
+        <div class="ex-nav">
+            <a class="ta-btn" href="/team/admin/exceptions?week={{ prev_week_iso }}">&larr; Prev</a>
+            <a class="ta-btn" href="/team/admin/exceptions?week={{ this_week_iso }}">This week</a>
+            <a class="ta-btn" href="/team/admin/exceptions?week={{ next_week_iso }}">Next &rarr;</a>
+        </div>
+    </div>
+    <form method="get" action="/team/admin/exceptions" style="margin:12px 0 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input type="hidden" name="week" value="{{ week_start_iso }}"/>
+        <label style="display:inline-flex; gap:7px; align-items:center; color:var(--lx-muted); font-size:13px;">
+            <input type="hidden" name="show_inactive" value="0"/>
+            <input type="checkbox" name="show_inactive" value="1" {% if include_inactive %}checked{% endif %} style="accent-color:#3b82f6;"/>
+            Include inactive
+        </label>
+        <button class="ta-btn" type="submit">Apply</button>
+    </form>
+</div>
+
+<div class="ta-card">
+    <div class="ex-metrics">
+        <div class="ex-metric">
+            <div class="ex-label">Total</div>
+            <div class="ex-value">{{ exceptions.total_count }}</div>
+        </div>
+        <div class="ex-metric">
+            <div class="ex-label">Critical</div>
+            <div class="ex-value">{{ exceptions.danger_count }}</div>
+        </div>
+        <div class="ex-metric">
+            <div class="ex-label">Warnings</div>
+            <div class="ex-value">{{ exceptions.warn_count }}</div>
+        </div>
+        <div class="ex-metric">
+            <div class="ex-label">Info</div>
+            <div class="ex-value">{{ exceptions.info_count }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="ta-card" style="padding:0;">
+    <div style="padding:18px 22px 12px; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <h2>Open exceptions</h2>
+        <a class="ta-btn" href="/team/admin/payroll?range=custom&start={{ exceptions.week_start.isoformat() }}&end={{ exceptions.week_end.isoformat() }}">Open payroll window</a>
+    </div>
+    <div class="ex-table-wrap">
+        <table class="ex-table">
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Category</th>
+                    <th>Employee</th>
+                    <th>Detail</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in exceptions.rows %}
+                <tr>
+                    <td><span class="ex-pill {{ row.severity }}">{{ row.severity }}</span></td>
+                    <td><strong>{{ row.category }}</strong></td>
+                    <td>{{ row.employee_name }}</td>
+                    <td class="ex-detail">{{ row.detail }}</td>
+                    <td><a class="ta-btn" href="{{ row.action_href }}">{{ row.action_label }}</a></td>
+                </tr>
+                {% endfor %}
+                {% if not exceptions.rows %}
+                <tr><td colspan="5" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No exceptions in this window.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

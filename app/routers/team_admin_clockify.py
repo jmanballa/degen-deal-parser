@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import csv
+import io
 import json
 import os
 import re
@@ -15,7 +17,7 @@ from typing import Any, Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
@@ -41,6 +43,10 @@ from ..models import (
     ClockifyTimeEntry,
     ClockifyWebhookEvent,
     EmployeeProfile,
+    SHIFT_KIND_ALL,
+    SHIFT_KIND_WORK,
+    ShiftEntry,
+    TimecardApproval,
     User,
     utcnow,
 )
@@ -82,6 +88,33 @@ _LABOR_STATS_PRESETS = (
     {"key": "last_30", "label": "Last 30 days"},
     {"key": "custom", "label": "Custom"},
 )
+_TIMECARD_APPROVED = "approved"
+_TIMECARD_PENDING = "pending"
+_TIMECARD_REJECTED = "rejected"
+_TIMECARD_LOCKED = "locked"
+_TIMECARD_STATUS_VALUES = (
+    _TIMECARD_PENDING,
+    _TIMECARD_APPROVED,
+    _TIMECARD_REJECTED,
+    _TIMECARD_LOCKED,
+)
+_PAYROLL_EXPORT_HEADERS = (
+    "Employee",
+    "Pay type",
+    "Clockify ID",
+    "Paid hours",
+    "Break hours",
+    "Hourly wages",
+    "Salary accrual",
+    "Total pay",
+    "Active days",
+    "Approved days",
+    "Locked days",
+    "Pending days",
+    "Needs fix days",
+    "Notes",
+)
+_LABOR_SHIFT_KINDS = {SHIFT_KIND_WORK, SHIFT_KIND_ALL}
 
 
 def _mask_id(value: str) -> str:
@@ -1727,6 +1760,512 @@ def build_labor_stats_summary(
     return selected
 
 
+def _active_payroll_days_by_user(
+    session: Session,
+    *,
+    start_day: date,
+    end_day: date,
+    settings=None,
+    employee_rows: Optional[list[dict[str, Any]]] = None,
+    include_inactive: bool = False,
+    now: Optional[datetime] = None,
+) -> dict[int, set[date]]:
+    employees = (
+        employee_rows
+        if employee_rows is not None
+        else _employee_rows(session, include_inactive=include_inactive)
+    )
+    start_local, end_local = _clockify_range_bounds(
+        start_day, end_day, settings=settings
+    )
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    clockify_to_user: dict[str, User] = {}
+    active_days: dict[int, set[date]] = {}
+    for source_row in employees:
+        user = source_row.get("user")
+        profile = source_row.get("profile")
+        if not isinstance(user, User) or not isinstance(profile, EmployeeProfile):
+            continue
+        if user.id is None:
+            continue
+        clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
+        if clockify_user_id:
+            clockify_to_user[clockify_user_id] = user
+        if _normalize_compensation_type(profile.compensation_type or "") == COMPENSATION_TYPE_MONTHLY:
+            cursor = start_day
+            while cursor <= end_day:
+                if _labor_employee_active_on(
+                    user,
+                    profile,
+                    cursor,
+                    include_inactive=include_inactive,
+                ):
+                    active_days.setdefault(user.id, set()).add(cursor)
+                cursor += timedelta(days=1)
+
+    raw_entries = _labor_stats_clockify_rows(
+        session,
+        list(clockify_to_user.keys()),
+        start_local=start_local,
+        end_local=end_local,
+    )
+    for entry in raw_entries:
+        user = clockify_to_user.get(entry.clockify_user_id)
+        if user is None or user.id is None:
+            continue
+        for day_key, seconds in _clockify_seconds_by_day(
+            entry,
+            start_local=start_local,
+            end_local=end_local,
+            now_utc=now_utc,
+        ).items():
+            if seconds > 0:
+                active_days.setdefault(user.id, set()).add(day_key)
+    return active_days
+
+
+def _timecard_approvals_by_user_day(
+    session: Session,
+    *,
+    start_day: date,
+    end_day: date,
+    user_ids: list[int],
+) -> dict[tuple[int, date], TimecardApproval]:
+    if not user_ids:
+        return {}
+    rows = session.exec(
+        select(TimecardApproval).where(
+            TimecardApproval.user_id.in_(user_ids),
+            TimecardApproval.work_date >= start_day,
+            TimecardApproval.work_date <= end_day,
+        )
+    ).all()
+    return {(row.user_id, row.work_date): row for row in rows}
+
+
+def _status_counts_for_days(
+    active_days: set[date],
+    approvals: dict[tuple[int, date], TimecardApproval],
+    user_id: int,
+) -> dict[str, int]:
+    counts = {status: 0 for status in _TIMECARD_STATUS_VALUES}
+    for work_day in active_days:
+        approval = approvals.get((user_id, work_day))
+        status = (approval.status if approval else _TIMECARD_PENDING) or _TIMECARD_PENDING
+        if status not in counts:
+            status = _TIMECARD_PENDING
+        counts[status] += 1
+    return counts
+
+
+def build_payroll_export_summary(
+    session: Session,
+    *,
+    start_day: date,
+    end_day: date,
+    settings=None,
+    include_inactive: bool = False,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    employees = _employee_rows(session, include_inactive=include_inactive)
+    stats = build_labor_stats_summary(
+        session,
+        start_day=start_day,
+        end_day=end_day,
+        settings=settings,
+        employee_rows=employees,
+        include_inactive=include_inactive,
+        now=now,
+    )
+    active_days_by_user = _active_payroll_days_by_user(
+        session,
+        start_day=start_day,
+        end_day=end_day,
+        settings=settings,
+        employee_rows=employees,
+        include_inactive=include_inactive,
+        now=now,
+    )
+    user_ids = sorted(active_days_by_user)
+    approvals = _timecard_approvals_by_user_day(
+        session,
+        start_day=start_day,
+        end_day=end_day,
+        user_ids=user_ids,
+    )
+
+    payroll_rows: list[dict[str, Any]] = []
+    totals = {
+        "active_days": 0,
+        _TIMECARD_APPROVED: 0,
+        _TIMECARD_LOCKED: 0,
+        _TIMECARD_PENDING: 0,
+        _TIMECARD_REJECTED: 0,
+    }
+    for source in stats["employee_rows"]:
+        employee = source.get("employee")
+        if not isinstance(employee, User) or employee.id is None:
+            continue
+        active_days = active_days_by_user.get(employee.id, set())
+        status_counts = _status_counts_for_days(active_days, approvals, employee.id)
+        notes: list[str] = []
+        for work_day in sorted(active_days):
+            approval = approvals.get((employee.id, work_day))
+            if approval and (approval.note or "").strip():
+                notes.append(f"{work_day.isoformat()}: {(approval.note or '').strip()}")
+        row = dict(source)
+        row["active_day_count"] = len(active_days)
+        row["approved_day_count"] = status_counts[_TIMECARD_APPROVED]
+        row["locked_day_count"] = status_counts[_TIMECARD_LOCKED]
+        row["pending_day_count"] = status_counts[_TIMECARD_PENDING]
+        row["rejected_day_count"] = status_counts[_TIMECARD_REJECTED]
+        row["approval_note_label"] = "; ".join(notes)
+        payroll_rows.append(row)
+        totals["active_days"] += len(active_days)
+        for status in _TIMECARD_STATUS_VALUES:
+            totals[status] += status_counts[status]
+
+    return {
+        "stats": stats,
+        "rows": payroll_rows,
+        "totals": totals,
+        "range_label": _format_labor_date_range(start_day, end_day),
+        "start_day": start_day,
+        "end_day": end_day,
+        "start_value": start_day.isoformat(),
+        "end_value": end_day.isoformat(),
+        "raises_note": (
+            "Current limitation: rate changes are stored on the employee profile, "
+            "not as dated compensation history. Historical payroll uses the "
+            "current saved rate unless a manual export is preserved."
+        ),
+    }
+
+
+def payroll_summary_to_csv(summary: dict[str, Any]) -> str:
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(_PAYROLL_EXPORT_HEADERS)
+    for row in summary["rows"]:
+        writer.writerow(
+            [
+                row["employee_name"],
+                row["pay_type_label"],
+                row["clockify_user_id_masked"] if row.get("clockify_user_id") else "",
+                row["work_hours_label"],
+                row["break_hours_label"],
+                row["hourly_label"],
+                row["salary_cost_label"],
+                row["total_label"],
+                row["active_day_count"],
+                row["approved_day_count"],
+                row["locked_day_count"],
+                row["pending_day_count"],
+                row["rejected_day_count"],
+                row["approval_note_label"],
+            ]
+        )
+    return out.getvalue()
+
+
+def lock_payroll_window(
+    session: Session,
+    *,
+    current_user: User,
+    start_day: date,
+    end_day: date,
+    settings=None,
+    include_inactive: bool = False,
+    ip_address: Optional[str] = None,
+) -> dict[str, int]:
+    employees = _employee_rows(session, include_inactive=include_inactive)
+    active_days_by_user = _active_payroll_days_by_user(
+        session,
+        start_day=start_day,
+        end_day=end_day,
+        settings=settings,
+        employee_rows=employees,
+        include_inactive=include_inactive,
+    )
+    user_ids = sorted(active_days_by_user)
+    approvals = _timecard_approvals_by_user_day(
+        session,
+        start_day=start_day,
+        end_day=end_day,
+        user_ids=user_ids,
+    )
+    locked = 0
+    skipped_rejected = 0
+    now = utcnow()
+    for user_id, days in active_days_by_user.items():
+        for work_day in sorted(days):
+            approval = approvals.get((user_id, work_day))
+            if approval and approval.status == _TIMECARD_REJECTED:
+                skipped_rejected += 1
+                continue
+            if approval is None:
+                approval = TimecardApproval(
+                    user_id=user_id,
+                    work_date=work_day,
+                    created_at=now,
+                )
+            approval.status = _TIMECARD_LOCKED
+            approval.note = "Locked for payroll export"
+            approval.decided_by_user_id = current_user.id
+            approval.decided_at = now
+            approval.updated_at = now
+            session.add(approval)
+            locked += 1
+
+    session.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="admin.payroll.lock",
+            resource_key="admin.payroll",
+            details_json=json.dumps(
+                {
+                    "start_day": start_day.isoformat(),
+                    "end_day": end_day.isoformat(),
+                    "locked": locked,
+                    "skipped_rejected": skipped_rejected,
+                },
+                sort_keys=True,
+            ),
+            ip_address=ip_address,
+        )
+    )
+    session.commit()
+    return {"locked": locked, "skipped_rejected": skipped_rejected}
+
+
+def _exception_row(
+    *,
+    severity: str,
+    category: str,
+    employee: Optional[User],
+    detail: str,
+    action_href: str,
+    action_label: str,
+) -> dict[str, Any]:
+    return {
+        "severity": severity,
+        "category": category,
+        "employee_name": (
+            (employee.display_name or employee.username or f"User {employee.id}")
+            if employee is not None
+            else "-"
+        ),
+        "detail": detail,
+        "action_href": action_href,
+        "action_label": action_label,
+    }
+
+
+def build_timecard_exceptions(
+    session: Session,
+    *,
+    week_start: date,
+    settings=None,
+    include_inactive: bool = False,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    week_end = week_start + timedelta(days=6)
+    today = (now.astimezone(timezone.utc).date() if now else date.today())
+    employees = _employee_rows(session, include_inactive=include_inactive)
+    users_by_id: dict[int, User] = {}
+    profiles_by_id: dict[int, EmployeeProfile] = {}
+    clockify_to_user_id: dict[str, int] = {}
+    rows: list[dict[str, Any]] = []
+
+    for source_row in employees:
+        user = source_row.get("user")
+        profile = source_row.get("profile")
+        if not isinstance(user, User) or user.id is None:
+            continue
+        users_by_id[user.id] = user
+        if isinstance(profile, EmployeeProfile):
+            profiles_by_id[user.id] = profile
+        compensation_type = _normalize_compensation_type(
+            profile.compensation_type if isinstance(profile, EmployeeProfile) else ""
+        )
+        clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
+        if clockify_user_id:
+            clockify_to_user_id[clockify_user_id] = user.id
+        elif compensation_type != COMPENSATION_TYPE_UNPAID:
+            rows.append(
+                _exception_row(
+                    severity="warn",
+                    category="Missing Clockify mapping",
+                    employee=user,
+                    detail="Paid employee is not linked to a Clockify user.",
+                    action_href="/team/admin/clockify",
+                    action_label="Map Clockify",
+                )
+            )
+        if compensation_type == COMPENSATION_TYPE_HOURLY and _decrypt_hourly_rate_cents(profile) is None:
+            rows.append(
+                _exception_row(
+                    severity="warn",
+                    category="Missing pay rate",
+                    employee=user,
+                    detail="Hourly employee has no hourly rate.",
+                    action_href="/team/admin/employees/pay-rates",
+                    action_label="Set rate",
+                )
+            )
+        if compensation_type == COMPENSATION_TYPE_MONTHLY and _decrypt_monthly_salary_cents(profile) is None:
+            rows.append(
+                _exception_row(
+                    severity="warn",
+                    category="Missing salary",
+                    employee=user,
+                    detail="Salaried employee has no monthly salary.",
+                    action_href="/team/admin/employees/pay-rates",
+                    action_label="Set salary",
+                )
+            )
+
+    start_local, end_local = _clockify_range_bounds(
+        week_start, week_end, settings=settings
+    )
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    work_seconds_by_user_day: dict[tuple[int, date], int] = {}
+    clockify_ids = list(clockify_to_user_id.keys())
+    for entry in _labor_stats_clockify_rows(
+        session,
+        clockify_ids,
+        start_local=start_local,
+        end_local=end_local,
+    ):
+        user_id = clockify_to_user_id.get(entry.clockify_user_id)
+        if user_id is None:
+            continue
+        if entry.is_running and entry.start_at:
+            started = _as_utc(entry.start_at)
+            if started and now_utc - started > timedelta(hours=10):
+                rows.append(
+                    _exception_row(
+                        severity="danger",
+                        category="Long running timer",
+                        employee=users_by_id.get(user_id),
+                        detail="Timer has been running for more than 10 hours.",
+                        action_href="/team/admin/shift-tracker",
+                        action_label="Open tracker",
+                    )
+                )
+        is_break = _clockify_entry_is_break(entry)
+        if is_break:
+            continue
+        for day_key, seconds in _clockify_seconds_by_day(
+            entry,
+            start_local=start_local,
+            end_local=end_local,
+            now_utc=now_utc,
+        ).items():
+            if seconds > 0:
+                key = (user_id, day_key)
+                work_seconds_by_user_day[key] = work_seconds_by_user_day.get(key, 0) + seconds
+
+    scheduled_labor_days: set[tuple[int, date]] = set()
+    if users_by_id:
+        for shift in session.exec(
+            select(ShiftEntry).where(
+                ShiftEntry.user_id.in_(list(users_by_id.keys())),
+                ShiftEntry.shift_date >= week_start,
+                ShiftEntry.shift_date <= week_end,
+                ShiftEntry.kind.in_(_LABOR_SHIFT_KINDS),
+            )
+        ).all():
+            scheduled_labor_days.add((shift.user_id, shift.shift_date))
+
+    active_days: dict[int, set[date]] = {}
+    for user_id, work_day in set(work_seconds_by_user_day) | scheduled_labor_days:
+        if work_day <= today:
+            active_days.setdefault(user_id, set()).add(work_day)
+
+    approvals = _timecard_approvals_by_user_day(
+        session,
+        start_day=week_start,
+        end_day=week_end,
+        user_ids=list(users_by_id.keys()),
+    )
+    for (user_id, work_day), approval in approvals.items():
+        if approval.status == _TIMECARD_REJECTED:
+            rows.append(
+                _exception_row(
+                    severity="danger",
+                    category="Rejected timecard",
+                    employee=users_by_id.get(user_id),
+                    detail=f"{work_day.isoformat()} needs a fix. {approval.note or ''}".strip(),
+                    action_href=f"/team/admin/employees/{user_id}/timecards?week={week_start.isoformat()}",
+                    action_label="Open timecard",
+                )
+            )
+
+    for user_id, days in active_days.items():
+        for work_day in sorted(days):
+            approval = approvals.get((user_id, work_day))
+            status = (approval.status if approval else _TIMECARD_PENDING) or _TIMECARD_PENDING
+            if status == _TIMECARD_PENDING:
+                rows.append(
+                    _exception_row(
+                        severity="info",
+                        category="Pending timecard",
+                        employee=users_by_id.get(user_id),
+                        detail=f"{work_day.isoformat()} has clocked or scheduled time that is not approved.",
+                        action_href=f"/team/admin/employees/{user_id}/timecards?week={week_start.isoformat()}",
+                        action_label="Review",
+                    )
+                )
+            key = (user_id, work_day)
+            if key in work_seconds_by_user_day and key not in scheduled_labor_days:
+                rows.append(
+                    _exception_row(
+                        severity="warn",
+                        category="Unscheduled clock-in",
+                        employee=users_by_id.get(user_id),
+                        detail=f"{work_day.isoformat()} has Clockify work time but no scheduled labor shift.",
+                        action_href=f"/team/admin/employees/{user_id}/timecards?week={week_start.isoformat()}",
+                        action_label="Review",
+                    )
+                )
+            if key in scheduled_labor_days and key not in work_seconds_by_user_day and work_day < today:
+                rows.append(
+                    _exception_row(
+                        severity="danger",
+                        category="Possible no-show",
+                        employee=users_by_id.get(user_id),
+                        detail=f"{work_day.isoformat()} was scheduled but has no Clockify work time.",
+                        action_href=f"/team/admin/employees/{user_id}/timecards?week={week_start.isoformat()}",
+                        action_label="Review",
+                    )
+                )
+
+    severity_rank = {"danger": 0, "warn": 1, "info": 2}
+    rows.sort(
+        key=lambda row: (
+            severity_rank.get(row["severity"], 9),
+            row["category"],
+            row["employee_name"].lower(),
+            row["detail"],
+        )
+    )
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["category"]] = counts.get(row["category"], 0) + 1
+    return {
+        "rows": rows,
+        "counts": counts,
+        "total_count": len(rows),
+        "danger_count": sum(1 for row in rows if row["severity"] == "danger"),
+        "warn_count": sum(1 for row in rows if row["severity"] == "warn"),
+        "info_count": sum(1 for row in rows if row["severity"] == "info"),
+        "week_start": week_start,
+        "week_end": week_end,
+        "week_label": _format_labor_date_range(week_start, week_end),
+    }
+
+
 def refresh_clockify_labor_cache(
     session: Session,
     client: ClockifyClient,
@@ -2391,6 +2930,166 @@ async def admin_labor_stats_refresh(
     return RedirectResponse(
         "/team/admin/labor-stats?" + urlencode(qs),
         status_code=303,
+    )
+
+
+@router.get("/team/admin/payroll", response_class=HTMLResponse)
+def admin_payroll_page(
+    request: Request,
+    range_key: str = Query(default="last_week", alias="range"),
+    start: Optional[str] = Query(default=None),
+    end: Optional[str] = Query(default=None),
+    show_inactive: Optional[str] = Query(default=None),
+    flash: Optional[str] = Query(default=None),
+    error: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    denial, user = _permission_gate(request, session, "admin.employees.view")
+    if denial:
+        return denial
+    settings = get_settings()
+    include_inactive = _parse_boolish(show_inactive, default=True)
+    window = _labor_stats_window(range_key, start=start, end=end)
+    payroll = build_payroll_export_summary(
+        session,
+        start_day=window["start_day"],
+        end_day=window["end_day"],
+        settings=settings,
+        include_inactive=include_inactive,
+    )
+    return templates.TemplateResponse(
+        request,
+        "team/admin/payroll.html",
+        {
+            "request": request,
+            "title": "Payroll Export",
+            "current_user": user,
+            "labor_presets": _LABOR_STATS_PRESETS,
+            "window": window,
+            "payroll": payroll,
+            "include_inactive": include_inactive,
+            "flash": flash,
+            "error": error,
+            "csrf_token": issue_token(request),
+            "can_lock": user.role == "admin",
+        },
+    )
+
+
+@router.get("/team/admin/payroll/export.csv")
+def admin_payroll_export_csv(
+    request: Request,
+    range_key: str = Query(default="last_week", alias="range"),
+    start: Optional[str] = Query(default=None),
+    end: Optional[str] = Query(default=None),
+    show_inactive: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    denial, _user = _permission_gate(request, session, "admin.employees.view")
+    if denial:
+        return denial
+    settings = get_settings()
+    include_inactive = _parse_boolish(show_inactive, default=True)
+    window = _labor_stats_window(range_key, start=start, end=end)
+    payroll = build_payroll_export_summary(
+        session,
+        start_day=window["start_day"],
+        end_day=window["end_day"],
+        settings=settings,
+        include_inactive=include_inactive,
+    )
+    body = payroll_summary_to_csv(payroll)
+    filename = (
+        f"payroll-{window['start_value']}-to-{window['end_value']}.csv"
+    )
+    return Response(
+        body,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post(
+    "/team/admin/payroll/lock",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_payroll_lock(
+    request: Request,
+    range_key: str = Form(default="last_week"),
+    start: str = Form(default=""),
+    end: str = Form(default=""),
+    show_inactive: str = Form(default="1"),
+    session: Session = Depends(get_session),
+):
+    denial, user = _admin_gate(request, session, "admin.employees.edit")
+    if denial:
+        return denial
+    settings = get_settings()
+    include_inactive = _parse_boolish(show_inactive, default=True)
+    window = _labor_stats_window(range_key, start=start, end=end)
+    result = lock_payroll_window(
+        session,
+        current_user=user,
+        start_day=window["start_day"],
+        end_day=window["end_day"],
+        settings=settings,
+        include_inactive=include_inactive,
+        ip_address=(request.client.host if request.client else None),
+    )
+    qs = {
+        "range": window["range_key"],
+        "start": window["start_value"],
+        "end": window["end_value"],
+        "show_inactive": "1" if include_inactive else "0",
+        "flash": (
+            f"Locked {result['locked']} payroll day(s). "
+            f"Skipped {result['skipped_rejected']} rejected day(s)."
+        ),
+    }
+    return RedirectResponse(
+        "/team/admin/payroll?" + urlencode(qs),
+        status_code=303,
+    )
+
+
+@router.get("/team/admin/exceptions", response_class=HTMLResponse)
+def admin_exceptions_page(
+    request: Request,
+    week: Optional[str] = Query(default=None),
+    show_inactive: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    denial, user = _permission_gate(request, session, "admin.employees.view")
+    if denial:
+        return denial
+    settings = get_settings()
+    include_inactive = _parse_boolish(show_inactive, default=False)
+    today = date.today()
+    week_start = _labor_stats_window("custom", start=week, end=week)["start_day"] if week else today - timedelta(days=today.weekday())
+    week_start = week_start - timedelta(days=week_start.weekday())
+    exceptions = build_timecard_exceptions(
+        session,
+        week_start=week_start,
+        settings=settings,
+        include_inactive=include_inactive,
+    )
+    prev_week = (week_start - timedelta(days=7)).isoformat()
+    next_week = (week_start + timedelta(days=7)).isoformat()
+    this_week = today - timedelta(days=today.weekday())
+    return templates.TemplateResponse(
+        request,
+        "team/admin/exceptions.html",
+        {
+            "request": request,
+            "title": "Exceptions",
+            "current_user": user,
+            "exceptions": exceptions,
+            "week_start_iso": week_start.isoformat(),
+            "prev_week_iso": prev_week,
+            "next_week_iso": next_week,
+            "this_week_iso": this_week.isoformat(),
+            "include_inactive": include_inactive,
+        },
     )
 
 
