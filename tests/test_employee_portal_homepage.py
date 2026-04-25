@@ -303,15 +303,17 @@ class EmployeePortalHomepageTests(unittest.TestCase):
         self.assertIn("Who's on today", html)
         self.assertIn("Nobody scheduled today", html)
 
-    def test_placeholder_cards_still_present(self):
+    def test_placeholder_cards_are_hidden_until_wired(self):
         self._login_as("employee", user_id=801, username="cards")
 
         html = self._dashboard_html()
         upper = unescape(html).upper()
 
-        self.assertIn("HOURS THIS WEEK", upper)
-        self.assertIn("ESTIMATED PAY", upper)
-        self.assertIn("TODAY'S TASKS", upper)
+        self.assertNotIn("HOURS THIS WEEK", upper)
+        self.assertNotIn("ESTIMATED PAY", upper)
+        self.assertNotIn("TODAY'S TASKS", upper)
+        self.assertNotIn("Coming with payroll integration", html)
+        self.assertNotIn("Task assignments pending", html)
 
     def test_placeholder_copy_hygiene(self):
         self._login_as("employee", user_id=901, username="copy")

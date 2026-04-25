@@ -55,21 +55,22 @@
   </div>
 {% endif %}
 
-{% if widgets %}
+{# TODO: Re-enable hidden placeholder widget blocks once live dashboard data is wired:
+   dashboard.hours_this_week, dashboard.estimated_pay, dashboard.todays_tasks. #}
+{% set hidden_widget_keys = ("dashboard.hours_this_week", "dashboard.estimated_pay", "dashboard.todays_tasks") %}
+{% set visible_widgets = [] %}
+{% for w in widgets|default([]) %}
+  {% if w.widget_key not in hidden_widget_keys %}
+    {% set _ = visible_widgets.append(w) %}
+  {% endif %}
+{% endfor %}
+
+{% if visible_widgets %}
   <div class="pt-widget-grid" style="margin-top:20px;">
-    {% for w in widgets %}
+    {% for w in visible_widgets %}
       <div class="pt-widget">
         <div class="pt-widget-label">{{ w.title }}</div>
-        {% if w.widget_key in ("dashboard.hours_this_week", "dashboard.estimated_pay") %}
-          {% if clockify_ready %}
-            <div class="pt-widget-value">—</div>
-            <div class="pt-widget-sub">Live numbers land in the next release.</div>
-          {% else %}
-            <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Coming with payroll integration</div>
-          {% endif %}
-        {% elif w.widget_key == "dashboard.todays_tasks" %}
-          <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">Task assignments pending</div>
-        {% elif w.widget_key == "dashboard.upcoming_shifts" %}
+        {% if w.widget_key == "dashboard.upcoming_shifts" %}
           {% set shifts = upcoming_shifts|default([]) %}
           {% if shifts %}
             <div style="display:grid; gap:10px;">

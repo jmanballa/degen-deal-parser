@@ -175,16 +175,18 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         self.assertNotIn('href="/team/admin/invites"', html)
         self.assertNotIn('href="/team/admin/permissions"', html)
 
-    def test_dashboard_placeholder_copy_is_softened_but_cards_remain(self):
+    def test_dashboard_placeholder_cards_are_hidden_until_wired(self):
         self._current_user = self._login_as("employee", user_id=107, username="copy")
         html = self._dashboard_html()
         self.assertNotIn("Not connected", html)
         self.assertNotIn("isn't hooked up", html)
         self.assertNotIn("lands soon", html)
         upper = unescape(html).upper()
-        self.assertIn("HOURS THIS WEEK", upper)
-        self.assertIn("ESTIMATED PAY", upper)
-        self.assertIn("TODAY'S TASKS", upper)
+        self.assertNotIn("HOURS THIS WEEK", upper)
+        self.assertNotIn("ESTIMATED PAY", upper)
+        self.assertNotIn("TODAY'S TASKS", upper)
+        self.assertNotIn("Coming with payroll integration", html)
+        self.assertNotIn("Task assignments pending", html)
 
     def test_viewer_cannot_enter_permission_gated_admin_page(self):
         from app.routers.team_admin import _permission_gate
