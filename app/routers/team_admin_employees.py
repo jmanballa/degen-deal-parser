@@ -41,6 +41,7 @@ from ..models import (
     utcnow,
 )
 from ..pii import decrypt_pii, encrypt_pii
+from ..rate_limit import rate_limited_or_429
 from ..shared import templates
 from .team_admin import _admin_gate, _permission_gate
 
@@ -1367,6 +1368,13 @@ async def admin_employee_reveal(
     denial, current = _admin_gate(request, session, "admin.employees.reveal_pii")
     if denial:
         return denial
+    if limited := rate_limited_or_429(
+        request,
+        key_prefix=f"reveal:{current.id}",
+        max_requests=30,
+        window_seconds=900,
+    ):
+        return limited
     if field not in ("phone", "address", "legal_name", "email", "emergency_contact_name", "emergency_contact_phone"):
         return HTMLResponse("Unknown field", status_code=400)
     employee = session.get(User, user_id)
