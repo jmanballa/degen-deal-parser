@@ -678,7 +678,7 @@ def admin_rescan_channels(request: Request):
     if denial := require_role_response(request, "admin"):
         return denial
     invalidate_available_channels_cache()
-    list_available_discord_channels()
+    list_available_discord_channels(force_refresh=True)
     return RedirectResponse(
         url="/table?success=Channel+list+refreshed",
         status_code=303,
