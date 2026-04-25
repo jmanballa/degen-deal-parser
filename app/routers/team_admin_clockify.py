@@ -62,6 +62,8 @@ from .team_admin_employees import (
     _decrypt_monthly_salary_cents,
     _normalize_compensation_type,
     _salary_cost_for_period,
+    compensation_history_rows_for_users,
+    compensation_snapshot_for_day,
 )
 
 router = APIRouter()
@@ -1082,19 +1084,34 @@ def build_shift_tracker_pay_summary(
     unpaid_count = 0
     missing_salary_count = 0
     missing_hourly_rate_count = 0
+    user_ids = [
+        row["user"].id
+        for row in employees
+        if isinstance(row.get("user"), User) and row["user"].id is not None
+    ]
+    histories_by_user = compensation_history_rows_for_users(
+        session,
+        user_ids,
+        end_day=day,
+    )
 
     for employee_row in employees:
         user = employee_row.get("user")
         profile = employee_row.get("profile")
         if not isinstance(user, User) or not isinstance(profile, EmployeeProfile):
             continue
-        compensation_type = _normalize_compensation_type(profile.compensation_type or "")
+        snapshot = compensation_snapshot_for_day(
+            profile,
+            day,
+            history_rows=histories_by_user.get(user.id or 0, []),
+        )
+        compensation_type = snapshot["compensation_type"]
         if compensation_type == COMPENSATION_TYPE_UNPAID:
             unpaid_count += 1
             continue
         if compensation_type == COMPENSATION_TYPE_MONTHLY:
             salaried_count += 1
-            salary_cents = _decrypt_monthly_salary_cents(profile)
+            salary_cents = snapshot["monthly_salary_cents"]
             if salary_cents is None:
                 missing_salary_count += 1
                 continue
@@ -1107,7 +1124,7 @@ def build_shift_tracker_pay_summary(
             )
         elif compensation_type == COMPENSATION_TYPE_HOURLY:
             hourly_count += 1
-            if _decrypt_hourly_rate_cents(profile) is None:
+            if snapshot["hourly_rate_cents"] is None:
                 missing_hourly_rate_count += 1
 
     clocked_in_count = 0
@@ -1115,9 +1132,14 @@ def build_shift_tracker_pay_summary(
     total_seconds = 0
     for row in live.get("rows", []):
         profile = row.get("profile")
-        compensation_type = _normalize_compensation_type(
-            profile.compensation_type if isinstance(profile, EmployeeProfile) else ""
+        employee = row.get("employee")
+        history_rows = histories_by_user.get(getattr(employee, "id", 0) or 0, [])
+        snapshot = compensation_snapshot_for_day(
+            profile if isinstance(profile, EmployeeProfile) else None,
+            day,
+            history_rows=history_rows,
         )
+        compensation_type = snapshot["compensation_type"]
         row["pay_type_label"] = COMPENSATION_TYPE_LABELS.get(
             compensation_type, "Hourly"
         )
@@ -1130,7 +1152,7 @@ def build_shift_tracker_pay_summary(
         seconds = int(row.get("today_total_seconds") or 0)
         total_seconds += seconds
         if compensation_type == COMPENSATION_TYPE_HOURLY:
-            rate_cents = _decrypt_hourly_rate_cents(profile)
+            rate_cents = snapshot["hourly_rate_cents"]
             if rate_cents is not None:
                 cost_cents = _cents_for_seconds(seconds, rate_cents)
                 row["labor_cost_cents"] = cost_cents
@@ -1519,6 +1541,15 @@ def _labor_stats_core(
         if isinstance(row.get("user"), User)
         and isinstance(row.get("profile"), EmployeeProfile)
     ]
+    histories_by_user = compensation_history_rows_for_users(
+        session,
+        [
+            row["user"].id
+            for row in eligible_rows
+            if isinstance(row.get("user"), User) and row["user"].id is not None
+        ],
+        end_day=end_day,
+    )
     mapped_rows = [
         row
         for row in eligible_rows
@@ -1561,7 +1592,31 @@ def _labor_stats_core(
         profile = source_row["profile"]
         clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
         employee_key = clockify_user_id or f"user:{user.id}"
+        history_rows = histories_by_user.get(user.id or 0, [])
+        current_snapshot = compensation_snapshot_for_day(
+            profile,
+            end_day,
+            history_rows=history_rows,
+        )
         row = _blank_labor_employee_row(user, profile, clockify_user_id)
+        row["compensation_type"] = current_snapshot["compensation_type"]
+        row["pay_type_label"] = COMPENSATION_TYPE_LABELS.get(
+            row["compensation_type"], "Hourly"
+        )
+        row["hourly_rate_cents"] = current_snapshot["hourly_rate_cents"] or 0
+        row["salary_cents"] = current_snapshot["monthly_salary_cents"] or 0
+        row["rate_label"] = _format_rate_label(row["hourly_rate_cents"])
+        row["salary_label"] = (
+            _format_money_label(row["salary_cents"]) if row["salary_cents"] else "-"
+        )
+        row["missing_rate"] = (
+            row["compensation_type"] == COMPENSATION_TYPE_HOURLY
+            and current_snapshot["hourly_rate_cents"] is None
+        )
+        row["missing_salary"] = (
+            row["compensation_type"] == COMPENSATION_TYPE_MONTHLY
+            and current_snapshot["monthly_salary_cents"] is None
+        )
         compensation_type = row["compensation_type"]
         employee_stats[employee_key] = row
 
@@ -1575,11 +1630,18 @@ def _labor_stats_core(
             salary_people_count += 1
             if row["missing_salary"]:
                 missing_salary_count += 1
-            else:
-                day_cursor = start_day
-                while day_cursor <= end_day:
+        day_cursor = start_day
+        while day_cursor <= end_day:
+            day_snapshot = compensation_snapshot_for_day(
+                profile,
+                day_cursor,
+                history_rows=history_rows,
+            )
+            if day_snapshot["compensation_type"] == COMPENSATION_TYPE_MONTHLY:
+                salary_cents = day_snapshot["monthly_salary_cents"]
+                if salary_cents:
                     salary_cost = _labor_salary_cost_for_day(
-                        salary_cents=int(row["salary_cents"] or 0),
+                        salary_cents=int(salary_cents),
                         user=user,
                         profile=profile,
                         day=day_cursor,
@@ -1589,7 +1651,7 @@ def _labor_stats_core(
                         row["salary_cents_total"] += salary_cost
                         daily_by_day[day_cursor]["salary_cents"] += salary_cost
                         total_salary_cents += salary_cost
-                    day_cursor += timedelta(days=1)
+            day_cursor += timedelta(days=1)
 
         for entry in entries_by_clockify.get(clockify_user_id, []):
             cache_at = _as_utc(entry.updated_at or entry.received_at)
@@ -1624,8 +1686,19 @@ def _labor_stats_core(
                 row["work_seconds"] += seconds
                 day_row["work_seconds"] += seconds
                 total_work_seconds += seconds
-                if compensation_type == COMPENSATION_TYPE_HOURLY and row["hourly_rate_cents"]:
-                    hourly_cost = _cents_for_seconds(seconds, int(row["hourly_rate_cents"]))
+                day_snapshot = compensation_snapshot_for_day(
+                    profile,
+                    day_key,
+                    history_rows=history_rows,
+                )
+                if (
+                    day_snapshot["compensation_type"] == COMPENSATION_TYPE_HOURLY
+                    and day_snapshot["hourly_rate_cents"]
+                ):
+                    hourly_cost = _cents_for_seconds(
+                        seconds,
+                        int(day_snapshot["hourly_rate_cents"]),
+                    )
                     row["hourly_cents"] += hourly_cost
                     day_row["hourly_cents"] += hourly_cost
                     total_hourly_cents += hourly_cost
@@ -1729,25 +1802,40 @@ def build_labor_stats_summary(
         if employee_rows is not None
         else _employee_rows(session, include_inactive=include_inactive)
     )
+    histories_by_user = compensation_history_rows_for_users(
+        session,
+        [
+            row["user"].id
+            for row in employees
+            if isinstance(row.get("user"), User) and row["user"].id is not None
+        ],
+        end_day=week_end,
+    )
     for source_row in employees:
         user = source_row.get("user")
         profile = source_row.get("profile")
         if not isinstance(user, User) or not isinstance(profile, EmployeeProfile):
             continue
-        if _normalize_compensation_type(profile.compensation_type or "") != COMPENSATION_TYPE_MONTHLY:
-            continue
-        salary_cents = _decrypt_monthly_salary_cents(profile)
-        if salary_cents is None:
-            continue
+        history_rows = histories_by_user.get(user.id or 0, [])
         cursor = week_start
         while cursor <= week_end:
-            full_week_salary_cents += _labor_salary_cost_for_day(
-                salary_cents=salary_cents,
-                user=user,
-                profile=profile,
-                day=cursor,
-                include_inactive=include_inactive,
+            snapshot = compensation_snapshot_for_day(
+                profile,
+                cursor,
+                history_rows=history_rows,
             )
+            salary_cents = snapshot["monthly_salary_cents"]
+            if (
+                snapshot["compensation_type"] == COMPENSATION_TYPE_MONTHLY
+                and salary_cents
+            ):
+                full_week_salary_cents += _labor_salary_cost_for_day(
+                    salary_cents=salary_cents,
+                    user=user,
+                    profile=profile,
+                    day=cursor,
+                    include_inactive=include_inactive,
+                )
             cursor += timedelta(days=1)
     estimated_week_cents = week_to_date["hourly_cents"] + full_week_salary_cents
     selected["week_estimate"] = {
@@ -1781,6 +1869,15 @@ def _active_payroll_days_by_user(
     now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     clockify_to_user: dict[str, User] = {}
     active_days: dict[int, set[date]] = {}
+    histories_by_user = compensation_history_rows_for_users(
+        session,
+        [
+            row["user"].id
+            for row in employees
+            if isinstance(row.get("user"), User) and row["user"].id is not None
+        ],
+        end_day=end_day,
+    )
     for source_row in employees:
         user = source_row.get("user")
         profile = source_row.get("profile")
@@ -1791,9 +1888,15 @@ def _active_payroll_days_by_user(
         clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
         if clockify_user_id:
             clockify_to_user[clockify_user_id] = user
-        if _normalize_compensation_type(profile.compensation_type or "") == COMPENSATION_TYPE_MONTHLY:
-            cursor = start_day
-            while cursor <= end_day:
+        history_rows = histories_by_user.get(user.id, [])
+        cursor = start_day
+        while cursor <= end_day:
+            snapshot = compensation_snapshot_for_day(
+                profile,
+                cursor,
+                history_rows=history_rows,
+            )
+            if snapshot["compensation_type"] == COMPENSATION_TYPE_MONTHLY:
                 if _labor_employee_active_on(
                     user,
                     profile,
@@ -1801,7 +1904,7 @@ def _active_payroll_days_by_user(
                     include_inactive=include_inactive,
                 ):
                     active_days.setdefault(user.id, set()).add(cursor)
-                cursor += timedelta(days=1)
+            cursor += timedelta(days=1)
 
     raw_entries = _labor_stats_clockify_rows(
         session,
@@ -1935,9 +2038,9 @@ def build_payroll_export_summary(
         "start_value": start_day.isoformat(),
         "end_value": end_day.isoformat(),
         "raises_note": (
-            "Current limitation: rate changes are stored on the employee profile, "
-            "not as dated compensation history. Historical payroll uses the "
-            "current saved rate unless a manual export is preserved."
+            "Rates use dated compensation history when it exists. New raises "
+            "apply from their effective date forward; older windows keep the "
+            "previous saved rate."
         ),
     }
 
@@ -2076,6 +2179,15 @@ def build_timecard_exceptions(
     profiles_by_id: dict[int, EmployeeProfile] = {}
     clockify_to_user_id: dict[str, int] = {}
     rows: list[dict[str, Any]] = []
+    histories_by_user = compensation_history_rows_for_users(
+        session,
+        [
+            row["user"].id
+            for row in employees
+            if isinstance(row.get("user"), User) and row["user"].id is not None
+        ],
+        end_day=week_end,
+    )
 
     for source_row in employees:
         user = source_row.get("user")
@@ -2085,9 +2197,12 @@ def build_timecard_exceptions(
         users_by_id[user.id] = user
         if isinstance(profile, EmployeeProfile):
             profiles_by_id[user.id] = profile
-        compensation_type = _normalize_compensation_type(
-            profile.compensation_type if isinstance(profile, EmployeeProfile) else ""
+        snapshot = compensation_snapshot_for_day(
+            profile if isinstance(profile, EmployeeProfile) else None,
+            week_end,
+            history_rows=histories_by_user.get(user.id, []),
         )
+        compensation_type = snapshot["compensation_type"]
         clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
         if clockify_user_id:
             clockify_to_user_id[clockify_user_id] = user.id
@@ -2102,7 +2217,10 @@ def build_timecard_exceptions(
                     action_label="Map Clockify",
                 )
             )
-        if compensation_type == COMPENSATION_TYPE_HOURLY and _decrypt_hourly_rate_cents(profile) is None:
+        if (
+            compensation_type == COMPENSATION_TYPE_HOURLY
+            and snapshot["hourly_rate_cents"] is None
+        ):
             rows.append(
                 _exception_row(
                     severity="warn",
@@ -2113,7 +2231,10 @@ def build_timecard_exceptions(
                     action_label="Set rate",
                 )
             )
-        if compensation_type == COMPENSATION_TYPE_MONTHLY and _decrypt_monthly_salary_cents(profile) is None:
+        if (
+            compensation_type == COMPENSATION_TYPE_MONTHLY
+            and snapshot["monthly_salary_cents"] is None
+        ):
             rows.append(
                 _exception_row(
                     severity="warn",

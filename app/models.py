@@ -491,6 +491,27 @@ class EmployeeProfile(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+class EmployeeCompensationHistory(SQLModel, table=True):
+    __tablename__ = "employee_compensation_history"
+    __table_args__ = (
+        UniqueConstraint("user_id", "effective_date", name="uq_employee_comp_user_date"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    effective_date: date = Field(index=True)
+    compensation_type: str = Field(default="hourly", index=True)
+    hourly_rate_cents_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    monthly_salary_cents_enc: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    monthly_salary_pay_day: Optional[int] = Field(default=None, index=True)
+    payment_method: str = Field(default="cash", index=True)
+    source: str = Field(default="manual", index=True)
+    note: str = Field(default="")
+    created_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
 class ClockifyTimeEntry(SQLModel, table=True):
     __tablename__ = "clockify_time_entry"
 

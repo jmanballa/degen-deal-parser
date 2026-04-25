@@ -174,6 +174,64 @@ class PayrollOpsTests(unittest.TestCase):
         approval = self.session.exec(select(TimecardApproval)).one()
         self.assertEqual(approval.status, "locked")
 
+    def test_payroll_uses_compensation_history_effective_dates(self):
+        from app.models import EmployeeCompensationHistory
+        from app.pii import encrypt_pii
+        from app.routers import team_admin_clockify as mod
+        from app.routers.team_admin_employees import (
+            _compensation_signature_from_profile,
+            record_compensation_history_if_changed,
+        )
+
+        profile = self._seed_profile(
+            self.employee.id,
+            clockify_user_id="ck-1",
+            hourly_rate_cents=2000,
+        )
+        self._seed_clockify_entry(
+            start_local=datetime(2026, 4, 20, 10, 0, tzinfo=LA),
+            end_local=datetime(2026, 4, 20, 18, 0, tzinfo=LA),
+            entry_id="before-raise",
+        )
+        self._seed_clockify_entry(
+            start_local=datetime(2026, 4, 21, 10, 0, tzinfo=LA),
+            end_local=datetime(2026, 4, 21, 18, 0, tzinfo=LA),
+            entry_id="after-raise",
+        )
+
+        before_signature = _compensation_signature_from_profile(profile)
+        profile.hourly_rate_cents_enc = encrypt_pii("3000")
+        self.session.add(profile)
+        self.session.flush()
+        changed = record_compensation_history_if_changed(
+            self.session,
+            profile=profile,
+            before_signature=before_signature,
+            effective_date=date(2026, 4, 21),
+            current_user=self.admin,
+            source="unit_test",
+        )
+        self.session.commit()
+
+        self.assertTrue(changed)
+        history_rows = self.session.exec(
+            select(EmployeeCompensationHistory)
+            .where(EmployeeCompensationHistory.user_id == self.employee.id)
+            .order_by(EmployeeCompensationHistory.effective_date)
+        ).all()
+        self.assertEqual(len(history_rows), 2)
+        self.assertEqual(history_rows[-1].effective_date, date(2026, 4, 21))
+
+        summary = mod.build_payroll_export_summary(
+            self.session,
+            start_day=date(2026, 4, 20),
+            end_day=date(2026, 4, 21),
+            settings=self._settings(),
+            now=datetime(2026, 4, 21, 20, 0, tzinfo=LA),
+        )
+        self.assertEqual(summary["rows"][0]["total_label"], "$400.00")
+        self.assertEqual(summary["rows"][0]["hourly_label"], "$400.00")
+
     def test_exceptions_catches_mapping_rates_no_shows_and_rejections(self):
         from app.models import ShiftEntry, TimecardApproval
         from app.routers import team_admin_clockify as mod

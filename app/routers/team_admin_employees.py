@@ -29,6 +29,7 @@ from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import (
     AuditLog,
+    EmployeeCompensationHistory,
     EmployeeProfile,
     InviteToken,
     PasswordResetToken,
@@ -39,7 +40,7 @@ from ..models import (
     User,
     utcnow,
 )
-from ..pii import decrypt_pii
+from ..pii import decrypt_pii, encrypt_pii
 from ..shared import templates
 from .team_admin import _admin_gate, _permission_gate
 
@@ -65,6 +66,14 @@ PAYMENT_METHOD_LABELS = {
     "cash": "Cash",
     "check": "Check",
 }
+COMPENSATION_HISTORY_BASELINE_DATE = date(1970, 1, 1)
+COMPENSATION_HISTORY_FIELDS = {
+    "compensation_type",
+    "hourly_rate_cents",
+    "monthly_salary_cents",
+    "monthly_salary_pay_day",
+    "payment_method",
+}
 
 
 def _normalize_compensation_type(value: str) -> str:
@@ -75,6 +84,16 @@ def _normalize_compensation_type(value: str) -> str:
 def _normalize_payment_method(value: str) -> str:
     value = (value or "").strip().lower()
     return value if value in PAYMENT_METHODS else "cash"
+
+
+def _parse_compensation_effective_date(value: str, today: date) -> date:
+    raw = (value or "").strip()
+    if not raw:
+        return today
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        return today
 
 
 def _decrypt_money_cents(blob: Optional[bytes]) -> Optional[int]:
@@ -97,6 +116,258 @@ def _decrypt_monthly_salary_cents(profile: Optional[EmployeeProfile]) -> Optiona
     if profile is None:
         return None
     return _decrypt_money_cents(profile.monthly_salary_cents_enc)
+
+
+def _decrypt_history_hourly_rate_cents(
+    row: Optional[EmployeeCompensationHistory],
+) -> Optional[int]:
+    if row is None:
+        return None
+    return _decrypt_money_cents(row.hourly_rate_cents_enc)
+
+
+def _decrypt_history_monthly_salary_cents(
+    row: Optional[EmployeeCompensationHistory],
+) -> Optional[int]:
+    if row is None:
+        return None
+    return _decrypt_money_cents(row.monthly_salary_cents_enc)
+
+
+def _money_cents_enc(value: Optional[int]) -> Optional[bytes]:
+    if value is None:
+        return None
+    return encrypt_pii(str(max(0, int(value))))
+
+
+def _compensation_signature_from_profile(
+    profile: Optional[EmployeeProfile],
+) -> tuple[str, Optional[int], Optional[int], Optional[int], str]:
+    compensation_type = _normalize_compensation_type(
+        profile.compensation_type if profile is not None else ""
+    )
+    return (
+        compensation_type,
+        _decrypt_hourly_rate_cents(profile),
+        _decrypt_monthly_salary_cents(profile),
+        profile.monthly_salary_pay_day if profile is not None else None,
+        _normalize_payment_method(profile.payment_method if profile is not None else ""),
+    )
+
+
+def _compensation_signature_from_history(
+    row: EmployeeCompensationHistory,
+) -> tuple[str, Optional[int], Optional[int], Optional[int], str]:
+    return (
+        _normalize_compensation_type(row.compensation_type or ""),
+        _decrypt_history_hourly_rate_cents(row),
+        _decrypt_history_monthly_salary_cents(row),
+        row.monthly_salary_pay_day,
+        _normalize_payment_method(row.payment_method or ""),
+    )
+
+
+def _history_snapshot_from_signature(
+    signature: tuple[str, Optional[int], Optional[int], Optional[int], str],
+    *,
+    effective_date: Optional[date],
+    source: str,
+) -> dict:
+    compensation_type, hourly_cents, salary_cents, pay_day, payment_method = signature
+    return {
+        "compensation_type": compensation_type,
+        "hourly_rate_cents": hourly_cents,
+        "monthly_salary_cents": salary_cents,
+        "monthly_salary_pay_day": pay_day,
+        "payment_method": payment_method,
+        "effective_date": effective_date,
+        "source": source,
+    }
+
+
+def _apply_compensation_signature_to_history(
+    row: EmployeeCompensationHistory,
+    signature: tuple[str, Optional[int], Optional[int], Optional[int], str],
+) -> None:
+    compensation_type, hourly_cents, salary_cents, pay_day, payment_method = signature
+    row.compensation_type = compensation_type
+    row.hourly_rate_cents_enc = _money_cents_enc(hourly_cents)
+    row.monthly_salary_cents_enc = _money_cents_enc(salary_cents)
+    row.monthly_salary_pay_day = pay_day
+    row.payment_method = payment_method
+
+
+def _create_compensation_history_row(
+    *,
+    user_id: int,
+    effective_date: date,
+    signature: tuple[str, Optional[int], Optional[int], Optional[int], str],
+    current_user: Optional[User],
+    source: str,
+    note: str = "",
+) -> EmployeeCompensationHistory:
+    row = EmployeeCompensationHistory(
+        user_id=user_id,
+        effective_date=effective_date,
+        source=source,
+        note=note,
+        created_by_user_id=current_user.id if current_user is not None else None,
+    )
+    _apply_compensation_signature_to_history(row, signature)
+    return row
+
+
+def _ensure_compensation_baseline(
+    session: Session,
+    *,
+    profile: EmployeeProfile,
+    before_signature: tuple[str, Optional[int], Optional[int], Optional[int], str],
+    effective_date: date,
+    current_user: Optional[User],
+) -> None:
+    user_id = profile.user_id
+    existing_before = session.exec(
+        select(EmployeeCompensationHistory)
+        .where(
+            EmployeeCompensationHistory.user_id == user_id,
+            EmployeeCompensationHistory.effective_date < effective_date,
+        )
+        .limit(1)
+    ).first()
+    if existing_before is not None:
+        return
+    baseline_date = profile.hire_date or COMPENSATION_HISTORY_BASELINE_DATE
+    if baseline_date >= effective_date:
+        return
+    session.add(
+        _create_compensation_history_row(
+            user_id=user_id,
+            effective_date=baseline_date,
+            signature=before_signature,
+            current_user=current_user,
+            source="baseline",
+            note="Auto-created from profile before first dated change",
+        )
+    )
+
+
+def _upsert_compensation_history(
+    session: Session,
+    *,
+    profile: EmployeeProfile,
+    effective_date: date,
+    signature: tuple[str, Optional[int], Optional[int], Optional[int], str],
+    current_user: Optional[User],
+    source: str,
+    note: str = "",
+) -> EmployeeCompensationHistory:
+    row = session.exec(
+        select(EmployeeCompensationHistory).where(
+            EmployeeCompensationHistory.user_id == profile.user_id,
+            EmployeeCompensationHistory.effective_date == effective_date,
+        )
+    ).first()
+    now = utcnow()
+    if row is None:
+        row = _create_compensation_history_row(
+            user_id=profile.user_id,
+            effective_date=effective_date,
+            signature=signature,
+            current_user=current_user,
+            source=source,
+            note=note,
+        )
+    else:
+        _apply_compensation_signature_to_history(row, signature)
+        row.source = source
+        row.note = note
+        row.updated_at = now
+        if current_user is not None:
+            row.created_by_user_id = current_user.id
+    session.add(row)
+    return row
+
+
+def record_compensation_history_if_changed(
+    session: Session,
+    *,
+    profile: EmployeeProfile,
+    before_signature: tuple[str, Optional[int], Optional[int], Optional[int], str],
+    effective_date: date,
+    current_user: Optional[User],
+    source: str,
+) -> bool:
+    after_signature = _compensation_signature_from_profile(profile)
+    if after_signature == before_signature:
+        return False
+    _ensure_compensation_baseline(
+        session,
+        profile=profile,
+        before_signature=before_signature,
+        effective_date=effective_date,
+        current_user=current_user,
+    )
+    _upsert_compensation_history(
+        session,
+        profile=profile,
+        effective_date=effective_date,
+        signature=after_signature,
+        current_user=current_user,
+        source=source,
+        note="Created from current profile compensation",
+    )
+    return True
+
+
+def compensation_history_rows_for_users(
+    session: Session,
+    user_ids: list[int],
+    *,
+    end_day: Optional[date] = None,
+) -> dict[int, list[EmployeeCompensationHistory]]:
+    if not user_ids:
+        return {}
+    stmt = select(EmployeeCompensationHistory).where(
+        EmployeeCompensationHistory.user_id.in_(user_ids)
+    )
+    if end_day is not None:
+        stmt = stmt.where(EmployeeCompensationHistory.effective_date <= end_day)
+    rows = session.exec(
+        stmt.order_by(
+            EmployeeCompensationHistory.user_id,
+            EmployeeCompensationHistory.effective_date,
+            EmployeeCompensationHistory.id,
+        )
+    ).all()
+    out: dict[int, list[EmployeeCompensationHistory]] = {}
+    for row in rows:
+        out.setdefault(row.user_id, []).append(row)
+    return out
+
+
+def compensation_snapshot_for_day(
+    profile: Optional[EmployeeProfile],
+    day: date,
+    *,
+    history_rows: Optional[list[EmployeeCompensationHistory]] = None,
+) -> dict:
+    selected: Optional[EmployeeCompensationHistory] = None
+    for row in history_rows or []:
+        if row.effective_date <= day:
+            selected = row
+        else:
+            break
+    if selected is not None:
+        return _history_snapshot_from_signature(
+            _compensation_signature_from_history(selected),
+            effective_date=selected.effective_date,
+            source=selected.source or "history",
+        )
+    return _history_snapshot_from_signature(
+        _compensation_signature_from_profile(profile),
+        effective_date=None,
+        source="profile",
+    )
 
 
 def _format_money_dollars(cents: Optional[int]) -> str:
@@ -289,6 +560,7 @@ def _detail_context(
         "monthly_salary_pay_date_label": _format_date_label(
             _next_monthly_pay_date(utcnow().date(), profile.monthly_salary_pay_day)
         ),
+        "today_iso": utcnow().date().isoformat(),
         "payment_methods": PAYMENT_METHODS,
         "payment_method_labels": PAYMENT_METHOD_LABELS,
         "reveal_field": None,
@@ -851,6 +1123,7 @@ def admin_employee_pay_rates_page(
             "compensation_type_labels": COMPENSATION_TYPE_LABELS,
             "payment_methods": PAYMENT_METHODS,
             "payment_method_labels": PAYMENT_METHOD_LABELS,
+            "today_iso": utcnow().date().isoformat(),
             "show_inactive": include_inactive,
             "flash": flash,
             "error": error,
@@ -873,6 +1146,11 @@ async def admin_employee_pay_rates_post(
         return denial
 
     form = await request.form()
+    now = utcnow()
+    effective_date = _parse_compensation_effective_date(
+        str(form.get("effective_date") or ""),
+        now.date(),
+    )
     user_ids: set[int] = set()
     for key in form.keys():
         if (
@@ -888,10 +1166,8 @@ async def admin_employee_pay_rates_post(
             except (IndexError, ValueError):
                 continue
 
-    from ..pii import encrypt_pii
-
-    now = utcnow()
     changed_user_ids: set[int] = set()
+    history_updates = 0
     compensation_changes = 0
     rate_changes = 0
     salary_changes = 0
@@ -912,6 +1188,7 @@ async def admin_employee_pay_rates_post(
             profile = EmployeeProfile(user_id=user_id)
             session.add(profile)
             session.flush()
+        before_signature = _compensation_signature_from_profile(profile)
 
         comp_key = f"comp_{user_id}"
         if comp_key in form:
@@ -989,6 +1266,15 @@ async def admin_employee_pay_rates_post(
         if user_id in changed_user_ids:
             profile.updated_at = now
             session.add(profile)
+            if record_compensation_history_if_changed(
+                session,
+                profile=profile,
+                before_signature=before_signature,
+                effective_date=effective_date,
+                current_user=current,
+                source="bulk_pay_rates",
+            ):
+                history_updates += 1
 
     if changed_user_ids:
         _audit_then_commit(
@@ -1007,6 +1293,8 @@ async def admin_employee_pay_rates_post(
                         "cleared_monthly_salaries": cleared_salaries,
                         "monthly_pay_day_changes": pay_day_changes,
                         "payment_method_changes": payment_changes,
+                        "compensation_history_updates": history_updates,
+                        "effective_date": effective_date.isoformat(),
                         "invalid_rates": invalid_rates,
                         "invalid_monthly_salaries": invalid_salaries,
                         "invalid_monthly_pay_days": invalid_pay_days,
@@ -1027,7 +1315,8 @@ async def admin_employee_pay_rates_post(
             f"{compensation_changes} pay type change(s), "
             f"{rate_changes + salary_changes} amount change(s), "
             f"{pay_day_changes} pay date change(s), "
-            f"{payment_changes} payment method change(s)."
+            f"{payment_changes} payment method change(s). "
+            f"Effective {effective_date.isoformat()}."
         )
     }
     if invalid_rates or invalid_salaries or invalid_pay_days:
@@ -1189,6 +1478,7 @@ async def admin_employee_profile_update(
     display_name: str = Form(default=""),
     staff_kind: str = Form(default=""),
     compensation_type: str = Form(default=""),
+    compensation_effective_date: str = Form(default=""),
     hourly_rate_cents: str = Form(default=""),
     monthly_salary_dollars: str = Form(default=""),
     monthly_salary_pay_day: str = Form(default=""),
@@ -1212,6 +1502,11 @@ async def admin_employee_profile_update(
 
     changed: list[str] = []
     now = utcnow()
+    before_compensation_signature = _compensation_signature_from_profile(profile)
+    effective_date = _parse_compensation_effective_date(
+        compensation_effective_date,
+        now.date(),
+    )
 
     new_role = (role or "").strip().lower()
     if new_role in ROLES and new_role != employee.role:
@@ -1307,8 +1602,21 @@ async def admin_employee_profile_update(
         changed.append("clockify_user_id")
 
     if changed:
+        history_recorded = False
+        if any(field in COMPENSATION_HISTORY_FIELDS for field in changed):
+            history_recorded = record_compensation_history_if_changed(
+                session,
+                profile=profile,
+                before_signature=before_compensation_signature,
+                effective_date=effective_date,
+                current_user=current,
+                source="profile_update",
+            )
         profile.updated_at = now
         session.add(profile)
+        details = {"fields": changed}
+        if history_recorded:
+            details["compensation_effective_date"] = effective_date.isoformat()
         _audit_then_commit(
             session,
             AuditLog(
@@ -1316,7 +1624,7 @@ async def admin_employee_profile_update(
                 target_user_id=user_id,
                 action="admin.profile_update",
                 resource_key="admin.employees.edit",
-                details_json=json.dumps({"fields": changed}),
+                details_json=json.dumps(details, sort_keys=True),
                 ip_address=(request.client.host if request.client else None),
             ),
 

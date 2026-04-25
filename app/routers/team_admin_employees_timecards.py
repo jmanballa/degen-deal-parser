@@ -51,6 +51,10 @@ from ..models import (
 from ..pii import decrypt_pii
 from ..shared import templates
 from .team_admin import _permission_gate
+from .team_admin_employees import (
+    compensation_history_rows_for_users,
+    compensation_snapshot_for_day,
+)
 
 
 router = APIRouter()
@@ -843,26 +847,66 @@ def admin_employee_timecards(
         for status in TIMECARD_STATUS_VALUES
     }
 
-    compensation_type = _normalize_compensation_type(profile)
+    history_rows = compensation_history_rows_for_users(
+        session,
+        [user_id],
+        end_day=week_end_inclusive,
+    ).get(user_id, [])
+    week_snapshot = compensation_snapshot_for_day(
+        profile,
+        week_end_inclusive,
+        history_rows=history_rows,
+    )
+    compensation_type = str(week_snapshot.get("compensation_type") or "hourly")
     salary_employee = compensation_type == _COMPENSATION_MONTHLY_SALARY
     if salary_employee:
-        salary_cents, pay_missing = _monthly_salary_cents(profile)
+        salary_cents = int(week_snapshot.get("monthly_salary_cents") or 0)
+        pay_missing = week_snapshot.get("monthly_salary_cents") is None
         labor_cents = salary_cents
         labor_tile_label = "Monthly pay"
-        labor_basis_label = "Fixed monthly salary"
+        labor_basis_label = "Fixed monthly salary effective this week"
         labor_missing_label = "salary not set"
         labor_missing_help = "Add a monthly salary on the profile"
         # Drop the plaintext amount before building the context to keep it out
         # of both the template namespace and any future locals() dumps.
         del salary_cents
-    else:
-        rate_cents, pay_missing = _hourly_rate_cents(profile)
-        labor_cents = _labor_cents(actual_total_seconds, rate_cents)
+    elif compensation_type == "unpaid":
+        labor_cents = 0
+        pay_missing = False
         labor_tile_label = "Labor cost"
-        labor_basis_label = "Paid Clockify hours x hourly rate"
+        labor_basis_label = "Employee marked unpaid for this week"
+        labor_missing_label = "unpaid"
+        labor_missing_help = "Change the pay type on the profile"
+    else:
+        labor_cents = 0
+        missing_rate = False
+        has_hourly_seconds = False
+        for row in day_rows:
+            seconds = int(row.actual_seconds or 0)
+            if seconds <= 0:
+                continue
+            day_snapshot = compensation_snapshot_for_day(
+                profile,
+                row.day,
+                history_rows=history_rows,
+            )
+            if day_snapshot.get("compensation_type") != "hourly":
+                continue
+            has_hourly_seconds = True
+            rate_cents = day_snapshot.get("hourly_rate_cents")
+            if rate_cents is None:
+                missing_rate = True
+                continue
+            labor_cents += _labor_cents(seconds, int(rate_cents))
+        pay_missing = (
+            missing_rate
+            if has_hourly_seconds
+            else week_snapshot.get("hourly_rate_cents") is None
+        )
+        labor_tile_label = "Labor cost"
+        labor_basis_label = "Paid Clockify hours x effective hourly rate"
         labor_missing_label = "rate not set"
         labor_missing_help = "Add an hourly rate on the profile"
-        del rate_cents
 
     has_any_scheduled = bool(shift_rows)
     has_any_actual = any(row.actual_seconds or row.break_seconds for row in day_rows)

@@ -30,6 +30,13 @@
 <form method="post" action="/team/admin/employees/pay-rates">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
     <input type="hidden" name="show_inactive" value="{{ '1' if show_inactive else '' }}"/>
+    <div class="ta-card">
+        <label style="font-size:12px; color:var(--lx-muted); display:block; margin-bottom:6px;">Effective date for saved compensation changes</label>
+        <input type="date" name="effective_date" value="{{ today_iso }}" style="padding:7px 10px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+        <div style="font-size:12px; color:var(--lx-muted); margin-top:8px;">
+            Raises and pay type changes apply from this date forward. Older payroll windows use the prior saved rate when history exists.
+        </div>
+    </div>
     <div class="ta-card" style="padding:0;">
         <div style="overflow:auto;">
             <table style="width:100%; border-collapse:collapse; font-size:13px; min-width:1120px;">
