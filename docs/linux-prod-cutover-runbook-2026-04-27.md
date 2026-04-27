@@ -165,13 +165,34 @@ pg_restore --list /opt/degen/backups/degen_live-final-*.dump >/dev/null
 
 ### D. Freeze writes on Blue/Machine B
 
-Pick one operational freeze method before cutover. Options:
+Pick and verify one operational freeze method before cutover. During final cutover, avoid having both Blue and Green workers active at the same time.
+
+Preferred freeze for the first official cutover:
+
+1. Tell the team the app is entering the migration freeze window.
+2. Keep Blue web available as the rollback target if possible, but stop the Blue supervisor/worker so writes/integrations stop before the final dump.
+3. Use `schtasks.exe` over SSH, not the PowerShell ScheduledTasks/CIM cmdlets. CIM returned access denied from the OpenClaw SSH context, but `schtasks /query` works and sees `\DegenParser` as `Running`.
+
+Read-only verification command:
+
+```bash
+ssh Degen@100.110.34.106 "cmd /c schtasks /query /tn DegenParser /fo LIST /v"
+```
+
+Freeze command to run only inside the approved cutover window:
+
+```bash
+ssh Degen@100.110.34.106 "cmd /c schtasks /end /tn DegenParser"
+ssh Degen@100.110.34.106 "cmd /c schtasks /query /tn DegenParser /fo LIST /v"
+```
+
+If `schtasks /end` fails or the task restarts, stop and roll back the cutover attempt; use interactive RDP/local admin as the backup freeze path. Do not proceed to the final dump while Blue worker/integration writes may still be active.
+
+Fallback options:
 
 1. **Soft freeze**: tell team to stop using app and stop stream/order mutations. Lowest technical risk, relies on humans.
-2. **Stop app/worker on Machine B**: stronger freeze but causes downtime immediately.
-3. **Set Blue read-only mode if implemented**: best long-term, not currently confirmed.
-
-During final cutover, avoid having both Blue and Green workers active at the same time.
+2. **Full Blue app stop**: stronger freeze but causes downtime immediately.
+3. **Blue read-only mode**: best long-term if implemented later; not currently confirmed.
 
 ### E. Final DB restore on Green
 
@@ -189,6 +210,7 @@ sudo -u postgres createdb -O degen_green degen_green_prod
 PGPASSWORD='<green_db_password>' pg_restore \
   --host 127.0.0.1 --port 5432 --username degen_green \
   --dbname degen_green_prod --verbose \
+  --no-owner --no-acl \
   /opt/degen/backups/degen_live-final-YYYYMMDDTHHMMSSZ.dump \
   2>&1 | tee /opt/degen/backups/restore-final-YYYYMMDDTHHMMSSZ.log
 ```
@@ -245,6 +267,15 @@ curl -fsS http://127.0.0.1:8000/health
 curl -fsS -o /tmp/degen-static.css http://127.0.0.1:8000/static/portal.css
 ```
 
+Required authenticated media smoke during final migration:
+
+- Pick a real `attachmentasset.id` from the restored Green production DB.
+- Log in through the employee portal using the migrated admin/user credentials.
+- Verify both routes return actual media, not just a redirect to login:
+  - `/attachments/{id}`
+  - `/attachments/{id}/thumb`
+- Also verify at least one hit image still returns HTTP 200.
+
 ### H. Worker enablement
 
 Worker should not be enabled until there is a deliberate decision that Green is now the single production writer/integration host.
@@ -256,9 +287,20 @@ Worker should not be enabled until there is a deliberate decision that Green is 
 
 ### I. Cloudflare/public switch
 
-Only after explicit approval:
+Only after explicit approval.
+
+Before the real `ops.degencollectibles.com` switch, exercise Green through a public/staging Cloudflare path that does **not** steal production traffic, for example `ops-green.degencollectibles.com` or another temporary hostname. The Green public-path preflight should prove:
+
+- Cloudflare can reach Green's local web port.
+- Static assets load through the tunnel.
+- Login works through the tunnel with `SESSION_HTTPS_ONLY`/cookie settings appropriate for HTTPS.
+- Authenticated attachment and thumbnail routes work through the tunnel.
+- Green logs show no new startup/runtime errors.
+
+Real public switch checklist:
 
 - [ ] Confirm Green web is locally healthy on the exact target port.
+- [ ] Confirm staging/public Green hostname has passed smoke, or Jeffrey explicitly waives that risk.
 - [ ] Switch Cloudflare tunnel config to Green target or enable Green tunnel route.
 - [ ] Smoke public URL: `https://ops.degencollectibles.com/health` if exposed, login/core pages, static assets, media.
 - [ ] Watch Green logs for 15–30 minutes.
@@ -276,21 +318,27 @@ Rollback trigger examples:
 
 Rollback steps:
 
-1. Stop Green worker if started:
+1. Switch Cloudflare/tunnel public traffic back to Machine B first. If Blue web was kept running during the freeze, this is the fastest rollback and avoids pointing traffic at a stopped Green.
+2. Verify Machine B health and public URL.
+3. Restart/unfreeze Machine B scheduled task/services if they were stopped:
+
+   ```bash
+   ssh Degen@100.110.34.106 "cmd /c schtasks /run /tn DegenParser"
+   ssh Degen@100.110.34.106 "cmd /c schtasks /query /tn DegenParser /fo LIST /v"
+   ```
+
+4. Stop Green worker if started:
 
    ```bash
    sudo systemctl stop degen-worker.service
    ```
 
-2. Stop Green web or leave it running only if useful for debug:
+5. Stop Green web or leave it running only if useful for debug:
 
    ```bash
    sudo systemctl stop degen-web.service
    ```
 
-3. Switch Cloudflare/tunnel public traffic back to Machine B.
-4. Restart/unfreeze Machine B scheduled task/services if they were stopped.
-5. Verify Machine B health and public URL.
 6. Preserve Green logs and restore logs:
 
    ```bash
@@ -499,3 +547,21 @@ Conservative real cutover freeze estimate: **~55–65 minutes** if using the sam
 - Optionally do a logged-in browser smoke for attachment body downloads.
 - Only then enable production Green web, switch Cloudflare, and start Green worker after Blue is frozen/stopped.
 
+
+## Post-audit blocker fixes — 2026-04-27 18:45 UTC / 11:45 PT
+
+After three independent final-readiness audits, the following fixes/clarifications were applied:
+
+- Critical Machine B → Green secret parity was verified without printing values: `SESSION_SECRET`, `EMPLOYEE_TOKEN_HMAC_KEY`, `EMPLOYEE_PII_KEY`, `EMPLOYEE_EMAIL_HASH_SALT`, and `ADMIN_PASSWORD` match between Machine B and `/opt/degen/.env`.
+- Green `/opt/degen/.env` keeps Linux-safe overrides: `DATA_ROOT=/opt/degen/data`, `MEDIA_ROOT=/opt/degen/data`, and `LOG_DIR=/var/log/degen`.
+- Green Postgres compatibility role `degen` was created as `NOLOGIN` so future owner-referencing dumps do not fail solely because the role name is absent. Final restores should still use `pg_restore --no-owner --no-acl`.
+- `degen-web-staging.service` was confirmed cleaned up after smoke: loaded, inactive/dead, disabled, no drop-ins.
+- Mission Control systemd unit was installed and enabled for reboot resilience. The existing dev server on port 3000 was left running; the service was not started over it.
+- Machine B PowerShell CIM/ScheduledTasks cmdlets still return access denied over SSH, but `cmd /c schtasks /query /tn DegenParser /fo LIST /v` works and reports `\DegenParser` running. The runbook now uses `schtasks.exe` for read-only verification and final freeze/unfreeze commands.
+
+Remaining before official cutover:
+
+1. Prove `schtasks /end /tn DegenParser` works inside an approved freeze window, or arrange RDP/local-admin fallback before starting final dump.
+2. Exercise Green through a staging/public Cloudflare hostname before switching `ops.degencollectibles.com`, or explicitly waive that risk.
+3. During final migration, run logged-in attachment and thumbnail smoke against restored Green production DB rows.
+4. Keep `DEGEN_APP_URL` in Mission Control pointed at Machine B until public cutover; flip it to Green only after Green is the active production target.
