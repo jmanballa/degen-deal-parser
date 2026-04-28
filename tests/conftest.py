@@ -44,6 +44,14 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"
 os.environ.setdefault("EMPLOYEE_EMAIL_HASH_SALT", "pytest-email-salt")
 os.environ.setdefault("EMPLOYEE_TOKEN_HMAC_KEY", "pytest-token-hmac-key-" + "x" * 24)
 
+# TikTok auth tests must not need real Partner Center credentials. These are
+# inert test values; production routes still reject missing/invalid runtime
+# config when OAuth is actually used.
+os.environ.setdefault("TIKTOK_APP_KEY", "pytest-tiktok-app-key")
+os.environ.setdefault("TIKTOK_APP_SECRET", "pytest-tiktok-app-secret")
+os.environ.setdefault("TIKTOK_REDIRECT_URI", "http://testserver/integrations/tiktok/callback")
+os.environ.setdefault("TIKTOK_SYNC_ENABLED", "false")
+
 # If the cached Settings singleton was somehow created before conftest
 # loaded (unlikely, but possible via plugin import order), clear it so
 # the next get_settings() call picks up our overrides.

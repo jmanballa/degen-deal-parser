@@ -1,4 +1,7 @@
 fastapi
+# Starlette 1.0.0 currently deadlocks FastAPI TestClient requests in CI/local
+# tests; keep the pre-1.0 line until the stack is verified together.
+starlette<1.0.0
 uvicorn[standard]
 sqlmodel
 discord.py

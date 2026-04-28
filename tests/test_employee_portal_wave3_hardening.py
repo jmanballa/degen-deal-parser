@@ -5,6 +5,7 @@ import json
 import os
 import unittest
 import asyncio
+import hashlib
 from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
@@ -14,6 +15,7 @@ os.environ.setdefault("EMPLOYEE_PORTAL_ENABLED", "true")
 os.environ.setdefault("EMPLOYEE_PII_KEY", Fernet.generate_key().decode("ascii"))
 os.environ.setdefault("EMPLOYEE_EMAIL_HASH_SALT", "unit-test-salt")
 os.environ.setdefault("SESSION_SECRET", "test-secret-wave35-" + "x" * 32)
+os.environ.setdefault("EMPLOYEE_TOKEN_HMAC_KEY", "test-token-hmac-wave35-" + "x" * 24)
 
 from tests.test_employee_portal_wave3 import _PortalHarness  # noqa: E402
 
@@ -146,8 +148,17 @@ class AuditLogOnAuthEventsTests(unittest.TestCase, _PortalHarness):
             if "http_forgot" in (r.details_json or "")
         ]
         self.assertGreaterEqual(len(http_rows), 2)
+        identifier_hashes = []
         for row in http_rows:
             self.assertIsNone(row.target_user_id)
+            details = json.loads(row.details_json)
+            self.assertEqual(details["status"], "accepted")
+            self.assertNotIn("matched", details)
+            self.assertNotIn("delivery", details)
+            self.assertRegex(details["identifier_hash"], r"^[0-9a-f]{64}$")
+            identifier_hashes.append(details["identifier_hash"])
+            self.assertNotIn("realuser", row.details_json or "")
+        self.assertNotIn(hashlib.sha256(b"realuser").hexdigest(), identifier_hashes)
         manager_rows = self.session.exec(
             select(AuditLog).where(AuditLog.action == "password.reset_manager_request")
         ).all()

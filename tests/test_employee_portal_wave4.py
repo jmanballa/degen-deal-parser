@@ -370,6 +370,13 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
             ),
             (None, True),
         )
+        self.assertEqual(
+            _parse_profile_hourly_rate(
+                hourly_rate_dollars="",
+                hourly_rate_cents="25.00",
+            ),
+            (None, True),
+        )
 
     def test_hourly_rate_rejects_invalid_inputs_without_mutating_existing_value(self):
         from app.models import AuditLog, EmployeeProfile

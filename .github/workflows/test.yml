@@ -19,6 +19,10 @@ jobs:
       EMPLOYEE_EMAIL_HASH_SALT: "pytest-email-salt"
       EMPLOYEE_TOKEN_HMAC_KEY: "pytest-token-hmac-key-xxxxxxxxxxxxxxxxxxxxxxxx"
       DATABASE_URL: "sqlite:////tmp/degen_ci_tests_${{ github.run_id }}.db"
+      TIKTOK_APP_KEY: "pytest-tiktok-app-key"
+      TIKTOK_APP_SECRET: "pytest-tiktok-app-secret"
+      TIKTOK_REDIRECT_URI: "http://testserver/integrations/tiktok/callback"
+      TIKTOK_SYNC_ENABLED: "false"
 
     steps:
       - uses: actions/checkout@v4

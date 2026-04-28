@@ -12,6 +12,7 @@ Admin employee-management pages live under /team/admin/* (Wave 2 + Wave 4).
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from datetime import date, datetime, time, timedelta, timezone
@@ -35,6 +36,7 @@ from ..auth import (
     consume_password_reset_token,
     generate_password_reset_token,
     has_permission,
+    _token_hmac_key,
     validate_password_strength,
 )
 from ..clockify import (
@@ -219,6 +221,17 @@ def _find_password_reset_user(session: Session, identifier: str) -> Optional[Use
             if user is not None and user.is_active:
                 return user
     return None
+
+
+def _password_reset_identifier_hash(identifier: str) -> str:
+    probe = (identifier or "").strip().lower()
+    if not probe:
+        return ""
+    return hmac.new(
+        _token_hmac_key(),
+        probe.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _queue_password_reset_request(
@@ -521,9 +534,7 @@ async def team_password_forgot_post(
     ):
         return limited
     probe = (identifier or "").strip().lower()
-    probe_hash = (
-        hashlib.sha256(probe.encode("utf-8")).hexdigest() if probe else ""
-    )
+    probe_hash = _password_reset_identifier_hash(probe)
     if probe_hash:
         if limited := rate_limited_or_429(
             request,
@@ -556,15 +567,8 @@ async def team_password_forgot_post(
             details_json=json.dumps(
                 {
                     "identifier_hash": probe_hash,
-                    "matched": matched_user is not None,
-                    "delivery": (
-                        "sms"
-                        if delivered
-                        else "manager_queue"
-                        if matched_user is not None
-                        else "none"
-                    ),
                     "source": "http_forgot",
+                    "status": "accepted",
                 },
                 sort_keys=True,
             ),
