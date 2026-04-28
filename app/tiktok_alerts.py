@@ -71,8 +71,8 @@ def alert_reverse_order(
     """Alert when a REVERSE_ORDER_STATUS_CHANGE webhook is received."""
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     price_str = f"${total_price:.2f}" if total_price is not None else "unknown amount"
-    customer_str = customer_name.strip() or "Unknown customer"
-    status_str = order_status.strip() or "unknown"
+    customer_str = str(customer_name or "").strip() or "Unknown customer"
+    status_str = str(order_status or "").strip() or "unknown"
 
     text = (
         f"⚠️ <b>TikTok Order REVERSED</b>\n"
@@ -92,17 +92,20 @@ def alert_ghost_cancellation(
 ) -> None:
     """Alert when a CANCELLATION webhook arrives with no order ID."""
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    event_type_str = str(event_type_name or "CANCELLATION_STATUS_CHANGE")
+    body_sha256_str = str(body_sha256 or "")
     text = (
         f"⚠️ <b>TikTok Ghost Cancellation</b>\n"
         f"🕐 {now}\n"
-        f"❓ TikTok sent a <b>{_esc(event_type_name)}</b> webhook with <b>no order ID</b>.\n"
+        f"❓ TikTok sent a <b>{_esc(event_type_str)}</b> webhook with <b>no order ID</b>.\n"
         f"\n<i>An order may have been cancelled on TikTok's backend but we can't tell which one. "
         f"Check Seller Center for recent cancellations.</i>\n"
-        f"<code>sha256: {body_sha256[:16]}…</code>"
+        f"<code>sha256: {body_sha256_str[:16]}…</code>"
     )
     _send_telegram(text)
 
 
 def _esc(s: str) -> str:
     """Minimal HTML escaping for Telegram HTML parse mode."""
+    s = str(s or "")
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
