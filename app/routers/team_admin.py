@@ -6,6 +6,7 @@ supply-queue content live in Wave 4.
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -17,7 +18,17 @@ from ..auth import has_permission
 from ..config import get_settings
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
-from ..models import InviteToken, SupplyRequest, User, utcnow
+from ..models import (
+    EmployeeProfile,
+    InviteToken,
+    ShiftEntry,
+    SupplyRequest,
+    TeamAnnouncement,
+    TimeOffRequest,
+    TimecardApproval,
+    User,
+    utcnow,
+)
 from ..shared import templates
 from sqlmodel import select
 
@@ -212,7 +223,13 @@ def team_admin_home(
     if not has_permission(session, user, "admin.permissions.view"):
         return RedirectResponse(_first_allowed_admin_href(request), status_code=303)
     now = utcnow()
-    employee_count = len(list(session.exec(select(User)).all()))
+    all_users = list(session.exec(select(User)).all())
+    active_users = [row for row in all_users if row.is_active]
+    staff_users = [
+        row for row in active_users if row.role in {"employee", "manager", "viewer"}
+    ]
+    employee_count = len(all_users)
+    active_employee_count = len(staff_users)
     outstanding_invites = len(
         list(
             session.exec(
@@ -222,6 +239,13 @@ def team_admin_home(
             ).all()
         )
     )
+    draft_employee_count = len(
+        [
+            row
+            for row in all_users
+            if not row.is_active and row.username.startswith("__draft_")
+        ]
+    )
     pending_supply = len(
         list(
             session.exec(
@@ -229,6 +253,48 @@ def team_admin_home(
             ).all()
         )
     )
+    pending_timeoff = len(
+        list(
+            session.exec(
+                select(TimeOffRequest).where(TimeOffRequest.status == "submitted")
+            ).all()
+        )
+    )
+    pending_timecards = len(
+        list(
+            session.exec(
+                select(TimecardApproval).where(TimecardApproval.status == "pending")
+            ).all()
+        )
+    )
+    active_announcements = len(
+        list(
+            session.exec(
+                select(TeamAnnouncement).where(TeamAnnouncement.is_active == True)  # noqa: E712
+            ).all()
+        )
+    )
+    profile_rows = {
+        row.user_id: row for row in session.exec(select(EmployeeProfile)).all()
+    }
+    clockify_mapped = sum(
+        1
+        for row in staff_users
+        if (profile_rows.get(row.id).clockify_user_id if row.id in profile_rows else "")
+    )
+    clockify_unmapped = max(active_employee_count - clockify_mapped, 0)
+    today = now.date()
+    upcoming_shift_count = len(
+        list(
+            session.exec(
+                select(ShiftEntry).where(
+                    ShiftEntry.shift_date >= today,
+                    ShiftEntry.shift_date <= today + timedelta(days=6),
+                )
+            ).all()
+        )
+    )
+    needs_attention_count = pending_supply + pending_timeoff + pending_timecards
     return templates.TemplateResponse(
         request,
         "team/admin/index.html",
@@ -237,8 +303,17 @@ def team_admin_home(
             "title": "Team Admin",
             "current_user": user,
             "employee_count": employee_count,
+            "active_employee_count": active_employee_count,
             "outstanding_invites": outstanding_invites,
+            "draft_employee_count": draft_employee_count,
             "pending_supply": pending_supply,
+            "pending_timeoff": pending_timeoff,
+            "pending_timecards": pending_timecards,
+            "active_announcements": active_announcements,
+            "clockify_mapped": clockify_mapped,
+            "clockify_unmapped": clockify_unmapped,
+            "upcoming_shift_count": upcoming_shift_count,
+            "needs_attention_count": needs_attention_count,
             "csrf_token": issue_token(request),
         },
     )

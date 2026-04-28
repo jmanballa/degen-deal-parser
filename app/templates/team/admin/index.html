@@ -1,51 +1,335 @@
 {% extends "team/admin/base.html" %}
 {% set active = 'overview' %}
+
+{% block extra_head %}
+<style>
+    .ta-command-intro {
+        margin-bottom: 18px;
+        padding: 18px 0 4px;
+    }
+    .ta-command-kicker {
+        margin: 0 0 6px;
+        color: var(--lx-muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .ta-command-title {
+        margin: 0;
+        max-width: 760px;
+        font-size: clamp(24px, 3vw, 34px);
+        line-height: 1.1;
+    }
+    .ta-command-sub {
+        margin: 10px 0 0;
+        max-width: 760px;
+        color: var(--lx-muted);
+        font-size: 14px;
+        line-height: 1.55;
+    }
+    .ta-command-actions,
+    .ta-mini-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+    }
+    .ta-btn.primary {
+        background: #ff6b4a;
+        border-color: #ff6b4a;
+        color: #080808;
+        font-weight: 800;
+    }
+    .ta-btn.soft {
+        color: #dbeafe;
+        background: rgba(59,130,246,.12);
+        border-color: rgba(96,165,250,.28);
+    }
+    .ta-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+    .ta-kpi-card {
+        display: block;
+        min-height: 112px;
+        padding: 16px;
+        border: 1px solid var(--lx-br);
+        border-radius: 12px;
+        background: var(--lx-s1);
+    }
+    .ta-kpi-label {
+        color: var(--lx-muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .ta-kpi-value {
+        margin-top: 8px;
+        font-size: 32px;
+        font-weight: 900;
+        line-height: 1;
+    }
+    .ta-kpi-sub {
+        margin-top: 8px;
+        color: var(--lx-muted);
+        font-size: 12px;
+        line-height: 1.35;
+    }
+    .ta-kpi-card.is-hot {
+        border-color: rgba(255,107,74,.42);
+        background: linear-gradient(135deg, rgba(255,107,74,.16), var(--lx-s1));
+    }
+    .ta-section {
+        margin-top: 22px;
+    }
+    .ta-section-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 10px;
+    }
+    .ta-section-title {
+        margin: 0;
+        font-size: 15px;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+    .ta-section-note {
+        margin: 4px 0 0;
+        color: var(--lx-muted);
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .ta-attention-list {
+        display: grid;
+        gap: 8px;
+    }
+    .ta-attention-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 14px;
+        border: 1px solid var(--lx-br);
+        border-radius: 10px;
+        background: var(--lx-s1);
+    }
+    .ta-attention-title {
+        font-size: 14px;
+        font-weight: 800;
+    }
+    .ta-attention-sub {
+        margin-top: 3px;
+        color: var(--lx-muted);
+        font-size: 12px;
+    }
+    .ta-count-pill {
+        min-width: 42px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        text-align: center;
+        font-size: 12px;
+        font-weight: 900;
+        background: rgba(255,255,255,.06);
+        border: 1px solid var(--lx-br);
+    }
+    .ta-count-pill.warn {
+        color: #fed7aa;
+        background: rgba(249,115,22,.14);
+        border-color: rgba(249,115,22,.28);
+    }
+    .ta-workflow-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+    .ta-workflow-card {
+        padding: 16px;
+        border: 1px solid var(--lx-br);
+        border-radius: 12px;
+        background: var(--lx-s1);
+    }
+    .ta-workflow-card h3 {
+        margin: 0 0 5px;
+        font-size: 16px;
+    }
+    .ta-workflow-card p {
+        margin: 0;
+        color: var(--lx-muted);
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .ta-workflow-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+    @media (max-width: 980px) {
+        .ta-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ta-workflow-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+        .ta-kpi-grid { grid-template-columns: 1fr; }
+        .ta-attention-row { grid-template-columns: minmax(0, 1fr); }
+        .ta-count-pill { width: fit-content; }
+        .ta-section-head { align-items: flex-start; flex-direction: column; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="ta-card">
-    <h2>Permissions</h2>
-    <p style="margin:0 0 12px; font-size:13px; color: var(--lx-muted);">
-        Customize per-role access to pages, dashboard widgets, and actions.
+<section class="ta-command-intro">
+    <p class="ta-command-kicker">Admin command center</p>
+    <h2 class="ta-command-title">Run the team from the stuff that needs attention first.</h2>
+    <p class="ta-command-sub">
+        Start here for schedule changes, employee setup, Clockify mapping, payroll exports,
+        supplies, time off, and announcements. The point is fewer clicks and less guessing.
     </p>
-    <a class="ta-btn" href="/team/admin/permissions">Open permissions matrix →</a>
-</div>
+    <div class="ta-command-actions">
+        <a class="ta-btn primary" href="/team/admin/schedule">Open schedule</a>
+        <a class="ta-btn" href="/team/admin/employees/new">Add employee</a>
+        <a class="ta-btn" href="/team/admin/announcements">Post announcement</a>
+        <a class="ta-btn soft" href="/team/admin/labor-stats">Labor stats</a>
+    </div>
+</section>
 
-<div class="ta-card">
-    <h2>Employees</h2>
-    <p style="margin:0 0 10px; font-size:13px; color: var(--lx-muted);">
-        {{ employee_count }} user account{% if employee_count != 1 %}s{% endif %} registered.
-    </p>
-    <a class="ta-btn" href="/team/admin/employees">Open employee list →</a>
-</div>
+<section class="ta-kpi-grid" aria-label="Admin summary">
+    <a class="ta-kpi-card{% if needs_attention_count %} is-hot{% endif %}" href="#needs-attention">
+        <div class="ta-kpi-label">Needs attention</div>
+        <div class="ta-kpi-value">{{ needs_attention_count }}</div>
+        <div class="ta-kpi-sub">Supply, time off, and timecard items waiting on a manager.</div>
+    </a>
+    <a class="ta-kpi-card" href="/team/admin/employees">
+        <div class="ta-kpi-label">Active staff</div>
+        <div class="ta-kpi-value">{{ active_employee_count }}</div>
+        <div class="ta-kpi-sub">{{ employee_count }} total account{% if employee_count != 1 %}s{% endif %}, including inactive and drafts.</div>
+    </a>
+    <a class="ta-kpi-card{% if clockify_unmapped %} is-hot{% endif %}" href="/team/admin/clockify">
+        <div class="ta-kpi-label">Clockify setup</div>
+        <div class="ta-kpi-value">{{ clockify_mapped }}/{{ active_employee_count }}</div>
+        <div class="ta-kpi-sub">{% if clockify_unmapped %}{{ clockify_unmapped }} active profile{% if clockify_unmapped != 1 %}s{% endif %} still need mapping.{% else %}All active staff are mapped.{% endif %}</div>
+    </a>
+    <a class="ta-kpi-card" href="/team/admin/schedule">
+        <div class="ta-kpi-label">Next 7 days</div>
+        <div class="ta-kpi-value">{{ upcoming_shift_count }}</div>
+        <div class="ta-kpi-sub">Posted shift block{% if upcoming_shift_count != 1 %}s{% endif %} on the schedule.</div>
+    </a>
+</section>
 
-<div class="ta-card">
-    <h2>Clockify</h2>
-    <p style="margin:0 0 10px; font-size:13px; color: var(--lx-muted);">
-        Connect employee profiles to Clockify so My Hours shows live time entries.
-    </p>
-    <a class="ta-btn" href="/team/admin/clockify">Open Clockify setup -&gt;</a>
-</div>
+<section class="ta-section" id="needs-attention">
+    <div class="ta-section-head">
+        <div>
+            <h2 class="ta-section-title">Needs attention</h2>
+            <p class="ta-section-note">The queues most likely to block employees or payroll.</p>
+        </div>
+    </div>
+    <div class="ta-attention-list">
+        <a class="ta-attention-row" href="/team/admin/timeoff">
+            <span>
+                <span class="ta-attention-title">Time off requests</span>
+                <span class="ta-attention-sub">Approve or deny PTO before it surprises the schedule.</span>
+            </span>
+            <span class="ta-count-pill{% if pending_timeoff %} warn{% endif %}">{{ pending_timeoff }}</span>
+            <span class="ta-btn">Review</span>
+        </a>
+        <a class="ta-attention-row" href="/team/admin/supply">
+            <span>
+                <span class="ta-attention-title">Supply requests</span>
+                <span class="ta-attention-sub">Sleeves, cards, top-loaders, and shop-floor requests.</span>
+            </span>
+            <span class="ta-count-pill{% if pending_supply %} warn{% endif %}">{{ pending_supply }}</span>
+            <span class="ta-btn">Review</span>
+        </a>
+        <a class="ta-attention-row" href="/team/admin/exceptions">
+            <span>
+                <span class="ta-attention-title">Timecard exceptions</span>
+                <span class="ta-attention-sub">Pending approvals and clock data that may need cleanup.</span>
+            </span>
+            <span class="ta-count-pill{% if pending_timecards %} warn{% endif %}">{{ pending_timecards }}</span>
+            <span class="ta-btn">Review</span>
+        </a>
+        <a class="ta-attention-row" href="/team/admin/invites">
+            <span>
+                <span class="ta-attention-title">Invites and drafts</span>
+                <span class="ta-attention-sub">People who still need to finish signup.</span>
+            </span>
+            <span class="ta-count-pill{% if outstanding_invites or draft_employee_count %} warn{% endif %}">
+                {{ outstanding_invites + draft_employee_count }}
+            </span>
+            <span class="ta-btn">Open</span>
+        </a>
+    </div>
+</section>
 
-<div class="ta-card">
-    <h2>Invites</h2>
-    <p style="margin:0 0 10px; font-size:13px; color: var(--lx-muted);">
-        {{ outstanding_invites }} outstanding invite{% if outstanding_invites != 1 %}s{% endif %}.
-    </p>
-    <a class="ta-btn" href="/team/admin/invites">Open invites →</a>
-</div>
+<section class="ta-section">
+    <div class="ta-section-head">
+        <div>
+            <h2 class="ta-section-title">Common workflows</h2>
+            <p class="ta-section-note">Grouped by the job you are trying to finish.</p>
+        </div>
+    </div>
+    <div class="ta-workflow-grid">
+        <div class="ta-workflow-card">
+            <h3>People and pay</h3>
+            <p>Add staff, set rates, issue invite links, and export payroll.</p>
+            <div class="ta-workflow-links">
+                <a class="ta-btn" href="/team/admin/employees">Employees</a>
+                <a class="ta-btn" href="/team/admin/employees/pay-rates">Compensation</a>
+                <a class="ta-btn" href="/team/admin/payroll">Payroll export</a>
+                <a class="ta-btn" href="/team/admin/invites">Invites</a>
+            </div>
+        </div>
+        <div class="ta-workflow-card">
+            <h3>Daily ops</h3>
+            <p>Build the week, handle requests, and post team updates.</p>
+            <div class="ta-workflow-links">
+                <a class="ta-btn" href="/team/admin/schedule">Schedule</a>
+                <a class="ta-btn" href="/team/admin/shift-tracker">Shift tracker</a>
+                <a class="ta-btn" href="/team/admin/supply">Supply queue</a>
+                <a class="ta-btn" href="/team/admin/announcements">Announcements</a>
+            </div>
+        </div>
+        <div class="ta-workflow-card">
+            <h3>Hours and labor</h3>
+            <p>Use actual Clockify hours, exceptions, and labor reports.</p>
+            <div class="ta-workflow-links">
+                <a class="ta-btn" href="/team/admin/clockify">Clockify</a>
+                <a class="ta-btn" href="/team/admin/labor-stats">Labor stats</a>
+                <a class="ta-btn" href="/team/admin/exceptions">Exceptions</a>
+            </div>
+        </div>
+        <div class="ta-workflow-card">
+            <h3>Admin setup</h3>
+            <p>Control who can see financials, manage roles, and tune access.</p>
+            <div class="ta-workflow-links">
+                <a class="ta-btn" href="/team/admin/permissions">Permissions</a>
+                <a class="ta-btn" href="/team/admin/timeoff">Time off</a>
+                <a class="ta-btn" href="/team/">Employee portal</a>
+                <a class="ta-btn" href="/admin">Ops admin</a>
+            </div>
+        </div>
+    </div>
+</section>
 
-<div class="ta-card">
-    <h2>Schedule</h2>
-    <p style="margin:0 0 10px; font-size:13px; color: var(--lx-muted);">
-        Weekly grid — shifts, shows, streams, time-off requests.
-    </p>
-    <a class="ta-btn" href="/team/admin/schedule">Open schedule →</a>
-</div>
-
-<div class="ta-card">
-    <h2>Supply queue</h2>
-    <p style="margin:0 0 10px; font-size:13px; color: var(--lx-muted);">
-        {{ pending_supply }} pending request{% if pending_supply != 1 %}s{% endif %}.
-    </p>
-    <a class="ta-btn" href="/team/admin/supply">Open supply queue →</a>
-</div>
+<section class="ta-section">
+    <div class="ta-card">
+        <h2>Setup health</h2>
+        <p style="margin:0 0 10px; font-size:13px; color: var(--lx-muted);">
+            {{ active_announcements }} active announcement{% if active_announcements != 1 %}s{% endif %},
+            {{ outstanding_invites }} outstanding invite{% if outstanding_invites != 1 %}s{% endif %},
+            and {{ draft_employee_count }} draft employee profile{% if draft_employee_count != 1 %}s{% endif %}.
+        </p>
+        <div class="ta-mini-actions">
+            <a class="ta-btn" href="/team/admin/announcements">Manage announcements</a>
+            <a class="ta-btn" href="/team/admin/invites">Manage invites</a>
+            <a class="ta-btn" href="/team/admin/permissions">Role permissions</a>
+        </div>
+    </div>
+</section>
 {% endblock %}
