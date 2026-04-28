@@ -1,0 +1,182 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'policies' %}
+
+{% block extra_head %}
+<style>
+  .policy-form-grid {
+    display: grid;
+    grid-template-columns: 2fr 140px 160px;
+    gap: 12px;
+  }
+  .policy-field {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--lx-muted);
+  }
+  .policy-input,
+  .policy-select,
+  .policy-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--lx-br);
+    border-radius: 8px;
+    background: var(--lx-s2);
+    color: var(--lx-text);
+    font: inherit;
+  }
+  .policy-textarea {
+    min-height: 220px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  .policy-row-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .policy-status {
+    font-size: 11px;
+    padding: 3px 8px;
+    border: 1px solid var(--lx-br);
+    border-radius: 999px;
+    color: var(--lx-muted);
+  }
+  .policy-status.active {
+    color: #86efac;
+    border-color: rgba(34,197,94,0.35);
+  }
+  .policy-status.archived {
+    color: #fca5a5;
+    border-color: rgba(239,68,68,0.35);
+  }
+  .policy-table-wrap { overflow-x: auto; }
+  .policy-table {
+    width: 100%;
+    min-width: 860px;
+    font-size: 13px;
+    border-collapse: collapse;
+  }
+  .policy-table th {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--lx-br);
+    text-align: left;
+    color: var(--lx-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .policy-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--lx-br);
+    vertical-align: top;
+  }
+  @media (max-width: 860px) {
+    .policy-form-grid { grid-template-columns: 1fr; }
+    .policy-textarea { min-height: 180px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+
+{% if can_create %}
+<div class="ta-card">
+  <h2>Publish Policy</h2>
+  <form method="post" action="/team/admin/policies" style="display:grid; gap:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+    <div class="policy-form-grid">
+      <label class="policy-field">
+        Title
+        <input class="policy-input" name="title" maxlength="200" required>
+      </label>
+      <label class="policy-field">
+        Version
+        <input class="policy-input" name="version" maxlength="40" value="v1">
+      </label>
+      <label class="policy-field">
+        Type
+        <select class="policy-select" name="kind">
+          {% for value, label in kind_labels.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label class="policy-field">
+      Body
+      <textarea class="policy-textarea" name="body" maxlength="12000" required></textarea>
+    </label>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--lx-text);">
+          <input type="checkbox" name="requires_acknowledgement" value="1" checked>
+          Require employee acknowledgement
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--lx-text);">
+          <input type="checkbox" name="notify_employees" value="1" checked>
+          Notify employees
+        </label>
+      </div>
+      <button class="ta-btn" type="submit">Publish</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="ta-card" style="padding:0;">
+  <div class="policy-table-wrap">
+    <table class="policy-table">
+      <thead>
+        <tr>
+          <th>Published</th>
+          <th>Document</th>
+          <th>Type</th>
+          <th>Acknowledgement</th>
+          <th>By</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for policy in policies %}
+        {% set author = authors.get(policy.created_by_user_id) %}
+        <tr>
+          <td style="white-space:nowrap;">{{ policy.published_at.strftime('%Y-%m-%d') }}</td>
+          <td>
+            <div class="policy-row-title">
+              <strong>{{ policy.title }}</strong>
+              <span class="ta-chip">{{ policy.version }}</span>
+            </div>
+            <div style="color:var(--lx-muted); font-size:12px; margin-top:4px; white-space:pre-line;">{{ policy.body[:260] }}{% if policy.body|length > 260 %}...{% endif %}</div>
+          </td>
+          <td>{{ kind_labels.get(policy.kind, policy.kind|title) }}</td>
+          <td>{% if policy.requires_acknowledgement %}Required{% else %}View only{% endif %}</td>
+          <td>{% if author %}{{ author.display_name or author.username }}{% else %}User {{ policy.created_by_user_id }}{% endif %}</td>
+          <td>
+            <span class="policy-status {% if policy.is_active %}active{% else %}archived{% endif %}">
+              {% if policy.is_active %}Active{% else %}Archived{% endif %}
+            </span>
+          </td>
+          <td style="white-space:nowrap;">
+            {% if can_create and policy.is_active %}
+            <form method="post" action="/team/admin/policies/{{ policy.id }}/archive" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+              <button class="ta-btn danger" type="submit">Archive</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not policies %}
+        <tr>
+          <td colspan="7" style="padding:20px 14px; text-align:center; color:var(--lx-muted);">No published policies yet.</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

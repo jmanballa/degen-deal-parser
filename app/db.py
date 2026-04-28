@@ -984,6 +984,8 @@ DEFAULT_ROLE_PERMISSIONS: tuple[tuple[str, str, bool], ...] = tuple(
         # Wave C — announcements comms hub.
         ("admin.announcements.view", (False, False, True, True, True)),
         ("admin.announcements.create", (False, False, True, False, True)),
+        ("admin.policies.view", (False, False, False, False, True)),
+        ("admin.policies.create", (False, False, False, False, True)),
         ("page.admin.schedule", (False, False, True, False, True)),
     )
     for role, allowed in zip(

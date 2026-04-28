@@ -550,6 +550,8 @@ if settings.employee_portal_enabled:
     app.include_router(team_admin_schedule_router, tags=["team-admin"])
     from .routers.team_admin_announcements import router as team_admin_announcements_router  # noqa: E402
     app.include_router(team_admin_announcements_router, tags=["team-admin"])
+    from .routers.team_admin_policies import router as team_admin_policies_router  # noqa: E402
+    app.include_router(team_admin_policies_router, tags=["team-admin"])
     from .routers.team_admin_clockify import router as team_admin_clockify_router  # noqa: E402
     app.include_router(team_admin_clockify_router, tags=["team-admin"])
     from .routers.team_admin_employees_timecards import router as team_admin_employees_timecards_router  # noqa: E402

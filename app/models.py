@@ -668,6 +668,24 @@ class TeamAnnouncement(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class TeamPolicy(SQLModel, table=True):
+    __tablename__ = "team_policy"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    public_id: str = Field(index=True, unique=True)
+    title: str = Field(default="", max_length=200)
+    body: str = Field(default="")
+    version: str = Field(default="v1", max_length=40)
+    kind: str = Field(default="policy", index=True)
+    requires_acknowledgement: bool = Field(default=True, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    is_active: bool = Field(default=True, index=True)
+    published_at: datetime = Field(default_factory=utcnow, index=True)
+    archived_at: Optional[datetime] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class AuditLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     actor_user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)

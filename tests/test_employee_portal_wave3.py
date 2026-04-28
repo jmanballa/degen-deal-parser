@@ -396,6 +396,19 @@ class SupplyAndPoliciesTests(unittest.TestCase, _PortalHarness):
         self._login_as("employee", user_id=user_id, username=username)
         return user_id
 
+    def _seed_admin(self, user_id: int = 39, username: str = "policy_admin") -> int:
+        from app.auth import hash_password
+        from app.models import User
+
+        ph, salt = hash_password("xx")
+        self.session.add(User(
+            id=user_id, username=username, password_hash=ph, password_salt=salt,
+            display_name=username, role="admin", is_active=True,
+        ))
+        self.session.commit()
+        self._login_as("admin", user_id=user_id, username=username)
+        return user_id
+
     def test_supply_post_without_csrf_is_403(self):
         self._seed_employee()
         r = self.client.post(
@@ -442,6 +455,49 @@ class SupplyAndPoliciesTests(unittest.TestCase, _PortalHarness):
         self.assertEqual(len(rows), 1)
         details = json.loads(rows[0].details_json)
         self.assertEqual(details["policy_id"], "code-of-conduct")
+
+    def test_admin_policy_publish_shows_on_employee_policies_page(self):
+        self._seed_admin()
+        csrf = self._csrf()
+        r = self.client.post(
+            "/team/admin/policies",
+            data={
+                "title": "Phone Use Policy",
+                "body": "Keep phones away from inventory unless a manager says otherwise.",
+                "version": "v1",
+                "kind": "policy",
+                "requires_acknowledgement": "1",
+                "csrf_token": csrf,
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(r.status_code, 303)
+
+        from app.models import AuditLog, TeamPolicy
+
+        policy = self.session.exec(
+            select(TeamPolicy).where(TeamPolicy.title == "Phone Use Policy")
+        ).one()
+        self._seed_employee(user_id=44, username="emp_policy_reader")
+        page = self.client.get("/team/policies")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Phone Use Policy", page.text)
+        self.assertIn("Keep phones away from inventory", page.text)
+
+        csrf = self._csrf()
+        ack = self.client.post(
+            f"/team/policies/acknowledge/{policy.public_id}",
+            data={"csrf_token": csrf},
+            follow_redirects=False,
+        )
+        self.assertEqual(ack.status_code, 303)
+        rows = self.session.exec(
+            select(AuditLog).where(
+                AuditLog.action == "policy.acknowledge",
+                AuditLog.details_json.contains(policy.public_id),
+            )
+        ).all()
+        self.assertEqual(len(rows), 1)
 
     def test_profile_post_updates_preferred_name_not_role(self):
         uid = self._seed_employee(user_id=43, username="emp_pr")

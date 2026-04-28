@@ -60,6 +60,7 @@ from ..models import (
     ShiftEntry,
     SupplyRequest,
     TeamAnnouncement,
+    TeamPolicy,
     TimeOffRequest,
     User,
     utcnow,
@@ -72,11 +73,13 @@ from ..team_notifications import EMPLOYEE_NOTIFICATION_ACTION
 router = APIRouter()
 
 
-POLICIES: tuple[dict, ...] = (
+LEGACY_POLICIES: tuple[dict, ...] = (
     {
         "id": "code-of-conduct",
         "title": "Code of Conduct",
         "version": "v1",
+        "kind": "policy",
+        "requires_ack": True,
         "body_md": (
             "Treat teammates, customers, and contractors with respect. "
             "Report safety or conduct concerns to Jeffrey directly. "
@@ -87,6 +90,8 @@ POLICIES: tuple[dict, ...] = (
         "id": "safety-handling",
         "title": "Safety & Handling",
         "version": "v1",
+        "kind": "policy",
+        "requires_ack": True,
         "body_md": (
             "Wash hands before handling cards. Sleeve slabs before storage. "
             "Never leave inventory unattended in common areas. "
@@ -94,7 +99,7 @@ POLICIES: tuple[dict, ...] = (
         ),
     },
 )
-POLICY_BY_ID = {p["id"]: p for p in POLICIES}
+LEGACY_POLICY_BY_ID = {p["id"]: p for p in LEGACY_POLICIES}
 
 
 # ---------------------------------------------------------------------------
@@ -810,6 +815,46 @@ def _active_announcements_for(
     return list(session.exec(stmt).all())
 
 
+def _policy_from_row(row: TeamPolicy) -> dict[str, Any]:
+    return {
+        "id": row.public_id,
+        "title": row.title,
+        "version": row.version or "v1",
+        "kind": row.kind or "policy",
+        "requires_ack": bool(row.requires_acknowledgement),
+        "body_md": row.body or "",
+        "published_at": row.published_at,
+        "is_dynamic": True,
+    }
+
+
+def _published_policies(session: Session) -> list[dict[str, Any]]:
+    rows = session.exec(
+        select(TeamPolicy)
+        .where(TeamPolicy.is_active == True)  # noqa: E712
+        .order_by(TeamPolicy.published_at.desc(), TeamPolicy.id.desc())
+    ).all()
+    policies = [_policy_from_row(row) for row in rows]
+    policies.extend(dict(policy, is_dynamic=False) for policy in LEGACY_POLICIES)
+    return policies
+
+
+def _policy_by_id(session: Session, policy_id: str) -> Optional[dict[str, Any]]:
+    policy_id = (policy_id or "").strip()
+    if not policy_id:
+        return None
+    row = session.exec(
+        select(TeamPolicy).where(
+            TeamPolicy.public_id == policy_id,
+            TeamPolicy.is_active == True,  # noqa: E712
+        )
+    ).first()
+    if row is not None:
+        return _policy_from_row(row)
+    legacy = LEGACY_POLICY_BY_ID.get(policy_id)
+    return dict(legacy, is_dynamic=False) if legacy is not None else None
+
+
 def _policy_acknowledgements_for(session: Session, user: User) -> set[str]:
     rows = session.exec(
         select(AuditLog).where(
@@ -848,7 +893,11 @@ def _profile_completion_for(
     profile = profile or session.get(EmployeeProfile, user.id)
     clockify_ready = clockify_is_configured() if clockify_ready is None else clockify_ready
     acknowledged = _policy_acknowledgements_for(session, user)
-    missing_policies = [p for p in POLICIES if p["id"] not in acknowledged]
+    missing_policies = [
+        p
+        for p in _published_policies(session)
+        if p.get("requires_ack", True) and p["id"] not in acknowledged
+    ]
     phone_done = bool(_decrypt_optional(profile.phone_enc if profile else None))
     emergency_done = bool(
         _decrypt_optional(profile.emergency_contact_name_enc if profile else None)
@@ -1678,22 +1727,8 @@ def team_policies(
     denial, user = _require_employee(request, session, resource_key="page.policies")
     if denial:
         return denial
-    # Which policies have I acknowledged? Look at my own AuditLog rows.
-    ack_rows = session.exec(
-        select(AuditLog).where(
-            AuditLog.actor_user_id == user.id,
-            AuditLog.action == "policy.acknowledge",
-        )
-    ).all()
-    acknowledged: set[str] = set()
-    for row in ack_rows:
-        try:
-            d = json.loads(row.details_json or "{}")
-            pid = d.get("policy_id")
-            if isinstance(pid, str):
-                acknowledged.add(pid)
-        except json.JSONDecodeError:
-            continue
+    policies = _published_policies(session)
+    acknowledged = _policy_acknowledgements_for(session, user)
     return templates.TemplateResponse(
         request,
         "team/policies.html",
@@ -1702,7 +1737,7 @@ def team_policies(
             "title": "Policies",
             "active": "policies",
             "current_user": user,
-            "policies": POLICIES,
+            "policies": policies,
             "acknowledged": acknowledged,
             "flash": flash,
             "csrf_token": issue_token(request),
@@ -1723,7 +1758,7 @@ async def team_policies_acknowledge(
     denial, user = _require_employee(request, session, resource_key="page.policies")
     if denial:
         return denial
-    policy = POLICY_BY_ID.get(policy_id)
+    policy = _policy_by_id(session, policy_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="policy_not_found")
     session.add(
@@ -1733,7 +1768,12 @@ async def team_policies_acknowledge(
             action="policy.acknowledge",
             resource_key=f"policy.{policy_id}",
             details_json=json.dumps(
-                {"policy_id": policy_id, "policy_version": policy["version"]}
+                {
+                    "policy_id": policy_id,
+                    "policy_version": policy["version"],
+                    "policy_title": policy["title"],
+                    "policy_kind": policy.get("kind", "policy"),
+                }
             ),
             ip_address=(request.client.host if request.client else None),
         )

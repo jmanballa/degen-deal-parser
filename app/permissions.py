@@ -77,6 +77,8 @@ RESOURCE_KEYS: List[str] = [
     # Wave C — announcements admin surface
     "admin.announcements.view",
     "admin.announcements.create",
+    "admin.policies.view",
+    "admin.policies.create",
     "page.admin.schedule",
 ]
 
@@ -127,6 +129,8 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "admin.payroll.view": "Admin · View payroll export",
     "admin.payroll.lock": "Admin · Lock payroll export window",
     "legacy.ops.view": "Legacy ops pages",
+    "admin.policies.view": "Admin - View policies management",
+    "admin.policies.create": "Admin - Create/archive policies",
     "admin.announcements.view": "Admin · View announcements management",
     "admin.announcements.create": "Admin · Create/archive announcements",
     "page.admin.schedule": "Admin · Schedule",
@@ -138,6 +142,7 @@ GROUP_ORDER: tuple[tuple[str, str], ...] = (
     ("widget", "Dashboard widgets"),
     ("action", "Actions"),
     ("admin", "Admin meta"),
+    ("legacy", "Legacy access"),
 )
 
 

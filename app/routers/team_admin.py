@@ -55,6 +55,7 @@ TEAM_ADMIN_NAV_SECTIONS: tuple[tuple[str, tuple[tuple[str, str, str, str], ...]]
             ("exceptions", "Exceptions", "/team/admin/exceptions", "admin.employees.view"),
             ("schedule", "Schedule", "/team/admin/schedule", "admin.schedule.view"),
             ("announcements", "Announcements", "/team/admin/announcements", "admin.announcements.view"),
+            ("policies", "Policies", "/team/admin/policies", "admin.policies.view"),
             ("invites", "Invites", "/team/admin/invites", "admin.invites.view"),
             ("supply", "Supply queue", "/team/admin/supply", "admin.supply.view"),
             ("time-off", "Time off", "/team/admin/timeoff", "admin.timeoff.view"),
