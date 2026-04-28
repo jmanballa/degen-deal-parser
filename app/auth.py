@@ -723,6 +723,20 @@ def consume_invite_token(
     now = utcnow()
     display = (preferred_name or "").strip() or normalized_username
 
+    token_result = session.exec(
+        update(InviteToken)
+        .where(
+            InviteToken.id == row.id,
+            InviteToken.used_at.is_(None),
+            InviteToken.expires_at > now,
+        )
+        .values(used_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    if int(token_result.rowcount or 0) != 1:
+        session.rollback()
+        raise ValueError("invite_token_invalid")
+
     # ---- Two paths: hydrate-existing (draft) vs create-new (classic) ----
     if row.target_user_id is not None:
         user = session.get(User, row.target_user_id)

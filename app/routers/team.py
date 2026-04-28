@@ -143,7 +143,11 @@ def _safe_next(value: Optional[str]) -> str:
     value = (value or "").strip()
     if not value:
         return ""
-    if value.startswith("/") and not value.startswith("//"):
+    if value.startswith("\\"):
+        return ""
+    if value.startswith("/") and not (
+        value.startswith("//") or (len(value) > 1 and value[1] == "\\")
+    ):
         return value
     return ""
 
@@ -151,6 +155,11 @@ def _safe_next(value: Optional[str]) -> str:
 def _password_changed_session_value(user: User) -> Optional[str]:
     changed_at = getattr(user, "password_changed_at", None)
     return changed_at.isoformat() if changed_at is not None else None
+
+
+def _session_invalidated_session_value(user: User) -> Optional[str]:
+    invalidated_at = getattr(user, "session_invalidated_at", None)
+    return invalidated_at.isoformat() if invalidated_at is not None else None
 
 
 @router.get("/team/login", response_class=HTMLResponse)
@@ -234,6 +243,7 @@ async def team_login_post(
 
     request.session["user_id"] = user.id
     request.session["password_changed_at"] = _password_changed_session_value(user)
+    request.session["session_invalidated_at"] = _session_invalidated_session_value(user)
     rotate_token(request)  # m1 — bind a fresh CSRF to the authenticated session
     if next_url:
         return RedirectResponse(next_url, status_code=303)
@@ -328,6 +338,7 @@ async def team_invite_accept_post(
         )
     request.session["user_id"] = user.id
     request.session["password_changed_at"] = _password_changed_session_value(user)
+    request.session["session_invalidated_at"] = _session_invalidated_session_value(user)
     rotate_token(request)
     redirect_url = "/team/?flash=Welcome+to+the+team!"
     if session.info.pop("invite_email_skipped_due_to_clash", False):
@@ -1677,7 +1688,7 @@ async def team_password_change_post(
             status_code=303,
         )
     try:
-        change_user_password(
+        user = change_user_password(
             session,
             user,
             current_password=current_password,
@@ -1712,6 +1723,9 @@ async def team_password_change_post(
             f"/team/password/change?error={quote_plus(message)}",
             status_code=303,
         )
+    request.session["password_changed_at"] = _password_changed_session_value(user)
+    request.session["session_invalidated_at"] = _session_invalidated_session_value(user)
+    rotate_token(request)
     return RedirectResponse(
         "/team/profile?flash=Password+updated.",
         status_code=303,

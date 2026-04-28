@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
+from sqlalchemy import update
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
@@ -388,6 +389,58 @@ class TeamTimeOffTests(unittest.TestCase):
         ).all()
         self.assertEqual(len(audits), 1)
         self.assertEqual(len(shifts), 2)
+
+    def test_stale_approval_loses_atomic_status_race(self):
+        from app.models import AuditLog, SHIFT_KIND_REQUEST, ShiftEntry, TimeOffRequest, utcnow
+        from app.routers import team_admin_timeoff
+
+        employee = self._seed_user(240)
+        admin = self._seed_user(241, role="admin", username="admin241")
+        winner = self._seed_user(242, role="admin", username="admin242")
+        row = self._seed_request(employee)
+
+        stale_session = Session(self.engine)
+        try:
+            stale_row = stale_session.get(TimeOffRequest, row.id)
+            self.assertEqual(stale_row.status, "submitted")
+            now = utcnow()
+            self.session.exec(
+                update(TimeOffRequest)
+                .where(TimeOffRequest.id == row.id)
+                .values(
+                    status="approved",
+                    approved_by_user_id=winner.id,
+                    status_changed_at=now,
+                    updated_at=now,
+                )
+            )
+            self.session.commit()
+
+            response = team_admin_timeoff._transition_timeoff(
+                stale_session,
+                request_id=row.id,
+                actor=admin,
+                new_status="approved",
+                action="timeoff.approved",
+            )
+            self.assertEqual(response.status_code, 409)
+        finally:
+            stale_session.close()
+
+        self.session.expire_all()
+        refreshed = self.session.get(TimeOffRequest, row.id)
+        self.assertEqual(refreshed.status, "approved")
+        self.assertEqual(refreshed.approved_by_user_id, winner.id)
+        audits = self.session.exec(
+            select(AuditLog).where(AuditLog.action == "timeoff.approved")
+        ).all()
+        shifts = self.session.exec(
+            select(ShiftEntry)
+            .where(ShiftEntry.user_id == employee.id)
+            .where(ShiftEntry.kind == SHIFT_KIND_REQUEST)
+        ).all()
+        self.assertEqual(audits, [])
+        self.assertEqual(shifts, [])
 
     def test_cannot_approve_denied_request(self):
         from app.models import AuditLog, TimeOffRequest

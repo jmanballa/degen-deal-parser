@@ -18,9 +18,11 @@ from __future__ import annotations
 import importlib
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from cryptography.fernet import Fernet
+from sqlalchemy import update
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
@@ -444,6 +446,57 @@ class ConsumeInviteForDraftTests(unittest.TestCase, _DraftHarness):
             email="person@example.com",
         )
         self.assertEqual(user.id, draft.id)
+
+    def test_stale_invite_row_cannot_hydrate_draft_after_atomic_use(self):
+        from app import auth
+        from app.models import InviteToken, User, utcnow
+
+        admin = self._login_as("admin")
+        draft = auth.create_draft_employee(
+            self.session,
+            created_by_user_id=admin.id,
+            legal_name="Race Target",
+        )
+        raw = auth.generate_invite_token(
+            self.session,
+            role="employee",
+            created_by_user_id=admin.id,
+            target_user_id=draft.id,
+        )
+        token_row = self.session.exec(
+            select(InviteToken).where(InviteToken.target_user_id == draft.id)
+        ).one()
+        self.session.exec(
+            update(InviteToken)
+            .where(InviteToken.id == token_row.id)
+            .values(used_at=utcnow())
+        )
+        self.session.commit()
+
+        stale_row = SimpleNamespace(
+            id=token_row.id,
+            target_user_id=draft.id,
+            role="employee",
+            email_hint=None,
+        )
+        with patch.object(auth, "_find_token_row", return_value=stale_row):
+            with self.assertRaises(ValueError) as cm:
+                auth.consume_invite_token(
+                    self.session,
+                    raw,
+                    new_username="race_winner",
+                    new_password="StrongPass9#xy",
+                )
+        self.assertEqual(str(cm.exception), "invite_token_invalid")
+
+        self.session.expire_all()
+        refreshed = self.session.get(User, draft.id)
+        self.assertFalse(refreshed.is_active)
+        self.assertEqual(refreshed.password_hash, "")
+        duplicate = self.session.exec(
+            select(User).where(User.username == "race_winner")
+        ).first()
+        self.assertIsNone(duplicate)
 
 
 class AdminDraftUITests(unittest.TestCase, _DraftHarness):

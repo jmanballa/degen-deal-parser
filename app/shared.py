@@ -3870,6 +3870,16 @@ def _password_session_is_stale(user: User, session_data: dict) -> bool:
     return session_stamp is None or changed_at > session_stamp
 
 
+def _session_invalidation_is_stale(user: User, session_data: dict) -> bool:
+    invalidated_at = _coerce_session_datetime(
+        getattr(user, "session_invalidated_at", None)
+    )
+    if invalidated_at is None:
+        return False
+    session_stamp = _coerce_session_datetime(session_data.get("session_invalidated_at"))
+    return session_stamp is None or invalidated_at > session_stamp
+
+
 def get_request_user(request: Request) -> Optional[User]:
     session_data = request.scope.get("session") or {}
     user_id = session_data.get("user_id")
@@ -3880,8 +3890,11 @@ def get_request_user(request: Request) -> Optional[User]:
     with managed_session() as session:
         user = session.get(User, user_id)
         if not user or not user.is_active:
+            session_data.clear()
             return None
-        if _password_session_is_stale(user, session_data):
+        if _password_session_is_stale(
+            user, session_data
+        ) or _session_invalidation_is_stale(user, session_data):
             session_data.clear()
             return None
         return user

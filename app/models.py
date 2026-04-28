@@ -465,6 +465,7 @@ class User(SQLModel, table=True):
     # which page (storefront grid vs stream grid) they'll appear in.
     staff_kind: str = Field(default=STAFF_KIND_STOREFRONT, index=True)
     password_changed_at: Optional[datetime] = Field(default=None, index=True)
+    session_invalidated_at: Optional[datetime] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow, index=True)
 

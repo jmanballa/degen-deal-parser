@@ -5,8 +5,10 @@ import json
 import os
 import re
 import unittest
+from contextlib import contextmanager
 from datetime import timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from cryptography.fernet import Fernet
 from sqlalchemy.pool import StaticPool
@@ -68,6 +70,14 @@ class EmployeeTokenRevocationTests(unittest.TestCase):
 
     def tearDown(self):
         self.session.close()
+
+    @contextmanager
+    def _managed_session_for_request_user(self):
+        session = Session(self.engine)
+        try:
+            yield session
+        finally:
+            session.close()
 
     def _request(self):
         return SimpleNamespace(
@@ -154,6 +164,36 @@ class EmployeeTokenRevocationTests(unittest.TestCase):
         self.session.expire_all()
         self.assertIsNotNone(self.session.get(PasswordResetToken, first.id).used_at)
         self.assertIsNotNone(self.session.get(PasswordResetToken, second.id).used_at)
+
+    def test_session_invalidation_timestamp_rejects_stale_active_cookie(self):
+        from app.models import User, utcnow
+        from app.shared import get_request_user
+
+        self.employee.session_invalidated_at = utcnow()
+        self.session.add(self.employee)
+        self.session.commit()
+        stale_cookie = {
+            "user_id": self.employee.id,
+            "password_changed_at": None,
+            "session_invalidated_at": None,
+        }
+
+        with patch("app.shared.managed_session", self._managed_session_for_request_user):
+            found = get_request_user(SimpleNamespace(scope={"session": stale_cookie}))
+
+        self.assertIsNone(found)
+        self.assertEqual(stale_cookie, {})
+        self.assertIsNotNone(self.session.get(User, self.employee.id).session_invalidated_at)
+
+    def test_terminate_sets_session_invalidation_timestamp(self):
+        from app.models import User
+
+        response = self._terminate()
+        self.assertEqual(response.status_code, 303)
+        self.session.expire_all()
+        user = self.session.get(User, self.employee.id)
+        self.assertFalse(user.is_active)
+        self.assertIsNotNone(user.session_invalidated_at)
 
     def test_terminate_does_not_touch_already_used_tokens(self):
         from app.models import InviteToken, utcnow

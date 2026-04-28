@@ -192,6 +192,7 @@ SQLITE_ADDITIVE_MIGRATIONS = {
         "is_schedulable": "BOOLEAN DEFAULT 0",
         "staff_kind": "TEXT DEFAULT 'storefront'",
         "password_changed_at": "TIMESTAMP",
+        "session_invalidated_at": "TIMESTAMP",
     },
     "streamers": {
         "user_id": "INTEGER",
@@ -280,6 +281,7 @@ SQLITE_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
     "CREATE INDEX IF NOT EXISTS idx_user_is_schedulable ON user (is_schedulable)",
     "CREATE INDEX IF NOT EXISTS idx_user_staff_kind ON user (staff_kind)",
+    "CREATE INDEX IF NOT EXISTS idx_user_session_invalidated_at ON user (session_invalidated_at)",
     "CREATE INDEX IF NOT EXISTS idx_streamers_user_id ON streamers (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_token_lookup_hmac ON invitetoken (token_lookup_hmac)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_target_user_id ON invitetoken (target_user_id)",
@@ -409,6 +411,7 @@ POSTGRES_ADDITIVE_MIGRATIONS = {
         "is_schedulable": "BOOLEAN DEFAULT FALSE",
         "staff_kind": "TEXT DEFAULT 'storefront'",
         "password_changed_at": "TIMESTAMP",
+        "session_invalidated_at": "TIMESTAMP",
     },
     "streamers": {
         "user_id": "INTEGER",
@@ -496,6 +499,7 @@ POSTGRES_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_stream_schedules_stream_account_id ON stream_schedules (stream_account_id)",
     'CREATE INDEX IF NOT EXISTS idx_user_is_schedulable ON "user" (is_schedulable)',
     'CREATE INDEX IF NOT EXISTS idx_user_staff_kind ON "user" (staff_kind)',
+    'CREATE INDEX IF NOT EXISTS idx_user_session_invalidated_at ON "user" (session_invalidated_at)',
     "CREATE INDEX IF NOT EXISTS idx_streamers_user_id ON streamers (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_token_lookup_hmac ON invitetoken (token_lookup_hmac)",
     "CREATE INDEX IF NOT EXISTS idx_invitetoken_target_user_id ON invitetoken (target_user_id)",

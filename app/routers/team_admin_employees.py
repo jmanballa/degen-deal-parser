@@ -2211,6 +2211,7 @@ async def admin_employee_terminate_post(
     now = utcnow()
     invite_revoked, reset_revoked = _revoke_employee_tokens(session, user_id, now)
     employee.is_active = False
+    employee.session_invalidated_at = now
     employee.updated_at = now
     profile = session.get(EmployeeProfile, user_id)
     if profile is not None:
@@ -2315,6 +2316,7 @@ async def admin_employee_purge_post(
         profile.updated_at = now
         session.add(profile)
     employee.is_active = False
+    employee.session_invalidated_at = now
     employee.username = f"purged+{employee.id}@anonymized.local"
     employee.password_hash = "__purged_password_hash__"
     employee.password_salt = "__purged_password_salt__"

@@ -687,6 +687,72 @@ class PasswordSessionInvalidationTests(unittest.TestCase, _Harness):
         self.assertIsNone(found)
         self.assertEqual(stale_session, {})
 
+    def test_password_change_route_refreshes_current_session_and_rotates_csrf(self):
+        from app.auth import hash_password
+        from app.csrf import SESSION_KEY
+        from app.models import User
+        from app.routers.team import team_password_change_post
+        from app.shared import get_request_user
+
+        old_password = "OldPassword1234!"
+        pwd_hash, pwd_salt = hash_password(old_password)
+        user = User(
+            id=8702,
+            username="current_session_rotate",
+            password_hash=pwd_hash,
+            password_salt=pwd_salt,
+            display_name="Current Session Rotate",
+            role="employee",
+            is_active=True,
+        )
+        self.session.add(user)
+        self.session.commit()
+        browser_session = {
+            "user_id": user.id,
+            "password_changed_at": None,
+            SESSION_KEY: "old-csrf-token",
+        }
+        request = SimpleNamespace(
+            state=SimpleNamespace(current_user=user),
+            scope={"session": browser_session},
+            session=browser_session,
+            headers={},
+            client=SimpleNamespace(host="testclient"),
+        )
+
+        response = asyncio.run(
+            team_password_change_post(
+                request,
+                current_password=old_password,
+                new_password="NewPassword5678!",
+                confirm_password="NewPassword5678!",
+                session=self.session,
+            )
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.session.expire_all()
+        refreshed = self.session.get(User, user.id)
+        self.assertEqual(
+            browser_session["password_changed_at"],
+            refreshed.password_changed_at.isoformat(),
+        )
+        self.assertNotEqual(browser_session[SESSION_KEY], "old-csrf-token")
+        with patch("app.shared.managed_session", self._managed_session_for_request_user):
+            found = get_request_user(SimpleNamespace(scope={"session": browser_session}))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.id, user.id)
+
+
+class SafeNextTests(unittest.TestCase):
+    def test_backslash_open_redirect_variants_are_rejected(self):
+        from app.routers.team import _safe_next
+
+        self.assertEqual(_safe_next("//evil.example"), "")
+        self.assertEqual(_safe_next("/\\evil.example"), "")
+        self.assertEqual(_safe_next("\\/evil.example"), "")
+        self.assertEqual(_safe_next("/team/profile"), "/team/profile")
+
 
 class ProfileSelfUpdateHardeningTests(unittest.TestCase, _Harness):
     def setUp(self): self._setup()

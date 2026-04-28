@@ -13,6 +13,7 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import update
 from sqlmodel import Session, func, select
 
 from ..csrf import issue_token, require_csrf
@@ -193,12 +194,28 @@ def _transition_timeoff(
         )
 
     now = utcnow()
-    row.status = new_status
-    row.approved_by_user_id = actor.id
-    row.status_changed_at = now
-    row.decision_notes = clean_notes
-    row.updated_at = now
-    session.add(row)
+    transition = session.exec(
+        update(TimeOffRequest)
+        .where(
+            TimeOffRequest.id == request_id,
+            TimeOffRequest.status == "submitted",
+        )
+        .values(
+            status=new_status,
+            approved_by_user_id=actor.id,
+            status_changed_at=now,
+            decision_notes=clean_notes,
+            updated_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if int(transition.rowcount or 0) != 1:
+        session.rollback()
+        return HTMLResponse(
+            "Time-off request has already been decided.",
+            status_code=409,
+        )
+    session.refresh(row)
 
     shift_entries_created = 0
     if new_status == "approved":

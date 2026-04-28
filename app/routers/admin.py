@@ -121,7 +121,10 @@ def admin_toggle_user(
     if user.username == settings.admin_username.strip().lower():
         return RedirectResponse(url="/admin/users?error=Cannot+disable+the+primary+admin+account", status_code=303)
     user.is_active = not user.is_active
-    user.updated_at = utcnow()
+    now = utcnow()
+    if not user.is_active:
+        user.session_invalidated_at = now
+    user.updated_at = now
     session.add(user)
     session.commit()
     action = "enabled" if user.is_active else "disabled"
