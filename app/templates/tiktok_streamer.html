@@ -109,6 +109,13 @@
             background: var(--bg-card);
             transition: all .2s;
         }
+        .order-count-prefix {
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+        }
         .badge-live {
             color: var(--text-muted);
             border-color: var(--border);
@@ -287,6 +294,14 @@
             color: var(--text-muted);
             margin-bottom: 6px;
         }
+        .gmv-subtext {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-top: 8px;
+            max-width: 340px;
+            line-height: 1.35;
+        }
         .gmv-value {
             font-size: clamp(36px, 7vw, 56px);
             font-weight: 900;
@@ -317,6 +332,15 @@
             letter-spacing: .1em;
             color: var(--text-muted);
             margin-top: 2px;
+        }
+        .gmv-stat-scope {
+            display: block;
+            font-size: 9px;
+            font-weight: 800;
+            color: var(--text-muted);
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            margin-bottom: 2px;
         }
         .gmv-live-stat { text-align: center; }
         .gmv-live-value {
@@ -367,12 +391,35 @@
         }
         .goal-edit-target { cursor: pointer; border-bottom: 1px dashed var(--text-muted); }
         .goal-edit-target:hover { color: var(--tiktok-cyan); border-color: var(--tiktok-cyan); }
+        .goal-inline-editor {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
         .goal-inline-input {
             background: var(--bg); border: 1px solid var(--border-glow); border-radius: 6px;
             color: var(--text); font-size: 11px; font-weight: 700; padding: 2px 6px;
             width: 70px; outline: none;
         }
         .goal-inline-input:focus { border-color: var(--tiktok-cyan); }
+        .goal-inline-btn {
+            appearance: none;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 2px 7px;
+            background: rgba(255,255,255,.08);
+            color: var(--text-secondary);
+            font: inherit;
+            font-size: 10px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .goal-inline-btn:hover { background: var(--bg-card-hover); color: var(--text); }
+        .goal-inline-save {
+            border-color: rgba(62,207,142,.35);
+            background: rgba(62,207,142,.16);
+            color: var(--green);
+        }
 
         /* ---- Velocity Sparkline ---- */
         .velocity-wrap {
@@ -582,6 +629,27 @@
         }
         .ts-revenue {
             font-size: 13px; font-weight: 800; color: var(--green);
+        }
+        .lb-card-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            margin-top: 7px;
+            padding: 3px 7px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.06);
+            color: var(--text-muted);
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+        .ts-card:hover .lb-card-action,
+        .tb-card:hover .lb-card-action,
+        .ts-card.active .lb-card-action,
+        .tb-card.active .lb-card-action {
+            color: var(--text);
+            background: rgba(254,44,85,.16);
         }
 
         /* ---- Top Buyers strip ---- */
@@ -795,6 +863,21 @@
             font-size: 12px; color: var(--text-muted); font-weight: 650;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             margin-top: 2px;
+        }
+        .row-mixed-chip {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            margin-bottom: 4px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(37, 244, 238, .12);
+            border: 1px solid rgba(37, 244, 238, .22);
+            color: var(--tiktok-cyan);
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .08em;
         }
         .row-sub {
             display: flex; align-items: center;
@@ -1425,9 +1508,10 @@
             letter-spacing: .08em; color: var(--text-muted);
             margin: 16px 0 6px;
             display: flex; align-items: center; justify-content: space-between;
+            gap: 10px;
         }
         .order-picker-search {
-            width: 180px; padding: 5px 8px; border-radius: 8px;
+            width: min(260px, 56vw); padding: 7px 10px; border-radius: 8px;
             border: 1px solid var(--border); background: rgba(255,255,255,.07);
             color: var(--text); font-size: 12px; font-family: inherit;
         }
@@ -1447,6 +1531,19 @@
         .order-pick-row:last-child { border-bottom: none; }
         .order-pick-row:hover { background: rgba(62,207,142,.1); }
         .order-pick-row.is-selected { background: rgba(62,207,142,.18); border-color: rgba(62,207,142,.3); }
+        .order-pick-row.is-selected .order-pick-product::after {
+            content: "Linked";
+            display: inline-flex;
+            margin-left: 8px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: rgba(62,207,142,.18);
+            color: var(--green);
+            font-size: 9px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
         .order-pick-thumb {
             width: 36px; height: 36px; border-radius: 8px;
             object-fit: cover; flex-shrink: 0; background: var(--bg);
@@ -1478,153 +1575,6 @@
             border-color: var(--green); background: var(--green); color: #fff;
         }
 
-        /* ---- Giveaway Panel ---- */
-        .giveaway-panel {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--card-radius);
-            margin-bottom: 14px;
-            overflow: hidden;
-        }
-        .giveaway-header {
-            display: flex; align-items: center; gap: 10px;
-            padding: 12px 16px; cursor: pointer; user-select: none;
-        }
-        .giveaway-header:hover { background: var(--bg-card-hover); }
-        .giveaway-header-icon { font-size: 18px; }
-        .giveaway-header-title {
-            font-size: 13px; font-weight: 800; letter-spacing: -.02em;
-            flex: 1;
-        }
-        .giveaway-header-chevron {
-            font-size: 14px; color: var(--text-muted);
-            transition: transform .2s;
-        }
-        .giveaway-panel.is-open .giveaway-header-chevron { transform: rotate(180deg); }
-        .giveaway-body {
-            max-height: 0; overflow: hidden;
-            transition: max-height .3s cubic-bezier(.4, 0, .2, 1);
-        }
-        .giveaway-panel.is-open .giveaway-body { max-height: 700px; }
-        .giveaway-body-inner { padding: 0 16px 16px; }
-        .giveaway-form-row {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-            margin-bottom: 10px;
-        }
-        .giveaway-form-full { grid-column: 1 / -1; }
-        .giveaway-label {
-            display: flex; flex-direction: column; gap: 4px;
-            font-size: 10px; font-weight: 800; text-transform: uppercase;
-            letter-spacing: .08em; color: var(--text-muted);
-        }
-        .giveaway-input {
-            width: 100%; padding: 8px 10px;
-            border-radius: 8px; border: 1px solid var(--border);
-            background: rgba(255,255,255,.07); color: var(--text);
-            font: inherit; font-size: 13px;
-        }
-        .giveaway-input:focus {
-            outline: none; border-color: var(--accent);
-            box-shadow: 0 0 0 2px var(--accent-glow);
-        }
-        .giveaway-input::placeholder { color: var(--text-muted); }
-        .giveaway-duration-row {
-            display: flex; gap: 6px; flex-wrap: wrap;
-        }
-        .giveaway-dur-btn {
-            appearance: none; border: 1px solid var(--border);
-            border-radius: 8px; padding: 6px 14px;
-            background: rgba(255,255,255,.06); color: var(--text-secondary);
-            font: inherit; font-size: 12px; font-weight: 700;
-            cursor: pointer; transition: all .15s;
-        }
-        .giveaway-dur-btn.active {
-            border-color: var(--accent); color: var(--accent);
-            background: rgba(254,44,85,.12);
-        }
-        .giveaway-dur-btn:hover:not(.active) { background: rgba(255,255,255,.1); }
-        .giveaway-actions {
-            display: flex; gap: 8px; margin-top: 12px; align-items: center;
-        }
-        .giveaway-start-btn {
-            appearance: none; border: none; border-radius: 10px;
-            padding: 10px 20px; font: inherit; font-size: 13px; font-weight: 800;
-            cursor: pointer;
-            background: linear-gradient(135deg, var(--tiktok-pink), #ff6b81);
-            color: #fff;
-            box-shadow: 0 6px 16px var(--accent-glow);
-            transition: filter .15s, opacity .15s;
-        }
-        .giveaway-start-btn:hover { filter: brightness(1.1); }
-        .giveaway-start-btn:disabled {
-            opacity: .4; cursor: not-allowed; filter: none;
-        }
-        .giveaway-cancel-btn {
-            appearance: none; border: 1px solid var(--border);
-            border-radius: 10px; padding: 10px 16px;
-            background: rgba(255,255,255,.08); color: var(--text);
-            font: inherit; font-size: 13px; font-weight: 700;
-            cursor: pointer; display: none;
-        }
-        .giveaway-cancel-btn:hover { background: rgba(255,255,255,.14); }
-        .giveaway-fallback-btn {
-            appearance: none; border: 1px solid var(--border);
-            border-radius: 10px; padding: 10px 16px;
-            background: rgba(255,255,255,.06); color: var(--text-secondary);
-            font: inherit; font-size: 12px; font-weight: 600;
-            cursor: pointer; text-decoration: none; display: none;
-        }
-        .giveaway-fallback-btn:hover { background: rgba(255,255,255,.12); }
-        .giveaway-status {
-            margin-top: 12px; display: none;
-        }
-        .giveaway-status.active { display: block; }
-        .giveaway-status-bar {
-            display: flex; align-items: center; gap: 8px;
-            padding: 10px 12px;
-            border-radius: 10px;
-            background: rgba(254,44,85,.08);
-            border: 1px solid rgba(254,44,85,.2);
-        }
-        .giveaway-status-bar.is-success {
-            background: rgba(62,207,142,.1);
-            border-color: rgba(62,207,142,.25);
-        }
-        .giveaway-status-bar.is-failed {
-            background: rgba(239,68,68,.1);
-            border-color: rgba(239,68,68,.25);
-        }
-        .giveaway-status-spinner {
-            width: 16px; height: 16px; border-radius: 50%;
-            border: 2px solid transparent;
-            border-top-color: var(--accent);
-            animation: ga-spin .8s linear infinite;
-        }
-        @keyframes ga-spin { to { transform: rotate(360deg); } }
-        .giveaway-status-text {
-            font-size: 12px; font-weight: 700; flex: 1;
-        }
-        .giveaway-status-step {
-            font-size: 11px; color: var(--text-muted); font-weight: 600;
-            white-space: nowrap;
-        }
-        .giveaway-screenshot-wrap {
-            margin-top: 8px; display: none;
-        }
-        .giveaway-screenshot-wrap.active { display: block; }
-        .giveaway-screenshot-wrap img {
-            width: 100%; border-radius: 8px;
-            border: 1px solid var(--border);
-            max-height: 180px; object-fit: cover;
-        }
-        .giveaway-history {
-            margin-top: 10px; font-size: 11px;
-            color: var(--text-muted);
-        }
-        .giveaway-history-item {
-            padding: 4px 0;
-            border-bottom: 1px solid rgba(255,255,255,.04);
-        }
     </style>
 </head>
 <body>
@@ -1669,8 +1619,9 @@
                         <span class="badge badge-streamer-name" id="streamer-name-badge" style="display:{% if current_streamer %}inline-flex{% else %}none{% endif %};">
                             &#x1F3A4; <span id="streamer-name-text">{{ current_streamer or '' }}</span>
                         </span>
-                        <span class="badge" style="color:var(--green);" id="order-count-badge">
-                            <span id="order-count">{% if creator_order_attribution not in ['time_window', 'live_products'] %}Feed{% else %}{{ total_count }}{% endif %}</span> <span id="order-count-unit">{% if creator_order_attribution not in ['time_window', 'live_products'] %}paused{% else %}orders{% endif %}</span>
+                        <span class="badge" style="color:var(--green);" id="order-count-badge" title="Orders currently loaded for the selected creator feed">
+                            <span class="order-count-prefix" id="order-count-prefix">Feed</span>
+                            <span id="order-count">{% if creator_order_attribution not in ['time_window', 'live_products'] %}paused{% else %}{{ total_count }}{% endif %}</span> <span id="order-count-unit">{% if creator_order_attribution not in ['time_window', 'live_products'] %}{% else %}orders{% endif %}</span>
                         </span>
                         <span class="badge badge-mute" id="mute-toggle" title="Toggle sound">
                             <span id="mute-icon">&#x1F50A;</span>
@@ -1722,28 +1673,31 @@
                 <div class="gmv-hero">
                     <div class="gmv-row">
                         <div class="gmv-main">
-                            <div class="gmv-label">Shop GMV Today</div>
+                            <div class="gmv-label">Today Shop GMV</div>
                             <div class="gmv-value" id="gmv-value">${{ "%.2f"|format(session_gmv) }}</div>
+                            <div class="gmv-subtext">All TikTok Shop paid order subtotals today, across every creator.</div>
                         </div>
                         <div class="gmv-stats">
                             <div class="gmv-live-stat" id="stream-gmv-wrap" style="display:none;">
-                                <div class="gmv-label" id="stream-gmv-label">Stream GMV</div>
+                                <div class="gmv-label" id="stream-gmv-label">Selected Stream GMV</div>
                                 <div class="gmv-live-value" id="stream-gmv-value">--</div>
                                 <div class="gmv-live-sub">
                                     <span><strong id="stream-items-sold">0</strong> items</span>
                                     <span><strong id="stream-orders">0</strong> orders</span>
                                 </div>
                                 <div class="gmv-live-sub" id="tiktok-gmv-row" style="display:none;">
-                                    <span style="color:var(--text-muted);font-size:10px;">TikTok: <strong id="tiktok-gmv-value" style="color:var(--green);">--</strong></span>
+                                    <span style="color:var(--text-muted);font-size:10px;">TikTok live: <strong id="tiktok-gmv-value" style="color:var(--green);">--</strong></span>
                                 </div>
                             </div>
                             <div class="gmv-stat">
+                                <span class="gmv-stat-scope">Today</span>
                                 <div class="gmv-stat-value" id="gmv-paid-count">{{ session_orders }}</div>
                                 <div class="gmv-stat-label">Paid Orders</div>
                             </div>
                             <div class="gmv-stat">
+                                <span class="gmv-stat-scope">Today</span>
                                 <div class="gmv-stat-value" id="gmv-total-count">{{ session_total_orders }}</div>
-                                <div class="gmv-stat-label">Total Orders</div>
+                                <div class="gmv-stat-label">All Orders</div>
                             </div>
                         </div>
                     </div>
@@ -1754,7 +1708,7 @@
                             <span class="goal-bar-amounts">
                                 <span class="goal-current" id="goal-current">$0</span>
                                 <span> / </span>
-                                <span class="goal-edit-target" id="goal-edit-target" title="Click to edit goal">$<span id="goal-target-text">0</span></span>
+                                <span class="goal-edit-target" id="goal-edit-target" title="Edit stream goal">$<span id="goal-target-text">0</span></span>
                             </span>
                         </div>
                         <div class="goal-bar-track">
@@ -1819,61 +1773,6 @@
                         <button class="tb-arrow tb-arrow-right" id="tb-arrow-right" aria-label="Scroll right">&#x276F;</button>
                     </div>
                     <div id="tb-detail-panel"></div>
-                </div>
-
-                <!-- Giveaway Panel (collapsible) -->
-                <div class="giveaway-panel" id="giveaway-panel">
-                    <div class="giveaway-header" id="giveaway-toggle">
-                        <span class="giveaway-header-icon">&#x1F381;</span>
-                        <span class="giveaway-header-title">Giveaway</span>
-                        <span class="giveaway-header-chevron">&#x25BE;</span>
-                    </div>
-                    <div class="giveaway-body">
-                        <div class="giveaway-body-inner">
-                            <div class="giveaway-form-row giveaway-form-full">
-                                <label class="giveaway-label">
-                                    Product Name
-                                    <input class="giveaway-input" id="ga-product" type="text" placeholder="Search product on TikTok...">
-                                </label>
-                            </div>
-                            <div class="giveaway-form-row">
-                                <label class="giveaway-label">
-                                    Winners
-                                    <input class="giveaway-input" id="ga-winners" type="number" min="1" max="50" value="1">
-                                </label>
-                                <label class="giveaway-label">
-                                    Keyword
-                                    <input class="giveaway-input" id="ga-keyword" type="text" value="giveaway" placeholder="Comment keyword">
-                                </label>
-                            </div>
-                            <div class="giveaway-form-row giveaway-form-full">
-                                <label class="giveaway-label">
-                                    Duration
-                                    <div class="giveaway-duration-row" id="ga-duration-row">
-                                        <button class="giveaway-dur-btn active" data-dur="5 min">5 min</button>
-                                        <button class="giveaway-dur-btn" data-dur="10 min">10 min</button>
-                                        <button class="giveaway-dur-btn" data-dur="15 min">15 min</button>
-                                    </div>
-                                </label>
-                            </div>
-                            <div class="giveaway-actions">
-                                <button class="giveaway-start-btn" id="ga-start-btn">Start Giveaway</button>
-                                <button class="giveaway-cancel-btn" id="ga-cancel-btn">Cancel</button>
-                                <a class="giveaway-fallback-btn" id="ga-fallback-btn" href="https://shop.tiktok.com/streamer/live/giveaway" target="_blank" rel="noopener">Open TikTok Giveaway &#x2197;</a>
-                            </div>
-                            <div class="giveaway-status" id="ga-status">
-                                <div class="giveaway-status-bar" id="ga-status-bar">
-                                    <div class="giveaway-status-spinner" id="ga-spinner"></div>
-                                    <span class="giveaway-status-text" id="ga-status-text">Initializing...</span>
-                                    <span class="giveaway-status-step" id="ga-status-step"></span>
-                                </div>
-                                <div class="giveaway-screenshot-wrap" id="ga-screenshot-wrap">
-                                    <img id="ga-screenshot-img" src="" alt="Agent view">
-                                </div>
-                            </div>
-                            <div class="giveaway-history" id="ga-history"></div>
-                        </div>
-                    </div>
                 </div>
 
                 <div class="toast-container" id="toast-container"></div>
@@ -1964,8 +1863,8 @@
             </div>
 
             <div class="order-picker-title">
-                <span>Link to Order</span>
-                <input class="order-picker-search" type="text" id="order-picker-search" placeholder="Search orders…">
+                <span>Link to Order <span style="color:var(--text-muted);font-weight:700;text-transform:none;letter-spacing:0;">tap one to attach</span></span>
+                <input class="order-picker-search" type="text" id="order-picker-search" placeholder="Search customer, order, product...">
             </div>
             <div class="order-picker" id="order-picker">
                 <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">Loading orders…</div>
@@ -2055,6 +1954,7 @@
         var toastContainer = document.getElementById('toast-container');
         var countEl = document.getElementById('order-count');
         var countUnitEl = document.getElementById('order-count-unit');
+        var countPrefixEl = document.getElementById('order-count-prefix');
         var gmvEl = document.getElementById('gmv-value');
         var gmvPaidEl = document.getElementById('gmv-paid-count');
         var gmvTotalEl = document.getElementById('gmv-total-count');
@@ -2114,6 +2014,12 @@
 
         function escAttr(str) {
             return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function displayBuyerName(name) {
+            var cleaned = String(name || '').trim();
+            if (!cleaned || !/[A-Za-z0-9]/.test(cleaned)) return 'Unknown buyer';
+            return cleaned;
         }
 
         /* ---- Top Sellers render + scroll ---- */
@@ -2188,6 +2094,7 @@
                     + (p.variant ? '<div class="ts-variant">' + esc(p.variant) + '</div>' : '')
                     + '<div class="ts-qty">' + p.qty + ' sold</div>'
                     + '<div class="ts-revenue">$' + p.revenue.toFixed(2) + '</div>'
+                    + '<div class="lb-card-action">Buyers &rsaquo;</div>'
                     + '</div>';
             });
             topSellersStrip.innerHTML = html;
@@ -2221,7 +2128,7 @@
             var html = '<div class="lb-detail-panel"><table><thead><tr>'
                 + '<th>Buyer</th><th>Qty</th></tr></thead><tbody>';
             buyers.forEach(function(b) {
-                html += '<tr><td>' + esc(b.name) + '</td><td>' + b.qty + '</td></tr>';
+                html += '<tr><td>' + esc(displayBuyerName(b.name)) + '</td><td>' + b.qty + '</td></tr>';
             });
             html += '</tbody></table></div>';
             tsDetailPanel.innerHTML = html;
@@ -2243,11 +2150,13 @@
             var reopenIdx = -1;
             buyers.forEach(function(b, i) {
                 if (prevKey && b.name === prevKey) reopenIdx = i;
+                var buyerName = displayBuyerName(b.name);
                 html += '<div class="tb-card" data-idx="' + i + '">'
                     + '<div class="tb-rank">#' + (i + 1) + '</div>'
-                    + '<div class="tb-name">' + esc(b.name) + '</div>'
+                    + '<div class="tb-name">' + esc(buyerName) + '</div>'
                     + '<div class="tb-orders">' + b.orders + ' order' + (b.orders !== 1 ? 's' : '') + '</div>'
                     + '<div class="tb-spent">$' + b.spent.toFixed(2) + '</div>'
+                    + '<div class="lb-card-action">Orders &rsaquo;</div>'
                     + '</div>';
             });
             topBuyersStrip.innerHTML = html;
@@ -2480,6 +2389,7 @@
             html += '<div class="order-row-main">';
             html += thumbHTML(firstItem, 'row-thumb', 'row-thumb-placeholder');
             html += '<div class="row-info">';
+            if (isMixedOrder) html += '<div class="row-mixed-chip">Mixed order</div>';
             html += '<div class="row-product-name">' + esc(productName) + '</div>';
             if (isMixedOrder) html += '<div class="row-multi-summary">' + esc(itemPreview) + '</div>';
             else if (firstItem && firstItem.variant) html += '<div class="row-variant">' + esc(firstItem.variant) + '</div>';
@@ -2569,9 +2479,10 @@
 
         function updateOrderCountBadge(count) {
             if (!countEl || !countUnitEl) return;
+            if (countPrefixEl) countPrefixEl.textContent = 'Feed';
             if (!hasPreciseCreatorOrders()) {
-                countEl.textContent = 'Feed';
-                countUnitEl.textContent = 'paused';
+                countEl.textContent = 'paused';
+                countUnitEl.textContent = '';
                 return;
             }
             countEl.textContent = count != null ? count : _orders.length;
@@ -2728,8 +2639,10 @@
 
         /* ---- Toasts ---- */
         function showToast(order, highValue, isVip) {
-            var firstItem = order.items && order.items.length > 0 ? order.items[0] : null;
-            var totalQty = (order.items || []).reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
+            var mergedItems = mergeItems(order.items || []);
+            var firstItem = mergedItems.length > 0 ? mergedItems[0] : (order.items && order.items.length > 0 ? order.items[0] : null);
+            var totalQty = mergedItems.reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
+            var isMixedOrder = mergedItems.length > 1;
             var el = document.createElement('div');
             var cls = 'toast';
             if (isVip) cls += ' toast-vip';
@@ -2746,10 +2659,17 @@
             if (isVip) label = '&#x1F451; VIP Buyer!';
             else if (highValue) label = '&#x1F525; Big Order!';
             html += '<div class="toast-label">' + label + '</div>';
-            html += '<div class="toast-title">' + esc(firstItem ? firstItem.title : 'Unknown item');
-            if (totalQty > 1) html += ' x' + totalQty;
-            html += '</div>';
-            if (firstItem && firstItem.variant) html += '<div class="toast-sub" style="color:var(--accent);font-weight:600;font-size:11px;margin-bottom:2px;">' + esc(firstItem.variant) + '</div>';
+            if (isMixedOrder) {
+                html += '<div class="toast-title">' + totalQty + ' items across ' + mergedItems.length + ' products</div>';
+                html += '<div class="toast-sub" style="color:var(--tiktok-cyan);font-weight:700;font-size:11px;margin-bottom:2px;">' + esc(mergedItems.slice(0, 3).map(function(item) {
+                    return item.title + ((item.quantity || 1) > 1 ? ' x' + item.quantity : '');
+                }).join(' + ')) + (mergedItems.length > 3 ? ' +' + (mergedItems.length - 3) + ' more' : '') + '</div>';
+            } else {
+                html += '<div class="toast-title">' + esc(firstItem ? firstItem.title : 'Unknown item');
+                if (totalQty > 1) html += ' x' + totalQty;
+                html += '</div>';
+                if (firstItem && firstItem.variant) html += '<div class="toast-sub" style="color:var(--accent);font-weight:600;font-size:11px;margin-bottom:2px;">' + esc(firstItem.variant) + '</div>';
+            }
             html += '<div class="toast-sub">' + esc(order.customer_name || 'Guest');
             if (isVip) html += ' <span class="toast-vip-badge">$' + (order.buyer_lifetime_spent || 0).toFixed(0) + ' lifetime</span>';
             html += ' &middot; $' + (order.total_price || 0).toFixed(2) + '</div>';
@@ -2841,76 +2761,88 @@
             wrap.style.display = 'block';
             var pct = _gmvGoal > 0 ? Math.min((currentGmv / _gmvGoal) * 100, 100) : 0;
             document.getElementById('goal-current').textContent = '$' + currentGmv.toFixed(0);
-            document.getElementById('goal-edit-target').innerHTML = goalTargetMarkup(_gmvGoal || 0);
+            var goalTarget = document.getElementById('goal-edit-target');
+            if (goalTarget) goalTarget.innerHTML = goalTargetMarkup(_gmvGoal || 0);
             var fill = document.getElementById('goal-bar-fill');
             fill.style.width = pct.toFixed(1) + '%';
             if (_gmvGoal > 0 && currentGmv >= _gmvGoal) fill.classList.add('reached');
             else fill.classList.remove('reached');
         }
 
-        (function initGoalEdit() {
-            var target = document.getElementById('goal-edit-target');
-            target.addEventListener('click', function() {
-                var current = _gmvGoal || 0;
-                var inp = document.createElement('input');
-                inp.className = 'goal-inline-input';
-                inp.type = 'number'; inp.min = '0'; inp.step = '100';
-                inp.value = current > 0 ? current : '';
-                inp.placeholder = 'e.g. 5000';
-                target.replaceWith(inp);
-                inp.focus();
-                function save() {
-                    var val = parseFloat(inp.value) || 0;
-                    _gmvGoal = val;
-                    fetch('/tiktok/streamer/goal', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ goal: val }),
-                    });
-                    var newTarget = document.createElement('span');
-                    newTarget.className = 'goal-edit-target';
-                    newTarget.id = 'goal-edit-target';
-                    newTarget.title = 'Click to edit goal';
-                    newTarget.innerHTML = goalTargetMarkup(val);
-                    inp.replaceWith(newTarget);
-                    initGoalEditOn(newTarget);
-                    updateGoalBar(_lastStreamGmv || 0);
-                }
-                inp.addEventListener('blur', save);
-                inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+        function makeGoalTarget(value) {
+            var target = document.createElement('span');
+            target.className = 'goal-edit-target';
+            target.id = 'goal-edit-target';
+            target.title = 'Edit stream goal';
+            target.innerHTML = goalTargetMarkup(value);
+            initGoalEditOn(target);
+            return target;
+        }
+
+        function finishGoalEdit(editor, value) {
+            editor.replaceWith(makeGoalTarget(value));
+            updateGoalBar(_lastStreamGmv || 0);
+        }
+
+        function saveGoalEdit(editor, input) {
+            var val = parseFloat(input.value) || 0;
+            _gmvGoal = val;
+            fetch('/tiktok/streamer/goal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ goal: val }),
             });
-        })();
+            finishGoalEdit(editor, val);
+        }
+
         function initGoalEditOn(el) {
             el.addEventListener('click', function() {
+                if (document.getElementById('goal-edit-editor')) return;
                 var current = _gmvGoal || 0;
+                var editor = document.createElement('span');
+                editor.className = 'goal-inline-editor';
+                editor.id = 'goal-edit-editor';
+
                 var inp = document.createElement('input');
                 inp.className = 'goal-inline-input';
-                inp.type = 'number'; inp.min = '0'; inp.step = '100';
+                inp.type = 'number';
+                inp.min = '0';
+                inp.step = '100';
                 inp.value = current > 0 ? current : '';
-                inp.placeholder = 'e.g. 5000';
-                el.replaceWith(inp);
+                inp.placeholder = '5000';
+
+                var saveBtn = document.createElement('button');
+                saveBtn.type = 'button';
+                saveBtn.className = 'goal-inline-btn goal-inline-save';
+                saveBtn.textContent = 'Save';
+
+                var cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'goal-inline-btn';
+                cancelBtn.textContent = 'Cancel';
+
+                editor.appendChild(inp);
+                editor.appendChild(saveBtn);
+                editor.appendChild(cancelBtn);
+                el.replaceWith(editor);
                 inp.focus();
-                function save() {
-                    var val = parseFloat(inp.value) || 0;
-                    _gmvGoal = val;
-                    fetch('/tiktok/streamer/goal', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ goal: val }),
-                    });
-                    var newTarget = document.createElement('span');
-                    newTarget.className = 'goal-edit-target';
-                    newTarget.id = 'goal-edit-target';
-                    newTarget.title = 'Click to edit goal';
-                    newTarget.innerHTML = goalTargetMarkup(val);
-                    inp.replaceWith(newTarget);
-                    initGoalEditOn(newTarget);
-                    updateGoalBar(_lastStreamGmv || 0);
-                }
-                inp.addEventListener('blur', save);
-                inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+
+                saveBtn.addEventListener('click', function() { saveGoalEdit(editor, inp); });
+                cancelBtn.addEventListener('click', function() { finishGoalEdit(editor, _gmvGoal || 0); });
+                inp.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        saveGoalEdit(editor, inp);
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        finishGoalEdit(editor, _gmvGoal || 0);
+                    }
+                });
             });
         }
+
+        var initialGoalTarget = document.getElementById('goal-edit-target');
+        if (initialGoalTarget) initGoalEditOn(initialGoalTarget);
         var _lastStreamGmv = 0;
 
         /* ---- Velocity Sparkline ---- */
@@ -3033,13 +2965,13 @@
                 streamOrdersEl.textContent = data.stream_orders || 0;
                 if (data.stream_metric_source === 'tiktok_live_session') {
                     var creatorLabel = data.selected_creator ? ' @' + data.selected_creator : '';
-                    streamGmvLabel.textContent = 'Stream GMV' + creatorLabel;
+                    streamGmvLabel.textContent = 'Selected Stream GMV' + creatorLabel;
                 } else if (data.stream_range_source === 'auto') {
-                    streamGmvLabel.textContent = 'Stream GMV (auto)';
+                    streamGmvLabel.textContent = 'Selected Stream GMV (auto)';
                 } else if (data.stream_range_source === 'schedule') {
-                    streamGmvLabel.textContent = 'Stream GMV (schedule)';
+                    streamGmvLabel.textContent = 'Selected Stream GMV (schedule)';
                 } else {
-                    streamGmvLabel.textContent = 'Stream GMV';
+                    streamGmvLabel.textContent = 'Selected Stream GMV';
                 }
             } else {
                 streamGmvWrap.style.display = 'none';
@@ -3342,9 +3274,10 @@
                     + '<div class="chat-empty-sub">Chat will reconnect when the next stream starts</div></div>';
             }
             if (status === 'disconnected' || status === 'error') {
+                var chatTarget = _selectedCreator ? ' for @' + _selectedCreator : '';
                 return '<div class="chat-empty"><div class="chat-empty-icon">&#x26A0;</div>'
                     + '<div class="chat-empty-text">Chat disconnected</div>'
-                    + '<div class="chat-empty-sub">Will attempt to reconnect automatically</div></div>';
+                    + '<div class="chat-empty-sub">Reconnecting automatically' + esc(chatTarget) + '. Orders will keep updating.</div></div>';
             }
             return '<div class="chat-empty"><div class="chat-empty-icon">&#x1F4AC;</div>'
                 + '<div class="chat-empty-text">Waiting for messages...</div></div>';
@@ -3552,6 +3485,28 @@
             return window.__streamerOrders || [];
         }
 
+        function mergePickerItems(items) {
+            var map = {};
+            var order = [];
+            (items || []).forEach(function(item) {
+                var key = String(item.title || 'Unknown item').toLowerCase().trim()
+                    + '||' + String(item.variant || '').toLowerCase().trim();
+                if (map[key]) {
+                    map[key].quantity += (item.quantity || 1);
+                } else {
+                    var row = {
+                        title: item.title || 'Unknown item',
+                        quantity: item.quantity || 1,
+                        sku_image: item.sku_image || null,
+                    };
+                    map[key] = row;
+                    order.push(row);
+                }
+                if (!map[key].sku_image && item.sku_image) map[key].sku_image = item.sku_image;
+            });
+            return order;
+        }
+
         function openModal() {
             backdrop.classList.add('is-open');
             _selectedOrderId = null;
@@ -3595,10 +3550,20 @@
             }
 
             orderPicker.innerHTML = filtered.map(function(o) {
-                var firstItem = (o.items && o.items[0]) || {};
+                var merged = mergePickerItems(o.items || []);
+                var firstItem = merged[0] || (o.items && o.items[0]) || {};
+                var totalQty = merged.reduce(function(s, it) { return s + (it.quantity || 1); }, 0);
                 var productName = firstItem.title || 'Unknown item';
-                var itemCount = (o.items || []).length;
-                var extra = itemCount > 1 ? (' + ' + (itemCount - 1) + ' more') : '';
+                var extra = '';
+                if (merged.length > 1) {
+                    productName = totalQty + ' items across ' + merged.length + ' products';
+                    extra = ' - ' + merged.slice(0, 2).map(function(it) {
+                        return it.title + ((it.quantity || 1) > 1 ? ' x' + it.quantity : '');
+                    }).join(' + ');
+                    if (merged.length > 2) extra += ' + ' + (merged.length - 2) + ' more';
+                } else if (totalQty > 1) {
+                    extra = ' x' + totalQty;
+                }
                 var thumbHtml = firstItem.sku_image
                     ? '<img class="order-pick-thumb" src="' + escHtml(firstItem.sku_image) + '" alt="" loading="lazy">'
                     : '<div class="order-pick-thumb-placeholder">&#x1F4E6;</div>';
@@ -3834,157 +3799,6 @@
     })();
     </script>
 
-    <!-- ===== Giveaway Panel JS ===== -->
-    <script>
-    (function() {
-        var gaPanel = document.getElementById('giveaway-panel');
-        var gaToggle = document.getElementById('giveaway-toggle');
-        var gaStartBtn = document.getElementById('ga-start-btn');
-        var gaCancelBtn = document.getElementById('ga-cancel-btn');
-        var gaFallbackBtn = document.getElementById('ga-fallback-btn');
-        var gaStatus = document.getElementById('ga-status');
-        var gaStatusBar = document.getElementById('ga-status-bar');
-        var gaSpinner = document.getElementById('ga-spinner');
-        var gaStatusText = document.getElementById('ga-status-text');
-        var gaStatusStep = document.getElementById('ga-status-step');
-        var gaScreenshotWrap = document.getElementById('ga-screenshot-wrap');
-        var gaScreenshotImg = document.getElementById('ga-screenshot-img');
-        var gaHistory = document.getElementById('ga-history');
-        var gaProduct = document.getElementById('ga-product');
-        var gaWinners = document.getElementById('ga-winners');
-        var gaKeyword = document.getElementById('ga-keyword');
-        var gaDurationRow = document.getElementById('ga-duration-row');
-
-        var _gaPolling = false;
-        var _gaPollTimer = null;
-        var _selectedDuration = '5 min';
-
-        gaToggle.addEventListener('click', function() {
-            gaPanel.classList.toggle('is-open');
-        });
-
-        gaDurationRow.addEventListener('click', function(e) {
-            var btn = e.target.closest('.giveaway-dur-btn');
-            if (!btn) return;
-            gaDurationRow.querySelectorAll('.giveaway-dur-btn').forEach(function(b) { b.classList.remove('active'); });
-            btn.classList.add('active');
-            _selectedDuration = btn.getAttribute('data-dur');
-        });
-
-        gaStartBtn.addEventListener('click', function() {
-            var product = gaProduct.value.trim();
-            if (!product) { gaProduct.focus(); return; }
-            var winners = parseInt(gaWinners.value) || 1;
-            var keyword = gaKeyword.value.trim() || 'giveaway';
-
-            gaStartBtn.disabled = true;
-            gaCancelBtn.style.display = 'inline-block';
-            gaFallbackBtn.style.display = 'none';
-            gaStatus.classList.add('active');
-            gaStatusBar.className = 'giveaway-status-bar';
-            gaSpinner.style.display = 'block';
-            gaStatusText.textContent = 'Starting giveaway...';
-            gaStatusStep.textContent = '';
-            gaScreenshotWrap.classList.remove('active');
-
-            fetch('/tiktok/streamer/giveaway/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    product_name: product,
-                    winners: winners,
-                    keyword: keyword,
-                    duration: _selectedDuration,
-                }),
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (!d.ok) {
-                    gaStatusText.textContent = d.error || 'Failed to start';
-                    gaStatusBar.classList.add('is-failed');
-                    gaSpinner.style.display = 'none';
-                    gaStartBtn.disabled = false;
-                    gaCancelBtn.style.display = 'none';
-                    gaFallbackBtn.style.display = 'inline-block';
-                    return;
-                }
-                startGaPoll();
-            })
-            .catch(function(err) {
-                gaStatusText.textContent = 'Network error: ' + err.message;
-                gaStatusBar.classList.add('is-failed');
-                gaSpinner.style.display = 'none';
-                gaStartBtn.disabled = false;
-                gaCancelBtn.style.display = 'none';
-                gaFallbackBtn.style.display = 'inline-block';
-            });
-        });
-
-        gaCancelBtn.addEventListener('click', function() {
-            fetch('/tiktok/streamer/giveaway/cancel', { method: 'POST' })
-                .then(function(r) { return r.json(); })
-                .then(function(d) {
-                    gaStatusText.textContent = 'Cancelled.';
-                    gaSpinner.style.display = 'none';
-                    gaStartBtn.disabled = false;
-                    gaCancelBtn.style.display = 'none';
-                    stopGaPoll();
-                })
-                .catch(function() {});
-        });
-
-        function startGaPoll() {
-            if (_gaPolling) return;
-            _gaPolling = true;
-            pollGaStatus();
-        }
-        function stopGaPoll() {
-            _gaPolling = false;
-            if (_gaPollTimer) { clearTimeout(_gaPollTimer); _gaPollTimer = null; }
-        }
-
-        function pollGaStatus() {
-            if (!_gaPolling) return;
-            fetch('/tiktok/streamer/giveaway/status')
-                .then(function(r) { return r.json(); })
-                .then(function(d) {
-                    gaStatusText.textContent = d.message || d.status;
-                    if (d.current_step > 0) {
-                        gaStatusStep.textContent = 'Step ' + d.current_step + '/' + d.max_steps;
-                    }
-                    if (d.has_screenshot && d.latest_screenshot_b64) {
-                        gaScreenshotImg.src = 'data:image/png;base64,' + d.latest_screenshot_b64;
-                        gaScreenshotWrap.classList.add('active');
-                    }
-
-                    if (d.status === 'running') {
-                        _gaPollTimer = setTimeout(pollGaStatus, 2000);
-                    } else {
-                        gaSpinner.style.display = 'none';
-                        gaStartBtn.disabled = false;
-                        gaCancelBtn.style.display = 'none';
-
-                        if (d.status === 'success') {
-                            gaStatusBar.classList.add('is-success');
-                        } else if (d.status === 'failed' || d.status === 'cancelled') {
-                            gaStatusBar.classList.add('is-failed');
-                            gaFallbackBtn.style.display = 'inline-block';
-                        }
-                        stopGaPoll();
-                        renderGaHistory(d.history_count);
-                    }
-                })
-                .catch(function() {
-                    _gaPollTimer = setTimeout(pollGaStatus, 4000);
-                });
-        }
-
-        function renderGaHistory(count) {
-            if (!count || count <= 0) { gaHistory.innerHTML = ''; return; }
-            gaHistory.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-top:10px;">Recent Giveaways: ' + count + '</div>';
-        }
-    })();
-    </script>
     {% include '_mobile_bottom_nav.html' %}
 </body>
 </html>
