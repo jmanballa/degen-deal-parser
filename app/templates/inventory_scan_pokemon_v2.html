@@ -151,7 +151,7 @@
 <body>
 <div class="scanner-app" id="scanner-app">
     <div class="top-bar">
-        <a class="top-bar-back" href="/inventory">&larr;</a>
+        <a class="top-bar-back" href="{% if team_shell %}/team/tools/degen-eye{% else %}/inventory{% endif %}">&larr;</a>
         <span class="top-bar-title">Degen Eye<span class="v2-badge">V2</span></span>
         <div class="mode-toggle" id="mode-toggle" role="tablist" aria-label="Capture mode">
             <button type="button" data-mode="tap" class="active" aria-pressed="true">Tap</button>

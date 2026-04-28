@@ -1,0 +1,129 @@
+{% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">Schedule changes, time-off decisions, and team updates.</div>
+{% endblock %}
+{% block content %}
+{% set rows = notifications|default([]) %}
+{% set anns = active_announcements|default([]) %}
+{% set timeoff = timeoff_rows|default([]) %}
+
+<div class="pt-two-col alt-wide">
+  <div>
+    <div class="pt-card">
+      <div class="pt-panel-head">
+        <div>
+          <div class="pt-card-title">Recent notifications</div>
+          <div class="pt-card-sub">Texts are sent when your phone is on file. Browser alerts work after you allow them on this device.</div>
+        </div>
+        <button class="pt-btn" id="pt-push-enable" type="button">Enable browser alerts</button>
+      </div>
+      {% if rows %}
+        <div class="pt-list-stack">
+          {% for note in rows %}
+            <a class="pt-list-row" href="{{ note.link_path }}">
+              <div>
+                <div class="pt-list-title">{{ note.title }}</div>
+                <div class="pt-list-sub">{{ note.body }}</div>
+                <div class="pt-card-sub" style="margin-top:5px;">
+                  {{ note.created_at.strftime('%b %d, %I:%M %p') }}
+                  {% if note.sms and note.sms.status %}
+                    - SMS {{ note.sms.delivery_status or note.sms.status }}
+                  {% endif %}
+                </div>
+              </div>
+              <span class="pt-chip">{{ note.kind|replace('_', ' ') }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="pt-empty-panel">No direct notifications yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="pt-card">
+      <div class="pt-card-title">SMS status</div>
+      <div class="pt-check-list compact" style="margin-top:12px;">
+        <a class="pt-check-row {% if sms_enabled %}done{% endif %}" href="/team/profile">
+          <span class="pt-check-icon">{% if sms_enabled %}OK{% else %}Fix{% endif %}</span>
+          <span>SMS phone number</span>
+        </a>
+        <div class="pt-check-row" id="pt-push-row">
+          <span class="pt-check-icon">Check</span>
+          <span>Browser alerts</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pt-card">
+      <div class="pt-card-title">Current announcements</div>
+      {% if anns %}
+        <div class="pt-list-stack">
+          {% for ann in anns %}
+            <a class="pt-list-row" href="/team/announcements">
+              <div>
+                <div class="pt-list-title">{{ ann.title }}</div>
+                <div class="pt-list-sub">{{ ann.body[:110] }}{% if ann.body|length > 110 %}...{% endif %}</div>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="pt-empty-panel">Nothing new right now.</div>
+      {% endif %}
+    </div>
+
+    <div class="pt-card">
+      <div class="pt-card-title">Time-off decisions</div>
+      {% if timeoff %}
+        <div class="pt-list-stack">
+          {% for row in timeoff %}
+            <a class="pt-list-row" href="/team/timeoff">
+              <div>
+                <div class="pt-list-title">{{ row.status|title }}</div>
+                <div class="pt-list-sub">{{ row.start_date.strftime('%b %d') }} - {{ row.end_date.strftime('%b %d') }}</div>
+              </div>
+              <span class="pt-pill {{ row.status }}">{{ row.status }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="pt-empty-panel">No approved or denied requests yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const btn = document.getElementById("pt-push-enable");
+    const row = document.getElementById("pt-push-row");
+    function render() {
+      if (!("Notification" in window)) {
+        if (row) row.innerHTML = '<span class="pt-check-icon">No</span><span>Browser alerts unavailable</span>';
+        if (btn) btn.disabled = true;
+        return;
+      }
+      const allowed = Notification.permission === "granted";
+      if (row) {
+        row.classList.toggle("done", allowed);
+        row.innerHTML = '<span class="pt-check-icon">' + (allowed ? "OK" : "Fix") + '</span><span>Browser alerts ' + Notification.permission + '</span>';
+      }
+      if (btn) btn.textContent = allowed ? "Browser alerts on" : "Enable browser alerts";
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        if (!("Notification" in window)) return;
+        Notification.requestPermission().then(function () {
+          render();
+          if (Notification.permission === "granted") {
+            new Notification("Degen Team alerts are on", { body: "You can receive alerts on this device while the portal is open." });
+          }
+        });
+      });
+    }
+    render();
+  })();
+</script>
+{% endblock %}

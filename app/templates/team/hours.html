@@ -7,17 +7,17 @@
 {% if not clockify_ready %}
 <div class="pt-card pt-hero" style="text-align:center; padding:48px 32px;">
     <div style="font-size:42px; margin-bottom:14px;">T</div>
-    <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">Clockify is not connected yet.</h2>
+    <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">Hours are being set up.</h2>
     <p class="pt-card-sub" style="max-width:520px; margin:0 auto;">
-        Your manager needs to add CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID before live hours can appear here.
+        If you worked this week and this still looks blank, tap Ask for help and your manager can check the connection.
     </p>
 </div>
 {% elif not clockify_user_id %}
 <div class="pt-card pt-hero" style="text-align:center; padding:48px 32px;">
     <div style="font-size:42px; margin-bottom:14px;">T</div>
-    <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">Your Clockify account is not linked yet.</h2>
+    <h2 class="pt-card-title" style="font-size:22px; margin-bottom:12px;">Your hours are not linked yet.</h2>
     <p class="pt-card-sub" style="max-width:520px; margin:0 auto;">
-        Ask a manager to run the Clockify email sync or paste your Clockify user ID into your employee profile.
+        Ask a manager to connect your Clockify account so your hours and estimated pay show here.
     </p>
 </div>
 {% elif clockify_error %}

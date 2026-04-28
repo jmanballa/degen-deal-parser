@@ -28,15 +28,18 @@
         updated {{ live.generated_at_label }} {{ live.timezone_name }}
     </div>
     {% if not configured %}
-    <p style="font-size:12px; color:var(--lx-muted); margin:10px 0 0;">Webhook cache can still display shifts. Manual refresh needs CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID.</p>
+    <div class="ta-flash warn" style="margin:10px 0 0;">Clockify is not fully connected. This page can show cached webhook shifts, but manual refresh needs CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID.</div>
     {% elif not can_refresh %}
     <p style="font-size:12px; color:var(--lx-muted); margin:10px 0 0;">Only admins can run a manual Clockify refresh.</p>
+    {% endif %}
+    {% if not counts.mapped %}
+    <div class="ta-flash warn" style="margin:10px 0 0;">No employees are mapped to Clockify yet. Link employees on the <a href="/team/admin/clockify" style="color:#fde68a; font-weight:700;">Clockify page</a> before trusting live shift status.</div>
     {% endif %}
 </div>
 
 <div class="ta-card">
-    <h2>Live pay tracker</h2>
-    <div style="display:grid; grid-template-columns:repeat(6, minmax(120px, 1fr)); gap:10px; margin-top:12px;">
+    <h2>{% if can_view_labor_financials %}Live pay tracker{% else %}Live shift tracker{% endif %}</h2>
+    <div style="display:grid; grid-template-columns:repeat({% if can_view_labor_financials %}6{% else %}4{% endif %}, minmax(120px, 1fr)); gap:10px; margin-top:12px;">
         <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
             <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Clocked in</div>
             <div style="font-size:24px; font-weight:750;">{{ pay_summary.clocked_in_count }}</div>
@@ -49,6 +52,14 @@
             <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Tracked today</div>
             <div style="font-size:24px; font-weight:750;">{{ pay_summary.tracked_hours_label }}</div>
         </div>
+        {% if not can_view_labor_financials %}
+        <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
+            <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Auto breaks</div>
+            <div style="font-size:24px; font-weight:750;">{{ pay_summary.auto_break_count }}</div>
+            <div style="font-size:11px; color:var(--lx-muted); margin-top:4px;">{{ pay_summary.auto_breaks_label }}</div>
+        </div>
+        {% endif %}
+        {% if can_view_labor_financials %}
         <div style="padding:12px; border-radius:8px; background:var(--lx-s2); border:1px solid var(--lx-br);">
             <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Hourly today</div>
             <div style="font-size:24px; font-weight:750;">{{ pay_summary.hourly_today_label }}</div>
@@ -61,11 +72,16 @@
             <div style="font-size:11px; color:var(--lx-muted); text-transform:uppercase;">Total today</div>
             <div style="font-size:24px; font-weight:750;">{{ pay_summary.total_today_label }}</div>
         </div>
+        {% endif %}
     </div>
     <p style="font-size:12px; color:var(--lx-muted); margin:12px 0 0;">
+        {% if can_view_labor_financials %}
         {{ pay_summary.basis_label }}. {{ pay_summary.salaried_count }} salaried, {{ pay_summary.hourly_count }} hourly, {{ pay_summary.unpaid_count }} unpaid.
         {% if pay_summary.missing_hourly_rate_count or pay_summary.missing_salary_count %}
         Missing rates: {{ pay_summary.missing_hourly_rate_count }} hourly, {{ pay_summary.missing_salary_count }} salary.
+        {% endif %}
+        {% else %}
+        {{ pay_summary.basis_label }}.
         {% endif %}
     </p>
 </div>
@@ -74,7 +90,7 @@
     <div style="padding:18px 22px 12px;">
         <h2>Current shifts</h2>
         <p style="font-size:13px; color:var(--lx-muted); margin:0;">
-            Clock-in status, elapsed time, breaks, and today's cached labor cost for mapped Clockify employees.
+            Clock-in status, elapsed time, and breaks for mapped Clockify employees{% if can_view_labor_financials %}, including today's cached labor cost{% endif %}.
         </p>
     </div>
     {% if not counts.mapped %}
@@ -90,8 +106,10 @@
                     <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Working for</th>
                     <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Today total</th>
                     <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Break</th>
+                    {% if can_view_labor_financials %}
                     <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Pay type</th>
                     <th style="padding:10px 14px; border-top:1px solid var(--lx-br); border-bottom:1px solid var(--lx-br);">Labor today</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -115,12 +133,14 @@
                     <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.running_duration_label }}</td>
                     <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.today_total_label }}</td>
                     <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br); color:{{ row.break_color }};">{{ row.break_label }}</td>
+                    {% if can_view_labor_financials %}
                     <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.pay_type_label }}</td>
                     <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);">{{ row.labor_cost_label }}</td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
                 {% if not live.rows %}
-                <tr><td colspan="8" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No cached shift data yet.</td></tr>
+                <tr><td colspan="{% if can_view_labor_financials %}8{% else %}6{% endif %}" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No cached shift data yet.</td></tr>
                 {% endif %}
             </tbody>
         </table>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -177,13 +177,16 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
         self.assertEqual(client.entry_calls, 0)
 
     def test_page_fetches_hours_when_explicitly_requested(self):
+        monday = date.today() - timedelta(days=date.today().weekday())
+        start_utc = datetime.combine(monday, time(16, 0), tzinfo=timezone.utc)
+        end_utc = start_utc + timedelta(hours=2)
         entries = [
             {
                 "id": "entry-1",
                 "description": "Open",
                 "timeInterval": {
-                    "start": "2026-04-20T16:00:00Z",
-                    "end": "2026-04-20T18:00:00Z",
+                    "start": start_utc.isoformat().replace("+00:00", "Z"),
+                    "end": end_utc.isoformat().replace("+00:00", "Z"),
                 },
             }
         ]

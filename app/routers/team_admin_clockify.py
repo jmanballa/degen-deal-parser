@@ -34,7 +34,7 @@ from ..clockify import (
     parse_clockify_datetime,
     parse_iso_duration_seconds,
 )
-from ..auth import is_draft_user
+from ..auth import has_permission, is_draft_user
 from ..config import get_settings
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
@@ -77,6 +77,8 @@ CLOCKIFY_NAME_OVERRIDES = {
 _CLOCKIFY_WEEK_CACHE: dict[tuple[str, date], tuple[float, ClockifyWeekSummary]] = {}
 _CLOCKIFY_WEEK_CACHE_TTL_SECONDS = 60.0
 _BREAK_KEYWORDS = ("break", "lunch", "meal", "rest")
+MISSED_BREAK_THRESHOLD_SECONDS = 5 * 3600
+MISSED_BREAK_DEDUCTION_SECONDS = 30 * 60
 _LABOR_STATS_DEFAULT_RANGE = "this_week"
 _LABOR_STATS_MAX_DAYS = 366
 _LABOR_STATS_PRESETS = (
@@ -117,6 +119,26 @@ _PAYROLL_EXPORT_HEADERS = (
     "Notes",
 )
 _LABOR_SHIFT_KINDS = {SHIFT_KIND_WORK, SHIFT_KIND_ALL}
+
+
+def _apply_missed_break_deduction(
+    work_seconds: int,
+    break_seconds: int,
+) -> tuple[int, int, int]:
+    """Treat long no-break Clockify days as a missed 30-minute break clock-out."""
+    work_seconds = max(0, int(work_seconds or 0))
+    break_seconds = max(0, int(break_seconds or 0))
+    if work_seconds <= MISSED_BREAK_THRESHOLD_SECONDS or break_seconds > 0:
+        return work_seconds, break_seconds, 0
+    deduction = min(MISSED_BREAK_DEDUCTION_SECONDS, work_seconds)
+    return max(0, work_seconds - deduction), break_seconds + deduction, deduction
+
+
+def _format_break_hours_label(break_seconds: int, auto_break_seconds: int = 0) -> str:
+    label = format_hours(break_seconds)
+    if auto_break_seconds > 0:
+        label = f"{label} ({format_hours(auto_break_seconds)} auto)"
+    return label
 
 
 def _mask_id(value: str) -> str:
@@ -908,9 +930,13 @@ def build_clockify_live_status(
     employee_rows: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Build current Clockify timer status for mapped portal employees."""
-    day = today or date.today()
-    start_local, end_local = _clockify_day_bounds(day, settings=settings)
     now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    if today is not None:
+        day = today
+    else:
+        week_start_local, _ = clockify_week_bounds(now_utc.date(), settings=settings)
+        day = now_utc.astimezone(week_start_local.tzinfo).date()
+    start_local, end_local = _clockify_day_bounds(day, settings=settings)
     rows: list[dict[str, Any]] = []
     employees = employee_rows if employee_rows is not None else _employee_rows(session)
     eligible_rows = [row for row in employees if row.get("profile")]
@@ -955,6 +981,7 @@ def build_clockify_live_status(
             "error": "",
             "today_total_seconds": 0,
             "break_seconds": 0,
+            "missed_break_deduction_seconds": 0,
             "running_seconds": 0,
             "pay_type_label": "Not paid",
             "labor_cost_label": "$0.00",
@@ -1002,10 +1029,18 @@ def build_clockify_live_status(
             for entry in summary.entries
             if not _clockify_entry_is_break(entry)
         )
-        break_taken = any(entry.duration_seconds > 0 for entry in break_entries)
+        recorded_break_taken = any(entry.duration_seconds > 0 for entry in break_entries)
+        if break_entries and break_seconds <= 0:
+            missed_break_deduction = 0
+        else:
+            work_seconds, break_seconds, missed_break_deduction = (
+                _apply_missed_break_deduction(work_seconds, break_seconds)
+            )
+        break_taken = recorded_break_taken or missed_break_deduction > 0
         running_is_break = bool(running_entry and _clockify_entry_is_break(running_entry))
         base["today_total_seconds"] = work_seconds
         base["break_seconds"] = break_seconds
+        base["missed_break_deduction_seconds"] = missed_break_deduction
         base["today_total_label"] = format_hours(work_seconds)
         base["entry_count"] = len(summary.entries)
 
@@ -1024,21 +1059,33 @@ def build_clockify_live_status(
                 base["status"] = "Clocked in"
                 base["status_key"] = "clocked_in"
                 base["status_color"] = "#86efac"
-                base["break_label"] = (
-                    f"Taken ({format_hours(break_seconds)})"
-                    if break_taken
-                    else "No break yet"
-                )
-                base["break_color"] = "#86efac" if break_taken else "var(--lx-muted)"
+                if missed_break_deduction:
+                    base["break_label"] = (
+                        f"Auto-deducted {format_hours(missed_break_deduction)}"
+                    )
+                    base["break_color"] = "#facc15"
+                else:
+                    base["break_label"] = (
+                        f"Taken ({format_hours(break_seconds)})"
+                        if break_taken
+                        else "No break yet"
+                    )
+                    base["break_color"] = "#86efac" if break_taken else "var(--lx-muted)"
                 base["rank"] = 1
         elif summary.total_seconds > 0:
             base["status"] = "Clocked out"
             base["status_key"] = "clocked_out"
             base["status_color"] = "var(--lx-text)"
-            base["break_label"] = (
-                f"Taken ({format_hours(break_seconds)})" if break_taken else "No break"
-            )
-            base["break_color"] = "#86efac" if break_taken else "var(--lx-muted)"
+            if missed_break_deduction:
+                base["break_label"] = (
+                    f"Auto-deducted {format_hours(missed_break_deduction)}"
+                )
+                base["break_color"] = "#facc15"
+            else:
+                base["break_label"] = (
+                    f"Taken ({format_hours(break_seconds)})" if break_taken else "No break"
+                )
+                base["break_color"] = "#86efac" if break_taken else "var(--lx-muted)"
             base["rank"] = 3
 
         rows.append(base)
@@ -1174,8 +1221,109 @@ def build_shift_tracker_pay_summary(
         "unpaid_count": unpaid_count,
         "missing_salary_count": missing_salary_count,
         "missing_hourly_rate_count": missing_hourly_rate_count,
-        "basis_label": "Webhook cache for hourly timers + daily salary accrual",
+        "basis_label": (
+            "Webhook cache for hourly timers + daily salary accrual; auto 30m "
+            "break deduction after 5h with no break"
+        ),
     }
+
+
+def _build_shift_tracker_operational_summary(live: dict[str, Any]) -> dict[str, Any]:
+    clocked_in_count = 0
+    on_break_count = 0
+    total_seconds = 0
+    auto_break_seconds = 0
+    for row in live.get("rows", []):
+        if row.get("status_key") == "clocked_in":
+            clocked_in_count += 1
+        elif row.get("status_key") == "on_break":
+            on_break_count += 1
+        total_seconds += int(row.get("today_total_seconds") or 0)
+        auto_break_seconds += int(row.get("missed_break_deduction_seconds") or 0)
+    return {
+        "clocked_in_count": clocked_in_count,
+        "on_break_count": on_break_count,
+        "tracked_hours_label": format_hours(total_seconds),
+        "auto_breaks_label": format_hours(auto_break_seconds),
+        "auto_break_count": sum(
+            1
+            for row in live.get("rows", [])
+            if int(row.get("missed_break_deduction_seconds") or 0) > 0
+        ),
+        "basis_label": (
+            "Clockify webhook cache; no-break days over 5h auto-deduct 30m"
+        ),
+    }
+
+
+def _redact_labor_financials(stats: dict[str, Any]) -> dict[str, Any]:
+    """Remove compensation/cost labels from a labor stats payload."""
+    stats = dict(stats)
+    for key in (
+        "hourly_cents",
+        "salary_cents",
+        "total_cents",
+        "missing_hourly_rate_count",
+        "missing_salary_count",
+        "hourly_people_count",
+        "salary_people_count",
+        "unpaid_people_count",
+    ):
+        stats[key] = 0
+    for key in (
+        "hourly_label",
+        "salary_label",
+        "total_label",
+        "effective_rate_label",
+    ):
+        stats[key] = "-"
+    stats["basis_label"] = (
+        "Actual Clockify work entries with break deductions applied"
+    )
+    week_estimate = dict(stats.get("week_estimate") or {})
+    for key in (
+        "hourly_to_date_cents",
+        "salary_week_cents",
+        "total_cents",
+    ):
+        week_estimate[key] = 0
+    for key in (
+        "hourly_to_date_label",
+        "salary_week_label",
+        "total_label",
+    ):
+        week_estimate[key] = "-"
+    week_estimate["basis_label"] = ""
+    stats["week_estimate"] = week_estimate
+    daily_rows = []
+    for row in stats.get("daily_rows", []):
+        redacted = dict(row)
+        for key in ("hourly_cents", "salary_cents", "total_cents"):
+            redacted[key] = 0
+        for key in ("hourly_label", "salary_label", "total_label", "share_label"):
+            redacted[key] = "-"
+        daily_rows.append(redacted)
+    stats["daily_rows"] = daily_rows
+    employee_rows = []
+    for row in stats.get("employee_rows", []):
+        redacted = dict(row)
+        for key in ("hourly_cents", "salary_cents_total", "total_cents"):
+            redacted[key] = 0
+        for key in (
+            "pay_type_label",
+            "rate_label",
+            "salary_label",
+            "hourly_label",
+            "salary_cost_label",
+            "total_label",
+            "share_label",
+        ):
+            redacted[key] = "-"
+        redacted["missing_rate"] = False
+        redacted["missing_salary"] = False
+        employee_rows.append(redacted)
+    stats["employee_rows"] = employee_rows
+    return stats
 
 
 def _parse_boolish(value: Optional[str], *, default: bool = False) -> bool:
@@ -1432,6 +1580,7 @@ def _blank_labor_day(day: date) -> dict[str, Any]:
         "day_label": _format_labor_date(day),
         "work_seconds": 0,
         "break_seconds": 0,
+        "missed_break_deduction_seconds": 0,
         "hourly_cents": 0,
         "salary_cents": 0,
         "total_cents": 0,
@@ -1471,6 +1620,7 @@ def _blank_labor_employee_row(
         else "-",
         "work_seconds": 0,
         "break_seconds": 0,
+        "missed_break_deduction_seconds": 0,
         "hourly_cents": 0,
         "salary_cents_total": 0,
         "total_cents": 0,
@@ -1493,7 +1643,13 @@ def _finalize_labor_rows(
     for row in daily_rows:
         row["total_cents"] = row["hourly_cents"] + row["salary_cents"]
         row["work_hours_label"] = format_hours(row["work_seconds"])
-        row["break_hours_label"] = format_hours(row["break_seconds"])
+        row["missed_break_deduction_label"] = format_hours(
+            row.get("missed_break_deduction_seconds") or 0
+        )
+        row["break_hours_label"] = _format_break_hours_label(
+            row["break_seconds"],
+            row.get("missed_break_deduction_seconds") or 0,
+        )
         row["hourly_label"] = _format_money_label(row["hourly_cents"])
         row["salary_label"] = _format_money_label(row["salary_cents"])
         row["total_label"] = _format_money_label(row["total_cents"])
@@ -1502,7 +1658,13 @@ def _finalize_labor_rows(
     for row in employee_rows:
         row["total_cents"] = row["hourly_cents"] + row["salary_cents_total"]
         row["work_hours_label"] = format_hours(row["work_seconds"])
-        row["break_hours_label"] = format_hours(row["break_seconds"])
+        row["missed_break_deduction_label"] = format_hours(
+            row.get("missed_break_deduction_seconds") or 0
+        )
+        row["break_hours_label"] = _format_break_hours_label(
+            row["break_seconds"],
+            row.get("missed_break_deduction_seconds") or 0,
+        )
         row["hourly_label"] = _format_money_label(row["hourly_cents"])
         row["salary_cost_label"] = _format_money_label(row["salary_cents_total"])
         row["total_label"] = _format_money_label(row["total_cents"])
@@ -1524,6 +1686,7 @@ def _labor_stats_core(
     settings=None,
     employee_rows: Optional[list[dict[str, Any]]] = None,
     include_inactive: bool = False,
+    include_financials: bool = True,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     employees = (
@@ -1541,14 +1704,18 @@ def _labor_stats_core(
         if isinstance(row.get("user"), User)
         and isinstance(row.get("profile"), EmployeeProfile)
     ]
-    histories_by_user = compensation_history_rows_for_users(
-        session,
-        [
-            row["user"].id
-            for row in eligible_rows
-            if isinstance(row.get("user"), User) and row["user"].id is not None
-        ],
-        end_day=end_day,
+    histories_by_user = (
+        compensation_history_rows_for_users(
+            session,
+            [
+                row["user"].id
+                for row in eligible_rows
+                if isinstance(row.get("user"), User) and row["user"].id is not None
+            ],
+            end_day=end_day,
+        )
+        if include_financials
+        else {}
     )
     mapped_rows = [
         row
@@ -1579,6 +1746,7 @@ def _labor_stats_core(
     total_salary_cents = 0
     total_work_seconds = 0
     total_break_seconds = 0
+    total_missed_break_deduction_seconds = 0
     active_timer_count = 0
     missing_hourly_rate_count = 0
     missing_salary_count = 0
@@ -1586,6 +1754,11 @@ def _labor_stats_core(
     hourly_people_count = 0
     unpaid_people_count = 0
     latest_cache_at: Optional[datetime] = None
+    employee_day_totals: dict[tuple[str, date], dict[str, int]] = {}
+    employee_day_meta: dict[
+        tuple[str, date],
+        tuple[dict[str, Any], dict[str, Any], EmployeeProfile, list[Any]],
+    ] = {}
 
     for source_row in eligible_rows:
         user = source_row["user"]
@@ -1593,65 +1766,67 @@ def _labor_stats_core(
         clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
         employee_key = clockify_user_id or f"user:{user.id}"
         history_rows = histories_by_user.get(user.id or 0, [])
-        current_snapshot = compensation_snapshot_for_day(
-            profile,
-            end_day,
-            history_rows=history_rows,
-        )
         row = _blank_labor_employee_row(user, profile, clockify_user_id)
-        row["compensation_type"] = current_snapshot["compensation_type"]
-        row["pay_type_label"] = COMPENSATION_TYPE_LABELS.get(
-            row["compensation_type"], "Hourly"
-        )
-        row["hourly_rate_cents"] = current_snapshot["hourly_rate_cents"] or 0
-        row["salary_cents"] = current_snapshot["monthly_salary_cents"] or 0
-        row["rate_label"] = _format_rate_label(row["hourly_rate_cents"])
-        row["salary_label"] = (
-            _format_money_label(row["salary_cents"]) if row["salary_cents"] else "-"
-        )
-        row["missing_rate"] = (
-            row["compensation_type"] == COMPENSATION_TYPE_HOURLY
-            and current_snapshot["hourly_rate_cents"] is None
-        )
-        row["missing_salary"] = (
-            row["compensation_type"] == COMPENSATION_TYPE_MONTHLY
-            and current_snapshot["monthly_salary_cents"] is None
-        )
-        compensation_type = row["compensation_type"]
         employee_stats[employee_key] = row
 
-        if compensation_type == COMPENSATION_TYPE_UNPAID:
-            unpaid_people_count += 1
-        elif compensation_type == COMPENSATION_TYPE_HOURLY:
-            hourly_people_count += 1
-            if row["missing_rate"]:
-                missing_hourly_rate_count += 1
-        elif compensation_type == COMPENSATION_TYPE_MONTHLY:
-            salary_people_count += 1
-            if row["missing_salary"]:
-                missing_salary_count += 1
-        day_cursor = start_day
-        while day_cursor <= end_day:
-            day_snapshot = compensation_snapshot_for_day(
+        if include_financials:
+            current_snapshot = compensation_snapshot_for_day(
                 profile,
-                day_cursor,
+                end_day,
                 history_rows=history_rows,
             )
-            if day_snapshot["compensation_type"] == COMPENSATION_TYPE_MONTHLY:
-                salary_cents = day_snapshot["monthly_salary_cents"]
-                if salary_cents:
-                    salary_cost = _labor_salary_cost_for_day(
-                        salary_cents=int(salary_cents),
-                        user=user,
-                        profile=profile,
-                        day=day_cursor,
-                        include_inactive=include_inactive,
-                    )
-                    if salary_cost:
-                        row["salary_cents_total"] += salary_cost
-                        daily_by_day[day_cursor]["salary_cents"] += salary_cost
-                        total_salary_cents += salary_cost
-            day_cursor += timedelta(days=1)
+            row["compensation_type"] = current_snapshot["compensation_type"]
+            row["pay_type_label"] = COMPENSATION_TYPE_LABELS.get(
+                row["compensation_type"], "Hourly"
+            )
+            row["hourly_rate_cents"] = current_snapshot["hourly_rate_cents"] or 0
+            row["salary_cents"] = current_snapshot["monthly_salary_cents"] or 0
+            row["rate_label"] = _format_rate_label(row["hourly_rate_cents"])
+            row["salary_label"] = (
+                _format_money_label(row["salary_cents"]) if row["salary_cents"] else "-"
+            )
+            row["missing_rate"] = (
+                row["compensation_type"] == COMPENSATION_TYPE_HOURLY
+                and current_snapshot["hourly_rate_cents"] is None
+            )
+            row["missing_salary"] = (
+                row["compensation_type"] == COMPENSATION_TYPE_MONTHLY
+                and current_snapshot["monthly_salary_cents"] is None
+            )
+            compensation_type = row["compensation_type"]
+
+            if compensation_type == COMPENSATION_TYPE_UNPAID:
+                unpaid_people_count += 1
+            elif compensation_type == COMPENSATION_TYPE_HOURLY:
+                hourly_people_count += 1
+                if row["missing_rate"]:
+                    missing_hourly_rate_count += 1
+            elif compensation_type == COMPENSATION_TYPE_MONTHLY:
+                salary_people_count += 1
+                if row["missing_salary"]:
+                    missing_salary_count += 1
+            day_cursor = start_day
+            while day_cursor <= end_day:
+                day_snapshot = compensation_snapshot_for_day(
+                    profile,
+                    day_cursor,
+                    history_rows=history_rows,
+                )
+                if day_snapshot["compensation_type"] == COMPENSATION_TYPE_MONTHLY:
+                    salary_cents = day_snapshot["monthly_salary_cents"]
+                    if salary_cents:
+                        salary_cost = _labor_salary_cost_for_day(
+                            salary_cents=int(salary_cents),
+                            user=user,
+                            profile=profile,
+                            day=day_cursor,
+                            include_inactive=include_inactive,
+                        )
+                        if salary_cost:
+                            row["salary_cents_total"] += salary_cost
+                            daily_by_day[day_cursor]["salary_cents"] += salary_cost
+                            total_salary_cents += salary_cost
+                day_cursor += timedelta(days=1)
 
         for entry in entries_by_clockify.get(clockify_user_id, []):
             cache_at = _as_utc(entry.updated_at or entry.received_at)
@@ -1677,31 +1852,88 @@ def _labor_stats_core(
                 day_row = daily_by_day.get(day_key)
                 if day_row is None:
                     continue
+                day_total_key = (employee_key, day_key)
+                day_totals = employee_day_totals.setdefault(
+                    day_total_key,
+                    {"work_seconds": 0, "break_seconds": 0},
+                )
+                employee_day_meta[day_total_key] = (
+                    row,
+                    day_row,
+                    profile,
+                    history_rows,
+                )
                 day_row["entry_count"] += 1
                 if is_break:
+                    day_totals["break_seconds"] += seconds
                     row["break_seconds"] += seconds
                     day_row["break_seconds"] += seconds
                     total_break_seconds += seconds
                     continue
+                day_totals["work_seconds"] += seconds
                 row["work_seconds"] += seconds
                 day_row["work_seconds"] += seconds
                 total_work_seconds += seconds
-                day_snapshot = compensation_snapshot_for_day(
-                    profile,
-                    day_key,
-                    history_rows=history_rows,
-                )
-                if (
-                    day_snapshot["compensation_type"] == COMPENSATION_TYPE_HOURLY
-                    and day_snapshot["hourly_rate_cents"]
-                ):
-                    hourly_cost = _cents_for_seconds(
-                        seconds,
-                        int(day_snapshot["hourly_rate_cents"]),
+                if include_financials:
+                    day_snapshot = compensation_snapshot_for_day(
+                        profile,
+                        day_key,
+                        history_rows=history_rows,
                     )
-                    row["hourly_cents"] += hourly_cost
-                    day_row["hourly_cents"] += hourly_cost
-                    total_hourly_cents += hourly_cost
+                    if (
+                        day_snapshot["compensation_type"] == COMPENSATION_TYPE_HOURLY
+                        and day_snapshot["hourly_rate_cents"]
+                    ):
+                        hourly_cost = _cents_for_seconds(
+                            seconds,
+                            int(day_snapshot["hourly_rate_cents"]),
+                        )
+                        row["hourly_cents"] += hourly_cost
+                        day_row["hourly_cents"] += hourly_cost
+                        total_hourly_cents += hourly_cost
+
+    for day_total_key, day_totals in employee_day_totals.items():
+        _, _, deduction = _apply_missed_break_deduction(
+            day_totals.get("work_seconds", 0),
+            day_totals.get("break_seconds", 0),
+        )
+        if deduction <= 0:
+            continue
+        meta = employee_day_meta.get(day_total_key)
+        if meta is None:
+            continue
+        row, day_row, profile, history_rows = meta
+        _, day_key = day_total_key
+        row["work_seconds"] = max(0, int(row["work_seconds"]) - deduction)
+        day_row["work_seconds"] = max(0, int(day_row["work_seconds"]) - deduction)
+        row["break_seconds"] += deduction
+        day_row["break_seconds"] += deduction
+        row["missed_break_deduction_seconds"] += deduction
+        day_row["missed_break_deduction_seconds"] += deduction
+        total_work_seconds = max(0, total_work_seconds - deduction)
+        total_break_seconds += deduction
+        total_missed_break_deduction_seconds += deduction
+
+        if include_financials:
+            day_snapshot = compensation_snapshot_for_day(
+                profile,
+                day_key,
+                history_rows=history_rows,
+            )
+            if (
+                day_snapshot["compensation_type"] == COMPENSATION_TYPE_HOURLY
+                and day_snapshot["hourly_rate_cents"]
+            ):
+                deduction_cents = _cents_for_seconds(
+                    deduction,
+                    int(day_snapshot["hourly_rate_cents"]),
+                )
+                row["hourly_cents"] = max(0, int(row["hourly_cents"]) - deduction_cents)
+                day_row["hourly_cents"] = max(
+                    0,
+                    int(day_row["hourly_cents"]) - deduction_cents,
+                )
+                total_hourly_cents = max(0, total_hourly_cents - deduction_cents)
 
     total_cents = total_hourly_cents + total_salary_cents
     daily_rows = list(daily_by_day.values())
@@ -1751,17 +1983,29 @@ def _labor_stats_core(
         "active_timer_count": active_timer_count,
         "work_seconds": total_work_seconds,
         "break_seconds": total_break_seconds,
+        "missed_break_deduction_seconds": total_missed_break_deduction_seconds,
         "hourly_cents": total_hourly_cents,
         "salary_cents": total_salary_cents,
         "total_cents": total_cents,
         "work_hours_label": format_hours(total_work_seconds),
-        "break_hours_label": format_hours(total_break_seconds),
+        "missed_break_deduction_label": format_hours(
+            total_missed_break_deduction_seconds
+        ),
+        "break_hours_label": _format_break_hours_label(
+            total_break_seconds,
+            total_missed_break_deduction_seconds,
+        ),
         "hourly_label": _format_money_label(total_hourly_cents),
         "salary_label": _format_money_label(total_salary_cents),
         "total_label": _format_money_label(total_cents),
         "effective_rate_label": _format_rate_label(effective_cents),
         "latest_cache_label": _format_labor_datetime(latest_cache_at, start_local.tzinfo),
-        "basis_label": "Actual Clockify work entries plus compensation settings",
+        "basis_label": (
+            "Actual Clockify work entries plus compensation settings; no-break "
+            "days over 5h auto-deduct 30m"
+            if include_financials
+            else "Actual Clockify work entries with break deductions applied"
+        ),
     }
 
 
@@ -1773,6 +2017,7 @@ def build_labor_stats_summary(
     settings=None,
     employee_rows: Optional[list[dict[str, Any]]] = None,
     include_inactive: bool = False,
+    include_financials: bool = True,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     today = (now.astimezone(timezone.utc).date() if now else date.today())
@@ -1783,10 +2028,20 @@ def build_labor_stats_summary(
         settings=settings,
         employee_rows=employee_rows,
         include_inactive=include_inactive,
+        include_financials=include_financials,
         now=now,
     )
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
+    if not include_financials:
+        selected["week_estimate"] = {
+            "range_label": _format_labor_date_range(week_start, week_end),
+            "total_label": "",
+            "hourly_to_date_label": "",
+            "salary_week_label": "",
+            "basis_label": "",
+        }
+        return selected
     week_to_date = _labor_stats_core(
         session,
         start_day=week_start,
@@ -1794,6 +2049,7 @@ def build_labor_stats_summary(
         settings=settings,
         employee_rows=employee_rows,
         include_inactive=include_inactive,
+        include_financials=True,
         now=now,
     )
     full_week_salary_cents = 0
@@ -2170,6 +2426,7 @@ def build_timecard_exceptions(
     week_start: date,
     settings=None,
     include_inactive: bool = False,
+    include_financials: bool = True,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     week_end = week_start + timedelta(days=6)
@@ -2179,14 +2436,18 @@ def build_timecard_exceptions(
     profiles_by_id: dict[int, EmployeeProfile] = {}
     clockify_to_user_id: dict[str, int] = {}
     rows: list[dict[str, Any]] = []
-    histories_by_user = compensation_history_rows_for_users(
-        session,
-        [
-            row["user"].id
-            for row in employees
-            if isinstance(row.get("user"), User) and row["user"].id is not None
-        ],
-        end_day=week_end,
+    histories_by_user = (
+        compensation_history_rows_for_users(
+            session,
+            [
+                row["user"].id
+                for row in employees
+                if isinstance(row.get("user"), User) and row["user"].id is not None
+            ],
+            end_day=week_end,
+        )
+        if include_financials
+        else {}
     )
 
     for source_row in employees:
@@ -2197,54 +2458,73 @@ def build_timecard_exceptions(
         users_by_id[user.id] = user
         if isinstance(profile, EmployeeProfile):
             profiles_by_id[user.id] = profile
-        snapshot = compensation_snapshot_for_day(
-            profile if isinstance(profile, EmployeeProfile) else None,
-            week_end,
-            history_rows=histories_by_user.get(user.id, []),
-        )
-        compensation_type = snapshot["compensation_type"]
         clockify_user_id = (source_row.get("clockify_user_id") or "").strip()
         if clockify_user_id:
             clockify_to_user_id[clockify_user_id] = user.id
-        elif compensation_type != COMPENSATION_TYPE_UNPAID:
+        elif include_financials:
+            snapshot = compensation_snapshot_for_day(
+                profile if isinstance(profile, EmployeeProfile) else None,
+                week_end,
+                history_rows=histories_by_user.get(user.id, []),
+            )
+            compensation_type = snapshot["compensation_type"]
+            if compensation_type != COMPENSATION_TYPE_UNPAID:
+                rows.append(
+                    _exception_row(
+                        severity="warn",
+                        category="Missing Clockify mapping",
+                        employee=user,
+                        detail="Employee is not linked to a Clockify user.",
+                        action_href="/team/admin/clockify",
+                        action_label="Map Clockify",
+                    )
+                )
+        else:
             rows.append(
                 _exception_row(
                     severity="warn",
                     category="Missing Clockify mapping",
                     employee=user,
-                    detail="Paid employee is not linked to a Clockify user.",
+                    detail="Employee is not linked to a Clockify user.",
                     action_href="/team/admin/clockify",
                     action_label="Map Clockify",
                 )
             )
-        if (
-            compensation_type == COMPENSATION_TYPE_HOURLY
-            and snapshot["hourly_rate_cents"] is None
-        ):
-            rows.append(
-                _exception_row(
-                    severity="warn",
-                    category="Missing pay rate",
-                    employee=user,
-                    detail="Hourly employee has no hourly rate.",
-                    action_href="/team/admin/employees/pay-rates",
-                    action_label="Set rate",
-                )
+        if include_financials:
+            snapshot = compensation_snapshot_for_day(
+                profile if isinstance(profile, EmployeeProfile) else None,
+                week_end,
+                history_rows=histories_by_user.get(user.id, []),
             )
-        if (
-            compensation_type == COMPENSATION_TYPE_MONTHLY
-            and snapshot["monthly_salary_cents"] is None
-        ):
-            rows.append(
-                _exception_row(
-                    severity="warn",
-                    category="Missing salary",
-                    employee=user,
-                    detail="Salaried employee has no monthly salary.",
-                    action_href="/team/admin/employees/pay-rates",
-                    action_label="Set salary",
+            compensation_type = snapshot["compensation_type"]
+            if (
+                compensation_type == COMPENSATION_TYPE_HOURLY
+                and snapshot["hourly_rate_cents"] is None
+            ):
+                rows.append(
+                    _exception_row(
+                        severity="warn",
+                        category="Missing pay rate",
+                        employee=user,
+                        detail="Hourly employee has no hourly rate.",
+                        action_href="/team/admin/employees/pay-rates",
+                        action_label="Set rate",
+                    )
                 )
-            )
+            if (
+                compensation_type == COMPENSATION_TYPE_MONTHLY
+                and snapshot["monthly_salary_cents"] is None
+            ):
+                rows.append(
+                    _exception_row(
+                        severity="warn",
+                        category="Missing salary",
+                        employee=user,
+                        detail="Salaried employee has no monthly salary.",
+                        action_href="/team/admin/employees/pay-rates",
+                        action_label="Set salary",
+                    )
+                )
 
     start_local, end_local = _clockify_range_bounds(
         week_start, week_end, settings=settings
@@ -2839,6 +3119,12 @@ def admin_clockify_page(
             "linked_by_clockify": linked_by_clockify,
             "counts": counts,
             "can_sync": user.role == "admin",
+            "can_edit_employee_links": has_permission(
+                session, user, "admin.employees.edit"
+            ),
+            "can_view_labor_financials": has_permission(
+                session, user, "admin.labor_financials.view"
+            ),
             "mask_id": _mask_id,
             "flash": flash,
             "error": error,
@@ -2859,6 +3145,11 @@ def admin_shift_tracker_page(
         return denial
     settings = get_settings()
     configured = clockify_is_configured(settings)
+    can_view_labor_financials = has_permission(
+        session,
+        user,
+        "admin.labor_financials.view",
+    )
     employees = _employee_rows(session)
     counts = _employee_clockify_counts(employees)
     live = build_clockify_live_status(
@@ -2867,10 +3158,14 @@ def admin_shift_tracker_page(
         settings=settings,
         employee_rows=employees,
     )
-    pay_summary = build_shift_tracker_pay_summary(
-        session,
-        live,
-        employee_rows=employees,
+    shift_summary = (
+        build_shift_tracker_pay_summary(
+            session,
+            live,
+            employee_rows=employees,
+        )
+        if can_view_labor_financials
+        else _build_shift_tracker_operational_summary(live)
     )
     return templates.TemplateResponse(
         request,
@@ -2882,7 +3177,8 @@ def admin_shift_tracker_page(
             "configured": configured,
             "counts": counts,
             "live": live,
-            "pay_summary": pay_summary,
+            "pay_summary": shift_summary,
+            "can_view_labor_financials": can_view_labor_financials,
             "flash": flash,
             "error": error,
             "csrf_token": issue_token(request),
@@ -2955,6 +3251,11 @@ def admin_labor_stats_page(
         return denial
     settings = get_settings()
     configured = clockify_is_configured(settings)
+    can_view_labor_financials = has_permission(
+        session,
+        user,
+        "admin.labor_financials.view",
+    )
     include_inactive = _parse_boolish(show_inactive, default=True)
     window = _labor_stats_window(range_key, start=start, end=end)
     employees = _employee_rows(session, include_inactive=include_inactive)
@@ -2965,7 +3266,10 @@ def admin_labor_stats_page(
         settings=settings,
         employee_rows=employees,
         include_inactive=include_inactive,
+        include_financials=can_view_labor_financials,
     )
+    if not can_view_labor_financials:
+        stats = _redact_labor_financials(stats)
     return templates.TemplateResponse(
         request,
         "team/admin/labor_stats.html",
@@ -2978,6 +3282,7 @@ def admin_labor_stats_page(
             "window": window,
             "stats": stats,
             "include_inactive": include_inactive,
+            "can_view_labor_financials": can_view_labor_financials,
             "flash": flash,
             "error": error,
             "csrf_token": issue_token(request),
@@ -3065,7 +3370,7 @@ def admin_payroll_page(
     error: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    denial, user = _permission_gate(request, session, "admin.employees.view")
+    denial, user = _permission_gate(request, session, "admin.payroll.view")
     if denial:
         return denial
     settings = get_settings()
@@ -3092,7 +3397,7 @@ def admin_payroll_page(
             "flash": flash,
             "error": error,
             "csrf_token": issue_token(request),
-            "can_lock": user.role == "admin",
+            "can_lock": has_permission(session, user, "admin.payroll.lock"),
         },
     )
 
@@ -3106,7 +3411,7 @@ def admin_payroll_export_csv(
     show_inactive: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    denial, _user = _permission_gate(request, session, "admin.employees.view")
+    denial, _user = _permission_gate(request, session, "admin.payroll.view")
     if denial:
         return denial
     settings = get_settings()
@@ -3142,7 +3447,7 @@ async def admin_payroll_lock(
     show_inactive: str = Form(default="1"),
     session: Session = Depends(get_session),
 ):
-    denial, user = _admin_gate(request, session, "admin.employees.edit")
+    denial, user = _admin_gate(request, session, "admin.payroll.lock")
     if denial:
         return denial
     settings = get_settings()
@@ -3185,6 +3490,11 @@ def admin_exceptions_page(
         return denial
     settings = get_settings()
     include_inactive = _parse_boolish(show_inactive, default=False)
+    can_view_labor_financials = has_permission(
+        session,
+        user,
+        "admin.labor_financials.view",
+    )
     today = date.today()
     week_start = _labor_stats_window("custom", start=week, end=week)["start_day"] if week else today - timedelta(days=today.weekday())
     week_start = week_start - timedelta(days=week_start.weekday())
@@ -3193,6 +3503,7 @@ def admin_exceptions_page(
         week_start=week_start,
         settings=settings,
         include_inactive=include_inactive,
+        include_financials=can_view_labor_financials,
     )
     prev_week = (week_start - timedelta(days=7)).isoformat()
     next_week = (week_start + timedelta(days=7)).isoformat()
@@ -3210,6 +3521,13 @@ def admin_exceptions_page(
             "next_week_iso": next_week,
             "this_week_iso": this_week.isoformat(),
             "include_inactive": include_inactive,
+            "can_view_labor_financials": can_view_labor_financials,
+            "can_view_payroll": has_permission(
+                session, user, "admin.payroll.view"
+            ),
+            "can_edit_compensation": has_permission(
+                session, user, "admin.employees.edit"
+            ) and has_permission(session, user, "admin.labor_financials.view"),
         },
     )
 

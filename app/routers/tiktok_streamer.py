@@ -22,13 +22,13 @@ from ..shared import (  # noqa: F401 - explicit imports for underscore-prefixed 
     _BUILD_VERSION,
     _GMV_CACHE_TTL_SECONDS,
     _get_app_setting,
-    _get_default_streamer_for_tiktok,
     _get_live_analytics_snapshot,
     _get_live_session_snapshot,
     _get_live_sessions_list,
+    _fetch_live_product_performance_list,
     _gmv_cache,
     _gmv_cache_lock,
-    _is_currently_live,
+    _resolve_tiktok_api_creds,
     _save_stream_range,
     _set_app_setting,
     _stream_range,
@@ -39,10 +39,709 @@ from ..reporting import TIKTOK_PAID_STATUSES
 
 router = APIRouter()
 
+STREAM_CREATOR_CHOICES: tuple[dict[str, str], ...] = (
+    {"id": "degencollectibles", "label": "Main", "handle": "degencollectibles"},
+    {"id": "degenboss0", "label": "Secondary", "handle": "degenboss0"},
+)
+DEFAULT_STREAM_CREATOR = "degencollectibles"
+CREATOR_ORDER_ATTRIBUTION_TIME_WINDOW = "time_window"
+CREATOR_ORDER_ATTRIBUTION_LIVE_PRODUCTS = "live_products"
+CREATOR_ORDER_ATTRIBUTION_NO_SESSION = "no_session"
+_LIVE_PRODUCTS_CACHE_TTL_SECONDS = 10.0
+_live_products_cache: dict[str, Any] = {}
+_live_products_cache_lock = threading.Lock()
+
 
 # ---------------------------------------------------------------------------
 # Helpers (only used by streamer routes)
 # ---------------------------------------------------------------------------
+
+def _stream_session_recency_key(session_data: dict) -> tuple[int, int, int]:
+    end_ts = int(session_data.get("end_time") or 0)
+    start_ts = int(session_data.get("start_time") or 0)
+    is_active = 1 if end_ts == 0 and start_ts > 0 else 0
+    return (is_active, end_ts, start_ts)
+
+
+def _sorted_stream_sessions() -> list[dict]:
+    return sorted(_get_live_sessions_list(), key=_stream_session_recency_key, reverse=True)
+
+
+def _session_username(session_data: Optional[dict]) -> str:
+    if not session_data:
+        return ""
+    return str(session_data.get("username") or "").strip().lstrip("@").lower()
+
+
+def _stream_session_is_live(session_data: Optional[dict]) -> bool:
+    if not session_data:
+        return False
+    start_ts = int(session_data.get("start_time") or 0)
+    end_ts = int(session_data.get("end_time") or 0)
+    if start_ts <= 0:
+        return False
+    if end_ts <= 0:
+        return True
+    now_ts = datetime.now(timezone.utc).timestamp()
+    return (now_ts - end_ts) < 900
+
+
+def _stream_session_interval(session_data: Optional[dict]) -> Optional[tuple[int, int]]:
+    if not session_data:
+        return None
+    start_ts = int(session_data.get("start_time") or 0)
+    if start_ts <= 0:
+        return None
+    end_ts = int(session_data.get("end_time") or 0)
+    if end_ts <= 0:
+        end_ts = int(datetime.now(timezone.utc).timestamp())
+    if end_ts < start_ts:
+        end_ts = start_ts
+    return start_ts, end_ts
+
+
+def _overlapping_creator_handles(session_data: Optional[dict], creator: str) -> list[str]:
+    return sorted({_session_username(session) for session in _overlapping_creator_sessions(session_data, creator)})
+
+
+def _overlapping_creator_sessions(session_data: Optional[dict], creator: str) -> list[dict]:
+    selected_interval = _stream_session_interval(session_data)
+    if not selected_interval:
+        return []
+    selected_id = str((session_data or {}).get("id") or "").strip()
+    selected_start, selected_end = selected_interval
+    overlaps: list[dict] = []
+    for other in _sorted_stream_sessions():
+        other_username = _session_username(other)
+        if other_username == creator or not _normalize_creator(other_username):
+            continue
+        if selected_id and str(other.get("id") or "").strip() == selected_id:
+            continue
+        other_interval = _stream_session_interval(other)
+        if not other_interval:
+            continue
+        other_start, other_end = other_interval
+        if max(selected_start, other_start) <= min(selected_end, other_end):
+            copied = dict(other)
+            copied["ok"] = True
+            overlaps.append(copied)
+    return overlaps
+
+
+def _normalize_creator(value: Optional[str]) -> str:
+    creator = str(value or "").strip().lstrip("@").lower()
+    allowed = {choice["id"] for choice in STREAM_CREATOR_CHOICES}
+    return creator if creator in allowed else ""
+
+
+def _creator_label(creator: str) -> str:
+    for choice in STREAM_CREATOR_CHOICES:
+        if choice["id"] == creator:
+            return f"{choice['label']} - @{choice['handle']}"
+    return f"@{creator}" if creator else ""
+
+
+def _creator_options(selected_creator: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": choice["id"],
+            "label": f"{choice['label']} - @{choice['handle']}",
+            "handle": choice["handle"],
+            "selected": choice["id"] == selected_creator,
+        }
+        for choice in STREAM_CREATOR_CHOICES
+    ]
+
+
+def _find_stream_session(stream_id: Optional[str]) -> Optional[dict]:
+    wanted = str(stream_id or "").strip()
+    if not wanted:
+        return None
+    for session_data in _get_live_sessions_list():
+        if str(session_data.get("id") or "").strip() == wanted:
+            selected = dict(session_data)
+            selected["ok"] = True
+            return selected
+    return None
+
+
+def _creator_from_stream_id(stream_id: Optional[str]) -> str:
+    session_data = _find_stream_session(stream_id)
+    return _normalize_creator(_session_username(session_data))
+
+
+def _creator_stream_sessions(creator: str) -> list[dict]:
+    sessions = []
+    for session_data in _sorted_stream_sessions():
+        if _session_username(session_data) == creator:
+            copied = dict(session_data)
+            copied["ok"] = True
+            sessions.append(copied)
+    return sessions
+
+
+def _format_stream_session_label(session_data: dict) -> str:
+    title = str(session_data.get("title") or "").strip() or "Untitled live"
+    username = str(session_data.get("username") or "").strip()
+    start_ts = int(session_data.get("start_time") or 0)
+    date_label = ""
+    if start_ts > 0:
+        start_dt = datetime.fromtimestamp(start_ts, tz=PACIFIC_TZ)
+        date_label = f"{start_dt.strftime('%b')} {start_dt.day}"
+    bits = [title]
+    if username:
+        bits.append(f"@{username}")
+    if date_label:
+        bits.append(date_label)
+    return " - ".join(bits)
+
+
+def _build_stream_context(
+    selected_creator: Optional[str] = None,
+    legacy_stream_id: Optional[str] = None,
+) -> dict[str, Any]:
+    creator = _normalize_creator(selected_creator) or _creator_from_stream_id(legacy_stream_id) or DEFAULT_STREAM_CREATOR
+    creator_sessions = _creator_stream_sessions(creator)
+    live_session = creator_sessions[0] if creator_sessions else None
+    snapshot = _get_live_session_snapshot()
+    if not live_session and snapshot.get("ok") and _session_username(snapshot) == creator:
+        live_session = dict(snapshot)
+
+    start = None
+    end = None
+    source = "creator"
+
+    if live_session and live_session.get("ok"):
+        start_ts = int(live_session.get("start_time") or 0)
+        end_ts = int(live_session.get("end_time") or 0)
+        if start_ts > 0:
+            start = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+            end = datetime.fromtimestamp(end_ts, tz=timezone.utc) if end_ts > 0 else None
+    overlap_handles = _overlapping_creator_handles(live_session, creator) if live_session else []
+    if start is None:
+        order_attribution = CREATOR_ORDER_ATTRIBUTION_NO_SESSION
+    elif overlap_handles:
+        order_attribution = CREATOR_ORDER_ATTRIBUTION_LIVE_PRODUCTS
+    else:
+        order_attribution = CREATOR_ORDER_ATTRIBUTION_TIME_WINDOW
+
+    return {
+        "selected_creator": creator,
+        "selected_creator_label": _creator_label(creator),
+        "selected_stream_id": str(live_session.get("id") or "") if live_session else "",
+        "selected_stream_label": _format_stream_session_label(live_session) if live_session else "",
+        "start": start,
+        "end": end,
+        "source": source,
+        "sessions": creator_sessions,
+        "live_session": live_session,
+        "is_live": _stream_session_is_live(live_session) if live_session else False,
+        "creator_filter_enabled": True,
+        "creator_order_attribution": order_attribution,
+        "creator_order_overlap_handles": overlap_handles,
+    }
+
+
+def _stream_context_cache_key(stream_context: Optional[dict[str, Any]]) -> tuple:
+    stream_context = stream_context or {}
+    start = stream_context.get("start")
+    end = stream_context.get("end")
+    return (
+        stream_context.get("selected_creator"),
+        stream_context.get("selected_stream_id"),
+        start.isoformat() if isinstance(start, datetime) else "",
+        end.isoformat() if isinstance(end, datetime) else "",
+        stream_context.get("source") or "",
+        stream_context.get("creator_order_attribution") or "",
+    )
+
+
+def _creator_order_rows_are_precise(stream_context: Optional[dict[str, Any]]) -> bool:
+    stream_context = stream_context or {}
+    if not stream_context.get("creator_filter_enabled"):
+        return True
+    return stream_context.get("creator_order_attribution") in {
+        CREATOR_ORDER_ATTRIBUTION_TIME_WINDOW,
+        CREATOR_ORDER_ATTRIBUTION_LIVE_PRODUCTS,
+    }
+
+
+def _creator_order_attribution_message(stream_context: Optional[dict[str, Any]]) -> str:
+    stream_context = stream_context or {}
+    attribution = stream_context.get("creator_order_attribution")
+    if attribution == CREATOR_ORDER_ATTRIBUTION_LIVE_PRODUCTS:
+        handles = [f"@{h}" for h in stream_context.get("creator_order_overlap_handles") or []]
+        suffix = f" ({', '.join(handles)})" if handles else ""
+        return f"Filtering by TikTok live product attribution{suffix}."
+    if attribution == CREATOR_ORDER_ATTRIBUTION_NO_SESSION:
+        return "No live session was found for this creator."
+    return ""
+
+
+def _parse_order_line_items(order: TikTokOrder) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for field_name in ("line_items_json", "line_items_summary_json"):
+        raw_text = getattr(order, field_name, "") or ""
+        try:
+            raw_items = json.loads(raw_text) if raw_text else []
+        except (json.JSONDecodeError, TypeError):
+            raw_items = []
+        if isinstance(raw_items, dict):
+            raw_items = [raw_items]
+        if isinstance(raw_items, list):
+            items.extend([item for item in raw_items if isinstance(item, dict)])
+    return items
+
+
+def _order_product_ids(order: TikTokOrder) -> set[str]:
+    product_ids: set[str] = set()
+    for item in _parse_order_line_items(order):
+        product_id = str(
+            item.get("product_id") or item.get("item_id") or item.get("id") or ""
+        ).strip()
+        if product_id:
+            product_ids.add(product_id)
+    return product_ids
+
+
+def _safe_metric_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_metric_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _session_metric_float(session_data: Optional[dict], key: str, default: float = 0.0) -> float:
+    return _safe_metric_float((session_data or {}).get(key), default)
+
+
+def _session_metric_int(session_data: Optional[dict], key: str, default: int = 0) -> int:
+    return _safe_metric_int((session_data or {}).get(key), default)
+
+
+def _session_avg_price(session_data: Optional[dict]) -> float:
+    avg_price = _session_metric_float(session_data, "avg_price")
+    if avg_price > 0:
+        return avg_price
+    gmv = _session_metric_float(session_data, "gmv")
+    items = _session_metric_int(session_data, "items_sold") or _session_metric_int(session_data, "sku_orders")
+    return gmv / items if gmv > 0 and items > 0 else 0.0
+
+
+def _session_datetime_window(session_data: Optional[dict]) -> tuple[Optional[datetime], Optional[datetime]]:
+    interval = _stream_session_interval(session_data)
+    if not interval:
+        return None, None
+    start_ts, end_ts = interval
+    return datetime.fromtimestamp(start_ts, tz=timezone.utc), datetime.fromtimestamp(end_ts, tz=timezone.utc)
+
+
+def _line_item_product_id(item: dict[str, Any]) -> str:
+    return str(item.get("product_id") or item.get("item_id") or item.get("id") or "").strip()
+
+
+def _line_item_title(item: dict[str, Any]) -> str:
+    return str(
+        item.get("product_name") or item.get("title") or item.get("item_name") or item.get("sku_name") or ""
+    ).strip() or "Unknown item"
+
+
+def _line_item_quantity(item: dict[str, Any]) -> int:
+    return max(_safe_metric_int(item.get("quantity") or item.get("sku_quantity") or item.get("qty"), 1), 1)
+
+
+def _line_item_unit_price(item: dict[str, Any]) -> float:
+    for key in ("sale_price", "sku_sale_price", "price", "unit_price", "original_price"):
+        if item.get(key) not in (None, ""):
+            value = _safe_metric_float(item.get(key), 0.0)
+            if value > 0:
+                return value
+    return 0.0
+
+
+def _line_item_image(item: dict[str, Any]) -> Optional[str]:
+    return str(item.get("sku_image") or item.get("product_image") or item.get("image_url") or "").strip() or None
+
+
+def _aggregate_product_stats(orders: list[TikTokOrder]) -> list[dict[str, Any]]:
+    stats: dict[str, dict[str, Any]] = {}
+    for order in orders:
+        order_items = _parse_order_line_items(order)
+        if not order_items:
+            continue
+        seen_in_order: set[str] = set()
+        for item in order_items:
+            product_id = _line_item_product_id(item)
+            if not product_id:
+                continue
+            quantity = _line_item_quantity(item)
+            unit_price = _line_item_unit_price(item)
+            revenue = round(unit_price * quantity, 2)
+            row = stats.setdefault(
+                product_id,
+                {
+                    "id": product_id,
+                    "name": _line_item_title(item),
+                    "qty": 0,
+                    "orders": 0,
+                    "direct_gmv": 0.0,
+                    "sku_image": _line_item_image(item),
+                },
+            )
+            if product_id not in seen_in_order:
+                row["orders"] += 1
+                seen_in_order.add(product_id)
+            row["qty"] += quantity
+            row["direct_gmv"] = round(row["direct_gmv"] + revenue, 2)
+            if not row.get("sku_image"):
+                row["sku_image"] = _line_item_image(item)
+    for row in stats.values():
+        orders_count = max(int(row.get("orders") or 0), 1)
+        row["avg_order_value"] = round(float(row.get("direct_gmv") or 0) / orders_count, 2)
+    return sorted(
+        stats.values(),
+        key=lambda row: (int(row.get("orders") or 0), float(row.get("direct_gmv") or 0)),
+        reverse=True,
+    )
+
+
+def _orders_for_session_window(db_session: Session, session_data: Optional[dict]) -> list[TikTokOrder]:
+    start_dt, end_dt = _session_datetime_window(session_data)
+    if start_dt is None:
+        return []
+    query = select(TikTokOrder).where(TikTokOrder.created_at >= start_dt)
+    if end_dt is not None:
+        query = query.where(TikTokOrder.created_at <= end_dt)
+    rows = db_session.exec(query.order_by(TikTokOrder.created_at.desc())).all()
+    return [order for order in rows if _is_enriched_order(order)]
+
+
+def _infer_product_ids_for_creator_session(
+    db_session: Session,
+    session_data: Optional[dict],
+    *,
+    limit_cap: int = 20,
+) -> tuple[set[str], list[dict[str, Any]]]:
+    orders = _orders_for_session_window(db_session, session_data)
+    product_stats = _aggregate_product_stats(orders)
+    if not product_stats:
+        return set(), []
+
+    avg_price = _session_avg_price(session_data)
+    price_cap = avg_price * 4 if avg_price > 0 else None
+    frequent_cutoff = max(3, int((_session_metric_int(session_data, "items_sold") or 0) * 0.02))
+    candidates: list[dict[str, Any]] = []
+    for product in product_stats:
+        avg_order_value = _safe_metric_float(product.get("avg_order_value"))
+        order_count = _safe_metric_int(product.get("orders"))
+        if price_cap is None or avg_order_value <= price_cap or order_count >= frequent_cutoff:
+            candidates.append(product)
+    if not candidates:
+        candidates = product_stats
+
+    def _candidate_sort_key(product: dict[str, Any]) -> tuple[int, int, float]:
+        avg_order_value = _safe_metric_float(product.get("avg_order_value"))
+        order_count = _safe_metric_int(product.get("orders"))
+        direct_gmv = _safe_metric_float(product.get("direct_gmv"))
+        price_match = price_cap is None or avg_order_value <= price_cap
+        return (1 if price_match else 0, order_count, direct_gmv)
+
+    candidates = sorted(candidates, key=_candidate_sort_key, reverse=True)
+
+    limit = max(
+        _session_metric_int(session_data, "products_added"),
+        _session_metric_int(session_data, "different_products_sold"),
+    )
+    if limit <= 0:
+        limit = 8
+    limit = max(1, min(limit, limit_cap))
+    selected = candidates[:limit]
+    return {str(product.get("id") or "").strip() for product in selected if product.get("id")}, selected
+
+
+def _infer_live_product_scope(db_session: Session, stream_context: Optional[dict[str, Any]]) -> dict[str, Any]:
+    stream_context = stream_context or {}
+    selected_creator = stream_context.get("selected_creator") or ""
+    live_session = stream_context.get("live_session") or {}
+    if not live_session:
+        return {"available": False, "products": [], "product_ids": set(), "exclude_product_ids": set(), "source": ""}
+
+    if selected_creator == DEFAULT_STREAM_CREATOR:
+        selected_ids, selected_products = _infer_product_ids_for_creator_session(
+            db_session,
+            live_session,
+            limit_cap=100,
+        )
+        excluded_ids: set[str] = set()
+        excluded_products: list[dict[str, Any]] = []
+        for other_session in _overlapping_creator_sessions(live_session, selected_creator):
+            product_ids, products = _infer_product_ids_for_creator_session(db_session, other_session)
+            excluded_ids.update(product_ids)
+            excluded_products.extend(products)
+        if excluded_ids:
+            return {
+                "available": True,
+                "products": excluded_products,
+                "product_ids": set(),
+                "selected_product_ids": selected_ids,
+                "selected_products": selected_products,
+                "exclude_product_ids": excluded_ids,
+                "source": "local_overlap_exclusion",
+            }
+        return {
+            "available": bool(selected_ids),
+            "products": selected_products,
+            "product_ids": set(),
+            "selected_product_ids": selected_ids,
+            "selected_products": selected_products,
+            "exclude_product_ids": set(),
+            "source": "local_main_inference" if selected_ids else "",
+        }
+
+    product_ids, products = _infer_product_ids_for_creator_session(db_session, live_session)
+    return {
+        "available": bool(product_ids),
+        "products": products,
+        "product_ids": product_ids,
+        "selected_product_ids": product_ids,
+        "selected_products": products,
+        "exclude_product_ids": set(),
+        "source": "local_product_inference" if product_ids else "",
+    }
+
+
+def _fetch_live_product_scope(stream_context: Optional[dict[str, Any]]) -> dict[str, Any]:
+    stream_context = stream_context or {}
+    live_id = str(stream_context.get("selected_stream_id") or "").strip()
+    if not live_id:
+        return {"available": False, "products": [], "product_ids": set(), "exclude_product_ids": set(), "source": ""}
+
+    now = time.monotonic()
+    with _live_products_cache_lock:
+        cached = _live_products_cache.get(live_id)
+        if cached and now - cached.get("at", 0) < _LIVE_PRODUCTS_CACHE_TTL_SECONDS:
+            return cached["data"]
+
+    scope: dict[str, Any] = {"available": False, "products": [], "product_ids": set(), "exclude_product_ids": set(), "source": ""}
+    if _fetch_live_product_performance_list is None:
+        return scope
+
+    access_token, shop_cipher, app_key = _resolve_tiktok_api_creds()
+    app_secret = (settings.tiktok_app_secret or "").strip()
+    if not access_token or not shop_cipher or not app_key or not app_secret:
+        return scope
+
+    try:
+        with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+            products = _fetch_live_product_performance_list(
+                client,
+                base_url=resolve_tiktok_shop_pull_base_url(),
+                app_key=app_key,
+                app_secret=app_secret,
+                access_token=access_token,
+                shop_cipher=shop_cipher,
+                live_id=live_id,
+                currency="USD",
+            )
+    except Exception:
+        products = []
+
+    product_ids = {str(p.get("id") or "").strip() for p in products if str(p.get("id") or "").strip()}
+    scope = {
+        "available": bool(products),
+        "products": products,
+        "product_ids": product_ids,
+        "selected_product_ids": product_ids,
+        "selected_products": products,
+        "exclude_product_ids": set(),
+        "source": "tiktok_live_products" if products else "",
+    }
+    with _live_products_cache_lock:
+        _live_products_cache[live_id] = {"at": time.monotonic(), "data": scope}
+    return scope
+
+
+def _should_use_live_product_scope(stream_context: Optional[dict[str, Any]]) -> bool:
+    stream_context = stream_context or {}
+    return bool(
+        stream_context.get("creator_filter_enabled")
+        and stream_context.get("selected_stream_id")
+        and stream_context.get("creator_order_attribution") == CREATOR_ORDER_ATTRIBUTION_LIVE_PRODUCTS
+    )
+
+
+def _filter_orders_to_live_products(
+    orders: list[TikTokOrder],
+    stream_context: Optional[dict[str, Any]],
+    product_scope: Optional[dict[str, Any]] = None,
+    db_session: Optional[Session] = None,
+) -> tuple[list[TikTokOrder], dict[str, Any]]:
+    if not _should_use_live_product_scope(stream_context):
+        return orders, product_scope or {
+            "available": False,
+            "products": [],
+            "product_ids": set(),
+            "exclude_product_ids": set(),
+            "source": "",
+        }
+    scope = product_scope or _fetch_live_product_scope(stream_context)
+    if not scope.get("product_ids") and not scope.get("exclude_product_ids") and db_session is not None:
+        scope = _infer_live_product_scope(db_session, stream_context)
+    selected_creator = (stream_context or {}).get("selected_creator") or ""
+    if selected_creator == DEFAULT_STREAM_CREATOR:
+        if scope.get("product_ids") and not scope.get("selected_product_ids"):
+            scope = {
+                **scope,
+                "selected_product_ids": scope.get("product_ids") or set(),
+                "selected_products": scope.get("products") or [],
+            }
+        explicit_live_product_ids = set(scope.get("product_ids") or set())
+        if db_session is not None and (
+            not scope.get("exclude_product_ids") or not scope.get("selected_product_ids")
+        ):
+            inferred_scope = _infer_live_product_scope(db_session, stream_context)
+            scope = {
+                **inferred_scope,
+                **scope,
+                "exclude_product_ids": scope.get("exclude_product_ids") or inferred_scope.get("exclude_product_ids") or set(),
+                "selected_product_ids": scope.get("selected_product_ids") or inferred_scope.get("selected_product_ids") or set(),
+                "selected_products": scope.get("selected_products") or inferred_scope.get("selected_products") or [],
+            }
+        exclude_product_ids = set(scope.get("exclude_product_ids") or set())
+        if explicit_live_product_ids:
+            exclude_product_ids -= explicit_live_product_ids
+            scope = {**scope, "exclude_product_ids": exclude_product_ids}
+        if exclude_product_ids:
+            return [order for order in orders if not (_order_product_ids(order) & exclude_product_ids)], scope
+        return orders, scope
+    product_ids = scope.get("product_ids") or set()
+    exclude_product_ids = scope.get("exclude_product_ids") or set()
+    if exclude_product_ids:
+        return [order for order in orders if not (_order_product_ids(order) & exclude_product_ids)], scope
+    if not product_ids:
+        return orders, scope
+    return [order for order in orders if _order_product_ids(order) & product_ids], scope
+
+
+def _live_product_top_sellers(product_scope: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
+    products = (product_scope or {}).get("products") or []
+    sellers: list[dict[str, Any]] = []
+    for product in products:
+        title = str(product.get("name") or "").strip() or "Unknown item"
+        sellers.append({
+            "title": title,
+            "variant": None,
+            "sku_image": None,
+            "qty": int(product.get("items_sold") or product.get("sku_orders") or 0),
+            "revenue": round(float(product.get("direct_gmv") or 0), 2),
+            "buyers": [],
+        })
+    return sorted(sellers, key=lambda row: row["revenue"], reverse=True)[:8]
+
+
+def _apply_stream_order_scope(stmt, stream_context: Optional[dict[str, Any]], fallback_start: Optional[datetime] = None):
+    stream_context = stream_context or {}
+    start = stream_context.get("start") or fallback_start
+    end = stream_context.get("end")
+    if stream_context.get("creator_filter_enabled") and stream_context.get("start") is None:
+        return stmt.where(TikTokOrder.id == -1)
+    if start is not None:
+        stmt = stmt.where(TikTokOrder.created_at >= start)
+    if end is not None:
+        stmt = stmt.where(TikTokOrder.created_at <= end)
+    return stmt
+
+
+def _scoped_tiktok_order_count(
+    session: Session,
+    stream_context: Optional[dict[str, Any]],
+    fallback_start: Optional[datetime],
+) -> int:
+    count_query = _apply_stream_order_scope(
+        select(func.count()).select_from(TikTokOrder),
+        stream_context,
+        fallback_start=fallback_start,
+    )
+    return int(session.exec(count_query).one())
+
+
+def _load_scoped_stream_orders(
+    session: Session,
+    stream_context: Optional[dict[str, Any]],
+    fallback_start: Optional[datetime],
+    *,
+    since_updated_at: Optional[datetime] = None,
+    order_by_updated: bool = False,
+) -> tuple[list[TikTokOrder], dict[str, Any]]:
+    query = _apply_stream_order_scope(
+        select(TikTokOrder),
+        stream_context,
+        fallback_start=fallback_start,
+    )
+    if since_updated_at is not None:
+        query = query.where(TikTokOrder.updated_at > since_updated_at)
+    if order_by_updated:
+        query = query.order_by(TikTokOrder.updated_at.desc())
+    else:
+        query = query.order_by(TikTokOrder.created_at.desc())
+    orders = session.exec(query).all()
+    orders = [order for order in orders if _is_enriched_order(order)]
+    return _filter_orders_to_live_products(orders, stream_context, db_session=session)
+
+
+def _latest_updated_at_for_orders(orders: list[TikTokOrder]) -> Optional[datetime]:
+    latest = None
+    for order in orders:
+        updated_at = order.updated_at
+        if updated_at is None:
+            continue
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        if latest is None or updated_at > latest:
+            latest = updated_at
+    return latest
+
+
+def _live_room_id_for_stream(chat_info: dict, stream_context: Optional[dict[str, Any]]) -> Optional[str]:
+    room_id = str((chat_info or {}).get("room_id") or "").strip()
+    if not room_id:
+        return None
+    live_session = (stream_context or {}).get("live_session") or {}
+    session_username = str(live_session.get("username") or "").strip().lstrip("@").lower()
+    chat_username = str(settings.tiktok_live_username or "").strip().lstrip("@").lower()
+    if session_username and chat_username and session_username != chat_username:
+        return None
+    return room_id
+
+
+def _apply_tiktok_session_metrics(gmv_data: dict[str, Any], stream_context: Optional[dict[str, Any]]) -> dict[str, Any]:
+    result = dict(gmv_data)
+    selected_creator = (stream_context or {}).get("selected_creator") or ""
+    if selected_creator == DEFAULT_STREAM_CREATOR:
+        return result
+    live_session = (stream_context or {}).get("live_session") or {}
+    if not live_session.get("ok"):
+        return result
+    try:
+        result["stream_gmv"] = round(float(live_session.get("gmv") or 0), 2)
+    except (TypeError, ValueError):
+        pass
+    for target_key, session_key in (("stream_orders", "sku_orders"), ("stream_items", "items_sold")):
+        try:
+            value = int(live_session.get(session_key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if session_key in live_session:
+            result[target_key] = value
+    result["stream_metric_source"] = "tiktok_live_session"
+    return result
 
 def _is_enriched_order(o: TikTokOrder) -> bool:
     """Return True if the order has been enriched with full API data.
@@ -201,20 +900,26 @@ def _enrich_cards_with_buyer_totals(cards: list[dict], buyer_totals: dict[str, f
         buyer_key = (card.get("customer_name") or "").strip().lower() or "guest"
         card["buyer_lifetime_spent"] = round(buyer_totals.get(buyer_key, 0.0), 2)
 
-def _streamer_session_gmv(session: Session) -> dict:
+def _streamer_session_gmv(session: Session, stream_context: Optional[dict[str, Any]] = None) -> dict:
     """Cached wrapper -- returns GMV data, recomputing at most once per _GMV_CACHE_TTL_SECONDS."""
+    cache_key = _stream_context_cache_key(stream_context)
     now = time.monotonic()
     with _gmv_cache_lock:
         cached_at = _gmv_cache.get("at", 0)
-        if now - cached_at < _GMV_CACHE_TTL_SECONDS and "data" in _gmv_cache:
+        if (
+            now - cached_at < _GMV_CACHE_TTL_SECONDS
+            and _gmv_cache.get("key") == cache_key
+            and "data" in _gmv_cache
+        ):
             return _gmv_cache["data"]
-    result = _streamer_session_gmv_uncached(session)
+    result = _streamer_session_gmv_uncached(session, stream_context=stream_context)
     with _gmv_cache_lock:
         _gmv_cache["data"] = result
         _gmv_cache["at"] = time.monotonic()
+        _gmv_cache["key"] = cache_key
     return result
 
-def _streamer_session_gmv_uncached(session: Session) -> dict:
+def _streamer_session_gmv_uncached(session: Session, stream_context: Optional[dict[str, Any]] = None) -> dict:
     """Calculate today's GMV and top sellers for the streamer dashboard (Pacific time)."""
     now_pacific = datetime.now(PACIFIC_TZ)
     today_start_pacific = now_pacific.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -339,9 +1044,18 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
         "top_buyers": top_buyers,
     }
 
-    sr_start = _stream_range.get("start")
-    sr_end = _stream_range.get("end")
+    stream_context = stream_context or {}
+    if stream_context.get("creator_filter_enabled"):
+        sr_start = stream_context.get("start")
+        sr_end = stream_context.get("end")
+    else:
+        sr_start = stream_context.get("start") or _stream_range.get("start")
+        sr_end = stream_context.get("end") if "end" in stream_context else _stream_range.get("end")
     if sr_start is not None:
+        result["stream_start_utc"] = sr_start.isoformat()
+        if sr_end:
+            result["stream_end_utc"] = sr_end.isoformat()
+
         stream_gmv = 0.0
         stream_paid = 0
         stream_items = 0
@@ -351,6 +1065,13 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
         if sr_end is not None:
             q = q.where(TikTokOrder.created_at <= sr_end)
         stream_orders_rows = session.exec(q).all()
+        product_scope = None
+        if _should_use_live_product_scope(stream_context):
+            stream_orders_rows, product_scope = _filter_orders_to_live_products(
+                stream_orders_rows,
+                stream_context,
+                db_session=session,
+            )
         for o in stream_orders_rows:
             status = (o.financial_status or o.order_status or "").lower().strip()
             if status not in TIKTOK_PAID_STATUSES:
@@ -440,25 +1161,38 @@ def _streamer_session_gmv_uncached(session: Session) -> dict:
         result["stream_gmv"] = round(stream_gmv, 2)
         result["stream_orders"] = stream_paid
         result["stream_items"] = stream_items
-        result["stream_top_sellers"] = stream_top_sellers
+        result["stream_top_sellers"] = stream_top_sellers or _live_product_top_sellers(product_scope)
         result["stream_top_buyers"] = stream_top_buyers
-        result["stream_start_utc"] = sr_start.isoformat()
-        if sr_end:
-            result["stream_end_utc"] = sr_end.isoformat()
 
-    return result
+    return _apply_tiktok_session_metrics(result, stream_context)
 
-def _compute_order_velocity(session: Session) -> list[dict]:
+def _compute_order_velocity(session: Session, stream_context: Optional[dict[str, Any]] = None) -> list[dict]:
     """Compute per-minute order counts for the current stream window."""
-    start = _stream_range.get("start")
+    stream_context = stream_context or {}
+    start = stream_context.get("start") if stream_context.get("creator_filter_enabled") else stream_context.get("start") or _stream_range.get("start")
     if not start:
         return []
-    end_dt = _stream_range.get("end") or datetime.now(timezone.utc)
+    if stream_context.get("creator_filter_enabled"):
+        end_dt = stream_context.get("end") or datetime.now(timezone.utc)
+    else:
+        end_dt = stream_context.get("end") or _stream_range.get("end") or datetime.now(timezone.utc)
     orders = session.exec(
         select(TikTokOrder.created_at)
         .where(TikTokOrder.created_at >= start, TikTokOrder.created_at <= end_dt)
         .order_by(TikTokOrder.created_at)
     ).all()
+    if _should_use_live_product_scope(stream_context):
+        scoped_orders = session.exec(
+            select(TikTokOrder)
+            .where(TikTokOrder.created_at >= start, TikTokOrder.created_at <= end_dt)
+            .order_by(TikTokOrder.created_at)
+        ).all()
+        scoped_orders, _scope = _filter_orders_to_live_products(
+            scoped_orders,
+            stream_context,
+            db_session=session,
+        )
+        orders = [order.created_at for order in scoped_orders]
     if not orders:
         return []
     buckets: dict[int, int] = {}
@@ -501,6 +1235,8 @@ def _compute_stream_duration_minutes(gmv_data: dict) -> float | None:
 @router.get("/tiktok/streamer", response_class=HTMLResponse)
 def tiktok_streamer_page(
     request: Request,
+    creator: Optional[str] = Query(default=None),
+    stream: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
     # Employees can see the live stream dashboard (TikTok GMV + goal bar +
@@ -509,11 +1245,18 @@ def tiktok_streamer_page(
     if denial := require_role_response(request, "employee"):
         return denial
 
+    stream_context = _build_stream_context(creator, legacy_stream_id=stream)
+    selected_creator = stream_context.get("selected_creator") or DEFAULT_STREAM_CREATOR
+    selected_stream_id = stream_context.get("selected_stream_id") or ""
+    current_streamer = get_current_streamer(session) or ""
+
     page_load_floor = datetime.now(timezone.utc) - timedelta(hours=24)
-    orders = session.exec(
-        select(TikTokOrder).order_by(TikTokOrder.created_at.desc()).limit(50)
-    ).all()
-    orders = [o for o in orders if _is_enriched_order(o)]
+    scoped_orders, _product_scope = _load_scoped_stream_orders(
+        session,
+        stream_context,
+        page_load_floor,
+    )
+    orders = scoped_orders[:50]
 
     cards = [_build_streamer_order_card(o) for o in orders]
     buyer_totals = _compute_buyer_lifetime_totals(session)
@@ -521,22 +1264,21 @@ def tiktok_streamer_page(
 
     # Scope MAX(updated_at) to 24h window so old orders getting status-update
     # webhooks don't advance the cursor and cause stale orders to reappear.
-    latest_updated_at = session.exec(
-        select(func.max(TikTokOrder.updated_at)).where(TikTokOrder.created_at >= page_load_floor)
-    ).one()
+    latest_updated_at = _latest_updated_at_for_orders(scoped_orders)
     latest_updated_at_text = None
     if latest_updated_at is not None:
         if latest_updated_at.tzinfo is None:
             latest_updated_at = latest_updated_at.replace(tzinfo=timezone.utc)
         latest_updated_at_text = latest_updated_at.isoformat()
 
-    total_count = int(session.exec(select(func.count()).select_from(TikTokOrder)).one())
-    gmv_data = _streamer_session_gmv(session)
+    total_count = len(scoped_orders)
+    gmv_data = _streamer_session_gmv(session, stream_context=stream_context)
 
     chat_info = get_chat_status()
+    live_room_id = _live_room_id_for_stream(chat_info, stream_context)
     live_analytics = _get_live_analytics_snapshot()
 
-    live_session = _get_live_session_snapshot()
+    live_session = stream_context.get("live_session") or {}
     stream_data = {
         "stream_gmv": gmv_data.get("stream_gmv"),
         "stream_orders": gmv_data.get("stream_orders"),
@@ -546,8 +1288,17 @@ def tiktok_streamer_page(
         "tiktok_items_sold": live_session.get("items_sold") if live_session.get("ok") else None,
         "tiktok_customers": live_session.get("customers") if live_session.get("ok") else None,
         "live_title": live_session.get("title") if live_session.get("ok") else None,
-        "stream_range_source": _stream_range_source,
-        "is_live": _is_currently_live(),
+        "stream_range_source": stream_context.get("source"),
+        "selected_creator": selected_creator,
+        "selected_creator_label": stream_context.get("selected_creator_label") or "",
+        "selected_stream_id": selected_stream_id,
+        "selected_stream_label": stream_context.get("selected_stream_label") or "",
+        "creator_filter_enabled": stream_context.get("creator_filter_enabled"),
+        "creator_order_attribution": stream_context.get("creator_order_attribution"),
+        "creator_order_attribution_message": _creator_order_attribution_message(stream_context),
+        "stream_metric_source": gmv_data.get("stream_metric_source"),
+        "live_room_id": live_room_id,
+        "is_live": stream_context.get("is_live"),
     }
 
     return templates.TemplateResponse(request, "tiktok_streamer.html", {
@@ -565,53 +1316,66 @@ def tiktok_streamer_page(
         "stream_top_buyers_json": json.dumps(gmv_data.get("stream_top_buyers", [])),
         "live_analytics_json": json.dumps(live_analytics),
         "stream_data_json": json.dumps(stream_data),
-        "stream_sessions_json": json.dumps(_get_live_sessions_list()),
+        "stream_sessions_json": json.dumps(stream_context.get("sessions") or []),
         "build_version": _BUILD_VERSION,
         "chat_status": chat_info["status"],
         "current_user": getattr(request.state, "current_user", None),
         "streamers": get_streamer_names(session),
         "platforms": PLATFORMS,
-        "current_streamer": _get_default_streamer_for_tiktok(session) or "",
+        "current_streamer": current_streamer,
+        "creator_options": _creator_options(selected_creator),
+        "selected_creator": selected_creator,
+        "selected_creator_label": stream_context.get("selected_creator_label") or "",
+        "selected_stream_id": selected_stream_id,
+        "selected_stream_label": stream_context.get("selected_stream_label") or "",
+        "creator_filter_enabled": stream_context.get("creator_filter_enabled"),
+        "creator_order_attribution": stream_context.get("creator_order_attribution"),
+        "creator_order_attribution_message": _creator_order_attribution_message(stream_context),
+        "live_room_id": live_room_id,
         "gmv_goal": float(_get_app_setting(session, "stream_gmv_goal", "0") or "0"),
         "high_value_threshold": float(_get_app_setting(session, "high_value_threshold", "100") or "100"),
         "vip_buyer_threshold": float(_get_app_setting(session, "vip_buyer_threshold", "5000") or "5000"),
+        "team_shell": request.query_params.get("team_shell") == "1",
     })
 
 @router.get("/tiktok/streamer/poll")
 def tiktok_streamer_poll(
     request: Request,
     since: Optional[str] = Query(default=None),
+    creator: Optional[str] = Query(default=None),
+    stream: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
     if denial := require_role_response(request, "employee"):
         return denial
+    stream_context = _build_stream_context(creator, legacy_stream_id=stream)
+    selected_creator = stream_context.get("selected_creator") or DEFAULT_STREAM_CREATOR
+    selected_stream_id = stream_context.get("selected_stream_id") or ""
     created_at_floor = datetime.now(timezone.utc) - timedelta(hours=24)
 
-    query = (
-        select(TikTokOrder)
-        .where(TikTokOrder.created_at >= created_at_floor)
-        .order_by(TikTokOrder.updated_at.desc())
-        .limit(20)
-    )
+    since_dt = None
     if since:
         try:
             since_dt = datetime.fromisoformat(since)
             if since_dt.tzinfo is None:
                 since_dt = since_dt.replace(tzinfo=timezone.utc)
-            query = (
-                select(TikTokOrder)
-                .where(
-                    TikTokOrder.updated_at > since_dt,
-                    TikTokOrder.created_at >= created_at_floor,
-                )
-                .order_by(TikTokOrder.updated_at.desc())
-                .limit(20)
-            )
         except (ValueError, TypeError):
-            pass
+            since_dt = None
 
-    orders = session.exec(query).all()
-    orders = [o for o in orders if _is_enriched_order(o)]
+    scoped_orders, _product_scope = _load_scoped_stream_orders(
+        session,
+        stream_context,
+        created_at_floor,
+        order_by_updated=True,
+    )
+    new_orders, _product_scope = _load_scoped_stream_orders(
+        session,
+        stream_context,
+        created_at_floor,
+        since_updated_at=since_dt,
+        order_by_updated=True,
+    )
+    orders = new_orders[:20]
     cards = [_build_streamer_order_card(o) for o in orders]
     if cards:
         buyer_totals = _compute_buyer_lifetime_totals(session)
@@ -620,18 +1384,20 @@ def tiktok_streamer_poll(
     # Scope MAX(updated_at) to the same 24h window used for order queries.
     # Using global MAX caused the cursor to jump forward when old orders got
     # status-update webhooks, which made stale orders reappear at the top.
-    latest_updated_at = session.exec(
-        select(func.max(TikTokOrder.updated_at)).where(TikTokOrder.created_at >= created_at_floor)
-    ).one()
+    latest_updated_at = _latest_updated_at_for_orders(scoped_orders)
     latest_updated_at_text = None
     if latest_updated_at is not None:
         if latest_updated_at.tzinfo is None:
             latest_updated_at = latest_updated_at.replace(tzinfo=timezone.utc)
         latest_updated_at_text = latest_updated_at.isoformat()
 
-    total_count = int(session.exec(select(func.count()).select_from(TikTokOrder)).one())
+    total_count = len(scoped_orders)
 
-    gmv_data = _streamer_session_gmv(session)
+    gmv_data = _streamer_session_gmv(session, stream_context=stream_context)
+    live_session = stream_context.get("live_session") or {}
+    current_streamer = get_current_streamer(session) or ""
+    chat_info = get_chat_status()
+    live_room_id = _live_room_id_for_stream(chat_info, stream_context)
 
     return {
         "orders": cards,
@@ -649,18 +1415,27 @@ def tiktok_streamer_poll(
         "stream_orders": gmv_data.get("stream_orders"),
         "stream_items": gmv_data.get("stream_items"),
         "stream_start_utc": gmv_data.get("stream_start_utc"),
-        "tiktok_gmv": (lambda snap: snap.get("gmv") if snap.get("ok") else None)(_get_live_session_snapshot()),
-        "stream_range_source": _stream_range_source,
-        "stream_sessions": _get_live_sessions_list(),
-        "is_live": _is_currently_live(),
+        "tiktok_gmv": live_session.get("gmv") if live_session.get("ok") else None,
+        "stream_range_source": stream_context.get("source"),
+        "stream_metric_source": gmv_data.get("stream_metric_source"),
+        "stream_sessions": stream_context.get("sessions") or [],
+        "is_live": stream_context.get("is_live"),
+        "live_room_id": live_room_id,
         "build_version": _BUILD_VERSION,
         "gmv_goal": float(_get_app_setting(session, "stream_gmv_goal", "0") or "0"),
         "high_value_threshold": float(_get_app_setting(session, "high_value_threshold", "100") or "100"),
         "vip_buyer_threshold": float(_get_app_setting(session, "vip_buyer_threshold", "5000") or "5000"),
-        "order_velocity": _compute_order_velocity(session),
+        "order_velocity": _compute_order_velocity(session, stream_context=stream_context),
         "stream_end_utc": gmv_data.get("stream_end_utc"),
         "stream_duration_minutes": _compute_stream_duration_minutes(gmv_data),
-        "current_streamer": get_current_streamer(session) or "",
+        "current_streamer": current_streamer,
+        "selected_creator": selected_creator,
+        "selected_creator_label": stream_context.get("selected_creator_label") or "",
+        "selected_stream_id": selected_stream_id,
+        "selected_stream_label": stream_context.get("selected_stream_label") or "",
+        "creator_filter_enabled": stream_context.get("creator_filter_enabled"),
+        "creator_order_attribution": stream_context.get("creator_order_attribution"),
+        "creator_order_attribution_message": _creator_order_attribution_message(stream_context),
     }
 
 @router.get("/tiktok/streamer/goal")

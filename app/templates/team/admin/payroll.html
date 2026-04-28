@@ -177,6 +177,9 @@
             Locking marks active payroll days as locked and skips rejected timecards.
         </span>
     </form>
+    {% if not payroll.stats.mapped_count %}
+    <div class="ta-flash warn" style="margin:12px 0 0;">No employees are mapped to Clockify yet. Payroll export will not be useful until Clockify links are set up.</div>
+    {% endif %}
 </div>
 
 <div class="ta-card">

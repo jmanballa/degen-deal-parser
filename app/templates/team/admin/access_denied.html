@@ -1,0 +1,14 @@
+{% extends "team/admin/base.html" %}
+{% set active = active|default('') %}
+{% block content %}
+<div class="ta-card">
+    <h2>Access denied</h2>
+    <p style="font-size:14px; color:var(--lx-muted); margin:0 0 14px; line-height:1.45;">
+        {{ message or "You do not have permission to view this admin page." }}
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="ta-btn" href="{{ back_href or '/team/admin' }}">Back to admin</a>
+        <a class="ta-btn" href="/team/">Employee portal</a>
+    </div>
+</div>
+{% endblock %}

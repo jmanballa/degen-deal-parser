@@ -74,6 +74,16 @@
     .ex-pill.warn { color: #fde68a; background: rgba(234,179,8,0.16); }
     .ex-pill.info { color: #93c5fd; background: rgba(96,165,250,0.16); }
     .ex-detail { color: var(--lx-muted); max-width: 440px; line-height: 1.35; }
+    .ex-action-muted {
+        display: inline-flex;
+        padding: 7px 10px;
+        border-radius: 8px;
+        border: 1px dashed var(--lx-br);
+        color: var(--lx-muted);
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
     @media (max-width: 720px) {
         .ex-nav, .ex-nav .ta-btn { width: 100%; }
         .ex-nav { display: grid; grid-template-columns: repeat(3, 1fr); }
@@ -91,7 +101,7 @@
         <div>
             <h2>Exceptions Inbox</h2>
             <p style="font-size:13px; color:var(--lx-muted); margin:0;">
-                Payroll and timecard issues for {{ exceptions.week_label }}.
+                {% if can_view_labor_financials %}Payroll and {% endif %}timecard issues for {{ exceptions.week_label }}.
             </p>
         </div>
         <div class="ex-nav">
@@ -135,7 +145,11 @@
 <div class="ta-card" style="padding:0;">
     <div style="padding:18px 22px 12px; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
         <h2>Open exceptions</h2>
+        {% if can_view_payroll %}
         <a class="ta-btn" href="/team/admin/payroll?range=custom&start={{ exceptions.week_start.isoformat() }}&end={{ exceptions.week_end.isoformat() }}">Open payroll window</a>
+        {% elif can_view_labor_financials %}
+        <span class="ex-action-muted">Payroll admin only</span>
+        {% endif %}
     </div>
     <div class="ex-table-wrap">
         <table class="ex-table">
@@ -155,7 +169,16 @@
                     <td><strong>{{ row.category }}</strong></td>
                     <td>{{ row.employee_name }}</td>
                     <td class="ex-detail">{{ row.detail }}</td>
-                    <td><a class="ta-btn" href="{{ row.action_href }}">{{ row.action_label }}</a></td>
+                    <td>
+                        {% set action_href = row.action_href or '' %}
+                        {% set needs_payroll = '/team/admin/payroll' in action_href %}
+                        {% set needs_compensation = '/team/admin/employees/pay-rates' in action_href %}
+                        {% if (needs_payroll and not can_view_payroll) or (needs_compensation and not can_edit_compensation) %}
+                            <span class="ex-action-muted">Admin needed</span>
+                        {% else %}
+                            <a class="ta-btn" href="{{ row.action_href }}">{{ row.action_label }}</a>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
                 {% if not exceptions.rows %}

@@ -162,14 +162,18 @@
         </span>
     </form>
     {% if not configured %}
-    <p style="font-size:12px; color:var(--lx-muted); margin:10px 0 0;">Cached webhook data still displays. Refresh needs CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID.</p>
+    <div class="ta-flash warn" style="margin:10px 0 0;">Clockify is not fully connected. Cached webhook data still displays, but refresh needs CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID.</div>
     {% elif not can_refresh %}
     <p style="font-size:12px; color:var(--lx-muted); margin:10px 0 0;">Only admins can refresh Clockify data.</p>
+    {% endif %}
+    {% if not stats.mapped_count %}
+    <div class="ta-flash warn" style="margin:10px 0 0;">No employees are mapped to Clockify yet. Stats will read as empty until employees are linked on the <a href="/team/admin/clockify" style="color:#fde68a; font-weight:700;">Clockify page</a>.</div>
     {% endif %}
 </div>
 
 <div class="ta-card">
     <div class="labor-metrics">
+        {% if can_view_labor_financials %}
         <div class="labor-metric">
             <div class="labor-metric-label">Total labor</div>
             <div class="labor-metric-value">{{ stats.total_label }}</div>
@@ -180,11 +184,13 @@
             <div class="labor-metric-value">{{ stats.week_estimate.total_label }}</div>
             <div class="labor-metric-note">{{ stats.week_estimate.basis_label }}</div>
         </div>
+        {% endif %}
         <div class="labor-metric">
             <div class="labor-metric-label">Clocked hours</div>
             <div class="labor-metric-value">{{ stats.work_hours_label }}</div>
             <div class="labor-metric-note">Breaks {{ stats.break_hours_label }}</div>
         </div>
+        {% if can_view_labor_financials %}
         <div class="labor-metric">
             <div class="labor-metric-label">Effective cost</div>
             <div class="labor-metric-value">{{ stats.effective_rate_label }}</div>
@@ -200,28 +206,51 @@
             <div class="labor-metric-value">{{ stats.salary_label }}</div>
             <div class="labor-metric-note">{{ stats.salary_people_count }} salaried &middot; {{ stats.missing_salary_count }} missing salary</div>
         </div>
+        {% else %}
+        <div class="labor-metric">
+            <div class="labor-metric-label">Break time</div>
+            <div class="labor-metric-value">{{ stats.break_hours_label }}</div>
+            <div class="labor-metric-note">{{ stats.missed_break_deduction_label }} auto-deducted</div>
+        </div>
+        <div class="labor-metric">
+            <div class="labor-metric-label">Cached entries</div>
+            <div class="labor-metric-value">{{ stats.entry_count }}</div>
+            <div class="labor-metric-note">{{ stats.active_timer_count }} active timer{% if stats.active_timer_count != 1 %}s{% endif %}</div>
+        </div>
+        <div class="labor-metric">
+            <div class="labor-metric-label">Mapped employees</div>
+            <div class="labor-metric-value">{{ stats.mapped_count }}</div>
+            <div class="labor-metric-note">{{ stats.unmapped_count }} unmapped</div>
+        </div>
+        {% endif %}
     </div>
     <p style="font-size:12px; color:var(--lx-muted); margin:12px 0 0;">
+        {% if can_view_labor_financials %}
         Week estimate: {{ stats.week_estimate.hourly_to_date_label }} clocked hourly to date + {{ stats.week_estimate.salary_week_label }} salary for {{ stats.week_estimate.range_label }}.
         {{ stats.unpaid_people_count }} unpaid profile{% if stats.unpaid_people_count != 1 %}s{% endif %} excluded from pay totals.
+        {% else %}
+        This view is operational only: Clockify hours, breaks, active timers, and entry counts.
+        {% endif %}
     </p>
 </div>
 
 <div class="ta-card" style="padding:0;">
     <div style="padding:18px 22px 12px;">
-        <h2>Daily labor</h2>
+        <h2>{% if can_view_labor_financials %}Daily labor{% else %}Daily activity{% endif %}</h2>
     </div>
     <div class="labor-table-wrap">
-        <table class="labor-table" style="min-width:760px;">
+        <table class="labor-table" style="min-width:{% if can_view_labor_financials %}760px{% else %}520px{% endif %};">
             <thead>
                 <tr>
                     <th>Day</th>
                     <th>Clocked</th>
                     <th>Breaks</th>
+                    {% if can_view_labor_financials %}
                     <th>Hourly</th>
                     <th>Salary</th>
                     <th>Total</th>
                     <th>Share</th>
+                    {% endif %}
                     <th>Entries</th>
                 </tr>
             </thead>
@@ -231,15 +260,17 @@
                     <td><strong>{{ row.day_label }}</strong></td>
                     <td>{{ row.work_hours_label }}</td>
                     <td>{{ row.break_hours_label }}</td>
+                    {% if can_view_labor_financials %}
                     <td>{{ row.hourly_label }}</td>
                     <td>{{ row.salary_label }}</td>
                     <td><strong>{{ row.total_label }}</strong></td>
                     <td>{{ row.share_label }}</td>
+                    {% endif %}
                     <td>{{ row.entry_count }}</td>
                 </tr>
                 {% endfor %}
                 {% if not stats.daily_rows %}
-                <tr><td colspan="8" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No days in this window.</td></tr>
+                <tr><td colspan="{% if can_view_labor_financials %}8{% else %}4{% endif %}" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No days in this window.</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -248,21 +279,25 @@
 
 <div class="ta-card" style="padding:0;">
     <div style="padding:18px 22px 12px;">
-        <h2>Employee labor</h2>
+        <h2>{% if can_view_labor_financials %}Employee labor{% else %}Employee activity{% endif %}</h2>
     </div>
     <div class="labor-table-wrap">
-        <table class="labor-table" style="min-width:1060px;">
+        <table class="labor-table" style="min-width:{% if can_view_labor_financials %}1060px{% else %}620px{% endif %};">
             <thead>
                 <tr>
                     <th>Employee</th>
+                    {% if can_view_labor_financials %}
                     <th>Pay type</th>
                     <th>Rate / salary</th>
+                    {% endif %}
                     <th>Clocked</th>
                     <th>Breaks</th>
+                    {% if can_view_labor_financials %}
                     <th>Hourly</th>
                     <th>Salary</th>
                     <th>Total</th>
                     <th>Share</th>
+                    {% endif %}
                     <th>Entries</th>
                 </tr>
             </thead>
@@ -273,23 +308,29 @@
                         <a href="/team/admin/employees/{{ row.employee.id }}" style="color:#ff8a3d; font-weight:650;">{{ row.employee_name }}</a>
                         <div style="font-size:11px; color:var(--lx-muted); margin-top:2px;">
                             {% if row.clockify_user_id %}{{ row.clockify_user_id_masked }}{% else %}Not mapped{% endif %}
+                            {% if can_view_labor_financials %}
                             {% if row.missing_rate %}<span style="color:#fbbf24;"> &middot; missing rate</span>{% endif %}
                             {% if row.missing_salary %}<span style="color:#fbbf24;"> &middot; missing salary</span>{% endif %}
+                            {% endif %}
                         </div>
                     </td>
+                    {% if can_view_labor_financials %}
                     <td>{{ row.pay_type_label }}</td>
                     <td>{% if row.compensation_type == 'monthly_salary' %}{{ row.salary_label }}{% elif row.compensation_type == 'hourly' %}{{ row.rate_label }}{% else %}-{% endif %}</td>
+                    {% endif %}
                     <td>{{ row.work_hours_label }}</td>
                     <td>{{ row.break_hours_label }}</td>
+                    {% if can_view_labor_financials %}
                     <td>{{ row.hourly_label }}</td>
                     <td>{{ row.salary_cost_label }}</td>
                     <td><strong>{{ row.total_label }}</strong></td>
                     <td>{{ row.share_label }}</td>
+                    {% endif %}
                     <td>{{ row.entry_count }}</td>
                 </tr>
                 {% endfor %}
                 {% if not stats.employee_rows %}
-                <tr><td colspan="10" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No labor rows for this window.</td></tr>
+                <tr><td colspan="{% if can_view_labor_financials %}10{% else %}4{% endif %}" style="padding:20px 14px; color:var(--lx-muted); text-align:center;">No activity rows for this window.</td></tr>
                 {% endif %}
             </tbody>
         </table>

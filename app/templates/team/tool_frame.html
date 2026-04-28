@@ -1,0 +1,16 @@
+{% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">{{ tool_subtitle }}</div>
+{% endblock %}
+{% block content %}
+<div class="pt-card pt-tool-shell">
+  <div class="pt-panel-head">
+    <div>
+      <div class="pt-card-title">{{ tool_title }}</div>
+      <div class="pt-card-sub">If the embedded view feels cramped on a small phone, open the full-screen tool.</div>
+    </div>
+    <a class="pt-btn" href="{{ open_url }}">Open full screen</a>
+  </div>
+  <iframe class="pt-tool-frame" src="{{ tool_url }}" title="{{ tool_title }}" loading="eager" allow="camera; microphone; clipboard-read; clipboard-write"></iframe>
+</div>
+{% endblock %}

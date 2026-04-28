@@ -14,7 +14,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -38,8 +39,10 @@ from ..auth import (
 from ..clockify import (
     ClockifyApiError,
     ClockifyConfigError,
+    build_week_summary,
     clockify_client_from_settings,
     clockify_is_configured,
+    clockify_week_bounds,
     format_hours,
 )
 from ..config import get_settings
@@ -57,12 +60,14 @@ from ..models import (
     ShiftEntry,
     SupplyRequest,
     TeamAnnouncement,
+    TimeOffRequest,
     User,
     utcnow,
 )
 from ..pii import PIIDecryptError, decrypt_pii, encrypt_pii
 from ..rate_limit import rate_limited_or_429
 from ..shared import templates
+from ..team_notifications import EMPLOYEE_NOTIFICATION_ACTION
 
 router = APIRouter()
 
@@ -440,65 +445,63 @@ async def team_password_reset_post(
 
 def _nav_context(session: Session, user: User) -> dict:
     cache: dict = {}
-    # Admins / managers with edit rights get the editable admin schedule
-    # wherever a "Schedule" link appears — bottom mobile nav, sidebar,
-    # etc. Without this, phone users were tapping the mobile Schedule
-    # icon and landing on the read-only employee view (no + cells, no
-    # modal editing), which looked like the admin page was broken.
+    # Keep the regular portal Schedule link employee-facing for every role.
+    # Managers/admins get a separate Team Admin schedule link so they can
+    # choose between checking the published view and editing the team grid.
     can_edit_schedule = has_permission(
         session, user, "admin.schedule.edit", cache=cache
     )
-    schedule_href = "/team/admin/schedule" if can_edit_schedule else "/team/schedule"
+    schedule_href = "/team/schedule"
     keys = (
-        ("dashboard", "page.dashboard", "/team/"),
-        ("hours", "page.hours", "/team/hours"),
-        ("announcements", "page.announcements", "/team/announcements"),
-        ("schedule", "page.schedule", schedule_href),
-        ("time-off", "page.timeoff", "/team/timeoff"),
-        ("policies", "page.policies", "/team/policies"),
-        ("supply", "page.supply_requests", "/team/supply"),
-        ("profile", "page.profile", "/team/profile"),
+        ("dashboard", "Dashboard", "page.dashboard", "/team/"),
+        ("hours", "Hours", "page.hours", "/team/hours"),
+        ("announcements", "Announcements", "page.announcements", "/team/announcements"),
+        ("notifications", "Notifications", "page.announcements", "/team/notifications"),
+        ("schedule", "Schedule", "page.schedule", schedule_href),
+        ("time-off", "Time off", "page.timeoff", "/team/timeoff"),
+        ("policies", "Policies", "page.policies", "/team/policies"),
+        ("supply", "Supply", "page.supply_requests", "/team/supply"),
+        ("profile", "Profile", "page.profile", "/team/profile"),
     )
     nav = []
-    for name, key, href in keys:
+    for name, label, key, href in keys:
         if has_permission(session, user, key, cache=cache):
-            nav.append({"name": name, "href": href})
+            nav.append({"name": name, "label": label, "href": href})
 
     # Admin-only section. Rendered as a separate group in the sidebar when
     # at least one entry is visible. Gated per-key against the perms matrix
     # so managers/reviewers only see the admin links they actually have.
     admin_keys = (
-        ("employees", "page.admin.employees", "/team/admin/employees"),
-        ("invites", "page.admin.invites", "/team/admin/invites"),
-        ("permissions", "page.admin.permissions", "/team/admin/permissions"),
-        ("supply-queue", "page.admin.supply", "/team/admin/supply"),
-        ("time-off-queue", "admin.timeoff.view", "/team/admin/timeoff"),
+        ("employees", "Employees", "page.admin.employees", "/team/admin/employees"),
+        ("invites", "Invites", "page.admin.invites", "/team/admin/invites"),
+        ("permissions", "Permissions", "page.admin.permissions", "/team/admin/permissions"),
+        ("team-schedule", "Team schedule", "admin.schedule.view", "/team/admin/schedule"),
+        ("supply-queue", "Supply queue", "page.admin.supply", "/team/admin/supply"),
+        ("time-off-queue", "Time off queue", "admin.timeoff.view", "/team/admin/timeoff"),
         (
             "announcements-admin",
+            "Announcements admin",
             "admin.announcements.view",
             "/team/admin/announcements",
         ),
     )
     admin_nav = []
-    for name, key, href in admin_keys:
+    for name, label, key, href in admin_keys:
         if has_permission(session, user, key, cache=cache):
-            admin_nav.append({"name": name, "href": href})
+            admin_nav.append({"name": name, "label": label, "href": href})
 
-    # "Tools" section — ops pages selectively exposed to privileged portal
-    # roles. There is no dedicated tools resource key yet, so use the existing
-    # manager/reviewer/admin permissions instead of widening employee nav.
-    tools_nav = []
-    if (
-        has_permission(session, user, "admin.schedule.edit", cache=cache)
-        or has_permission(session, user, "admin.supply.view", cache=cache)
-    ):
-        tools_nav.append({"name": "live-stream", "href": "/tiktok/streamer"})
-        tools_nav.append({"name": "degen-eye", "href": "/degen_eye"})
+    # Ops shortcuts are safe employee-facing tools and should sit apart from
+    # HR/self-service links.
+    ops_nav = [
+        {"name": "inventory", "href": "/team/tools/inventory"},
+        {"name": "degen-eye", "href": "/team/tools/degen-eye"},
+        {"name": "live-stream", "href": "/team/tools/live-stream"},
+    ]
 
     return {
         "nav_items": nav,
         "admin_nav_items": admin_nav,
-        "tools_nav_items": tools_nav,
+        "tools_nav_items": ops_nav,
         "schedule_href": schedule_href,
         "can_edit_schedule": can_edit_schedule,
     }
@@ -528,6 +531,20 @@ def team_dashboard(
         ).one()
     )
     today = date.today()
+    today_shifts = _today_shifts_for(session, user, today=today)
+    upcoming_shifts = _upcoming_shifts_for(session, user, today=today, limit=5)
+    next_shift = next(
+        (shift for shift in upcoming_shifts if shift["shift_date"] > today),
+        upcoming_shifts[0] if upcoming_shifts else None,
+    )
+    pay_summary = _employee_dashboard_pay_summary(session, user, today=today)
+    active_announcements = _active_announcements_for(session, limit=3)
+    profile_completion = _profile_completion_for(
+        session,
+        user,
+        clockify_ready=clockify_ready,
+    )
+    nav_ctx = _nav_context(session, user)
     return templates.TemplateResponse(
         request,
         "team/dashboard.html",
@@ -539,15 +556,232 @@ def team_dashboard(
             "widgets": widgets,
             "clockify_ready": clockify_ready,
             "supply_queue_count": supply_queue_count,
-            "upcoming_shifts": _upcoming_shifts_for(session, user, today=today),
+            "dashboard_pay": pay_summary,
+            "today_shifts": today_shifts,
+            "next_shift": next_shift,
+            "upcoming_shifts": upcoming_shifts,
             "today_staffing": _today_staffing_for(session, today=today),
-            "active_announcements": _active_announcements_for(session, limit=3),
+            "active_announcements": active_announcements,
+            "profile_completion": profile_completion,
+            "today_focus": _today_focus_for(
+                today_shifts=today_shifts,
+                pay_summary=pay_summary,
+                announcements=active_announcements,
+                profile_completion=profile_completion,
+                schedule_href=nav_ctx["schedule_href"],
+            ),
             "today_date": today,
             "now_hour": utcnow().hour,
             "csrf_token": issue_token(request),
-            **_nav_context(session, user),
+            **nav_ctx,
         },
     )
+
+
+def _format_money_label(cents: int) -> str:
+    return f"${Decimal(cents) / Decimal(100):,.2f}"
+
+
+def _cents_for_seconds(seconds: int, rate_cents: int) -> int:
+    if seconds <= 0 or rate_cents <= 0:
+        return 0
+    amount = (Decimal(seconds) / Decimal(3600)) * Decimal(rate_cents)
+    return int(amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _format_time_label(value: Optional[datetime]) -> str:
+    if value is None:
+        return "-"
+    return value.strftime("%I:%M %p").lstrip("0")
+
+
+def _entry_overlap_seconds(entry: Any, start_local: datetime, end_local: datetime) -> int:
+    entry_start = getattr(entry, "start_local", None)
+    entry_end = getattr(entry, "end_local", None)
+    if entry_start is None:
+        return 0
+    if entry_end is None:
+        duration = int(getattr(entry, "duration_seconds", 0) or 0)
+        entry_end = entry_start + timedelta(seconds=duration)
+    overlap_start = max(entry_start, start_local)
+    overlap_end = min(entry_end, end_local)
+    if overlap_end <= overlap_start:
+        return 0
+    return int((overlap_end - overlap_start).total_seconds())
+
+
+def _employee_dashboard_pay_summary(
+    session: Session,
+    user: User,
+    *,
+    today: Optional[date] = None,
+) -> dict[str, Any]:
+    today = today or date.today()
+    profile = session.get(EmployeeProfile, user.id)
+    clockify_user_id = (profile.clockify_user_id or "").strip() if profile else ""
+    base: dict[str, Any] = {
+        "hours_label": "0m",
+        "hours_this_week_sub": "Since Monday 12:00 AM",
+        "clocked_in_today_label": "Not clocked in",
+        "hours_today_label": "0m",
+        "break_today_label": "Not yet",
+        "estimated_pay_label": "$0.00",
+        "pay_basis": "Hours not connected yet",
+        "clockify_user_id": clockify_user_id,
+        "has_clockify": bool(clockify_user_id),
+        "has_rate": False,
+        "error": "",
+    }
+    if not clockify_user_id:
+        return base
+
+    settings = get_settings()
+    start_local, end_local = clockify_week_bounds(today, settings=settings)
+    today_start_local = datetime.combine(today, time.min, tzinfo=start_local.tzinfo)
+    today_end_local = today_start_local + timedelta(days=1)
+    work_seconds = 0
+    source_label = "Clockify cache"
+    try:
+        from .team_admin_clockify import (
+            _apply_missed_break_deduction,
+            _cached_clockify_entries_by_user,
+            _clockify_entry_is_break,
+        )
+
+        cached = _cached_clockify_entries_by_user(
+            session,
+            [clockify_user_id],
+            start_local=start_local,
+            end_local=end_local,
+        )
+        raw_entries = cached.get(clockify_user_id, [])
+        if not raw_entries and clockify_is_configured(settings):
+            raw_entries = clockify_client_from_settings(settings).get_user_time_entries(
+                clockify_user_id,
+                start_utc=start_local.astimezone(timezone.utc),
+                end_utc=end_local.astimezone(timezone.utc),
+            )
+            source_label = "Clockify live"
+        summary = build_week_summary(
+            raw_entries,
+            week_start_local=start_local,
+            week_end_local=end_local,
+            settings=settings,
+            now=datetime.now(timezone.utc),
+        )
+        daily_work_seconds: dict[date, int] = {}
+        daily_break_seconds: dict[date, int] = {}
+        range_day = start_local.date()
+        last_range_day = (end_local - timedelta(seconds=1)).date()
+        while range_day <= last_range_day:
+            day_start = datetime.combine(range_day, time.min, tzinfo=start_local.tzinfo)
+            day_end = day_start + timedelta(days=1)
+            for row in summary.entries:
+                seconds = _entry_overlap_seconds(row, day_start, day_end)
+                if seconds <= 0:
+                    continue
+                if _clockify_entry_is_break(row):
+                    daily_break_seconds[range_day] = (
+                        daily_break_seconds.get(range_day, 0) + seconds
+                    )
+                else:
+                    daily_work_seconds[range_day] = (
+                        daily_work_seconds.get(range_day, 0) + seconds
+                    )
+            range_day += timedelta(days=1)
+        adjusted_by_day: dict[date, tuple[int, int, int]] = {}
+        for day_key in set(daily_work_seconds) | set(daily_break_seconds):
+            adjusted_by_day[day_key] = _apply_missed_break_deduction(
+                daily_work_seconds.get(day_key, 0),
+                daily_break_seconds.get(day_key, 0),
+            )
+        work_seconds = sum(row[0] for row in adjusted_by_day.values())
+        today_work_entries = [
+            row
+            for row in summary.entries
+            if not _clockify_entry_is_break(row)
+            and _entry_overlap_seconds(row, today_start_local, today_end_local) > 0
+        ]
+        today_break_entries = [
+            row
+            for row in summary.entries
+            if _clockify_entry_is_break(row)
+            and _entry_overlap_seconds(row, today_start_local, today_end_local) > 0
+        ]
+        today_work_seconds, today_break_seconds, today_missed_break_seconds = (
+            adjusted_by_day.get(today, (0, 0, 0))
+        )
+        running_break = any(row.running for row in today_break_entries)
+        base["clocked_in_today_label"] = (
+            _format_time_label(today_work_entries[0].start_local)
+            if today_work_entries
+            else "Not clocked in"
+        )
+        base["hours_today_label"] = format_hours(today_work_seconds)
+        if today_missed_break_seconds > 0:
+            base["break_today_label"] = (
+                f"Auto-deducted {format_hours(today_missed_break_seconds)}"
+            )
+        elif today_break_seconds > 0:
+            prefix = "On break" if running_break else "Taken"
+            base["break_today_label"] = f"{prefix} ({format_hours(today_break_seconds)})"
+        base["hours_label"] = format_hours(work_seconds)
+    except (ClockifyApiError, ClockifyConfigError) as exc:
+        base["error"] = str(exc)
+
+    try:
+        from .team_admin_employees import (
+            COMPENSATION_TYPE_HOURLY,
+            COMPENSATION_TYPE_LABELS,
+            COMPENSATION_TYPE_MONTHLY,
+            compensation_history_rows_for_users,
+            compensation_snapshot_for_day,
+            _salary_cost_for_period,
+        )
+
+        history_rows = compensation_history_rows_for_users(
+            session,
+            [user.id] if user.id is not None else [],
+            end_day=today,
+        )
+        snapshot = compensation_snapshot_for_day(
+            profile,
+            today,
+            history_rows=history_rows.get(user.id or 0, []),
+        )
+        compensation_type = snapshot["compensation_type"]
+        base["pay_basis"] = COMPENSATION_TYPE_LABELS.get(compensation_type, "Pay")
+        if compensation_type == COMPENSATION_TYPE_HOURLY:
+            rate_cents = snapshot["hourly_rate_cents"]
+            base["has_rate"] = rate_cents is not None
+            if rate_cents is not None:
+                base["estimated_pay_label"] = _format_money_label(
+                    _cents_for_seconds(work_seconds, rate_cents)
+                )
+                base["pay_basis"] = f"This week at {_format_money_label(rate_cents)}/hr"
+            else:
+                base["pay_basis"] = "Hourly rate missing"
+        elif compensation_type == COMPENSATION_TYPE_MONTHLY:
+            salary_cents = snapshot["monthly_salary_cents"]
+            base["has_rate"] = salary_cents is not None
+            if salary_cents is not None and isinstance(profile, EmployeeProfile):
+                base["estimated_pay_label"] = _format_money_label(
+                    _salary_cost_for_period(
+                        salary_cents=salary_cents,
+                        user=user,
+                        profile=profile,
+                        start_day=start_local.date(),
+                        end_day=today,
+                    )
+                )
+                base["pay_basis"] = "This week's salary accrual"
+            else:
+                base["pay_basis"] = "Salary missing"
+    except Exception as exc:
+        base["error"] = str(exc)
+        base["pay_basis"] = "Pay setup unavailable"
+
+    return base
 
 
 def _active_announcements_for(
@@ -574,6 +808,265 @@ def _active_announcements_for(
     if limit is not None:
         stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())
+
+
+def _policy_acknowledgements_for(session: Session, user: User) -> set[str]:
+    rows = session.exec(
+        select(AuditLog).where(
+            AuditLog.actor_user_id == user.id,
+            AuditLog.action == "policy.acknowledge",
+        )
+    ).all()
+    acknowledged: set[str] = set()
+    for row in rows:
+        try:
+            payload = json.loads(row.details_json or "{}")
+        except json.JSONDecodeError:
+            continue
+        policy_id = payload.get("policy_id")
+        if isinstance(policy_id, str):
+            acknowledged.add(policy_id)
+    return acknowledged
+
+
+def _decrypt_optional(blob: Optional[bytes]) -> str:
+    if not blob:
+        return ""
+    try:
+        return (decrypt_pii(blob) or "").strip()
+    except (PIIDecryptError, ValueError):
+        return ""
+
+
+def _profile_completion_for(
+    session: Session,
+    user: User,
+    *,
+    profile: Optional[EmployeeProfile] = None,
+    clockify_ready: Optional[bool] = None,
+) -> dict[str, Any]:
+    profile = profile or session.get(EmployeeProfile, user.id)
+    clockify_ready = clockify_is_configured() if clockify_ready is None else clockify_ready
+    acknowledged = _policy_acknowledgements_for(session, user)
+    missing_policies = [p for p in POLICIES if p["id"] not in acknowledged]
+    phone_done = bool(_decrypt_optional(profile.phone_enc if profile else None))
+    emergency_done = bool(
+        _decrypt_optional(profile.emergency_contact_name_enc if profile else None)
+        and _decrypt_optional(profile.emergency_contact_phone_enc if profile else None)
+    )
+    clockify_done = bool(
+        clockify_ready and profile and (profile.clockify_user_id or "").strip()
+    )
+    items = [
+        {
+            "key": "phone",
+            "label": "Phone number",
+            "done": phone_done,
+            "href": "/team/profile",
+            "hint": "Needed for schedule and time-off texts.",
+        },
+        {
+            "key": "emergency",
+            "label": "Emergency contact",
+            "done": emergency_done,
+            "href": "/team/profile",
+            "hint": "Name and phone number.",
+        },
+        {
+            "key": "policies",
+            "label": "Policies signed",
+            "done": not missing_policies,
+            "href": "/team/policies",
+            "hint": (
+                "All caught up."
+                if not missing_policies
+                else f"{len(missing_policies)} left to sign."
+            ),
+        },
+        {
+            "key": "clockify",
+            "label": "Clockify connected",
+            "done": clockify_done,
+            "href": "/team/hours",
+            "hint": "Ask a manager to connect this if hours look blank.",
+        },
+    ]
+    complete_count = sum(1 for item in items if item["done"])
+    return {
+        "items": items,
+        "complete_count": complete_count,
+        "total_count": len(items),
+        "percent": int((complete_count / len(items)) * 100) if items else 100,
+        "missing_policies": missing_policies,
+        "is_complete": complete_count == len(items),
+        "phone_ready": phone_done,
+        "clockify_ready": clockify_done,
+    }
+
+
+def _today_focus_for(
+    *,
+    today_shifts: list[dict[str, Any]],
+    pay_summary: dict[str, Any],
+    announcements: list[TeamAnnouncement],
+    profile_completion: dict[str, Any],
+    schedule_href: str,
+) -> dict[str, Any]:
+    shift_text = (
+        "; ".join(
+            (row.get("label") or "Shift").strip()
+            for row in today_shifts
+            if (row.get("label") or "").strip()
+        )
+        or "You are scheduled today."
+        if today_shifts
+        else "No shift today."
+    )
+    clocked_in = (pay_summary.get("clocked_in_today_label") or "").strip()
+    break_label = (pay_summary.get("break_today_label") or "Not yet").strip()
+    missing_policies = profile_completion.get("missing_policies") or []
+    items = [
+        {
+            "label": "Shift",
+            "value": shift_text,
+            "href": schedule_href,
+            "state": "ok" if today_shifts else "neutral",
+        },
+        {
+            "label": "Clock status",
+            "value": (
+                f"Clocked in at {clocked_in}."
+                if clocked_in and clocked_in != "Not clocked in"
+                else "Clock in from the shop iPad when you arrive."
+            ),
+            "href": "/team/hours",
+            "state": (
+                "ok"
+                if clocked_in and clocked_in != "Not clocked in"
+                else ("todo" if today_shifts else "neutral")
+            ),
+        },
+        {
+            "label": "Break",
+            "value": (
+                "Break recorded."
+                if break_label.startswith(("Taken", "On break"))
+                else (
+                    "No break clocked yet. If a 5+ hour shift misses a break, 30 minutes is deducted."
+                    if today_shifts
+                    else "No break needed unless you work today."
+                )
+            ),
+            "href": "/team/hours",
+            "state": (
+                "ok"
+                if break_label.startswith(("Taken", "On break"))
+                else ("todo" if today_shifts else "neutral")
+            ),
+        },
+        {
+            "label": "Announcements",
+            "value": (
+                f"{len(announcements)} current update{'s' if len(announcements) != 1 else ''}."
+                if announcements
+                else "Nothing new right now."
+            ),
+            "href": "/team/announcements",
+            "state": "todo" if announcements else "ok",
+        },
+        {
+            "label": "Policies",
+            "value": (
+                f"{len(missing_policies)} unsigned polic{'ies' if len(missing_policies) != 1 else 'y'}."
+                if missing_policies
+                else "All signed."
+            ),
+            "href": "/team/policies",
+            "state": "todo" if missing_policies else "ok",
+        },
+    ]
+    todo_count = sum(1 for item in items if item["state"] == "todo")
+    return {"items": items, "todo_count": todo_count}
+
+
+def _employee_notifications_for(
+    session: Session,
+    user: User,
+    *,
+    limit: int = 20,
+    since_id: int = 0,
+    newest_first: bool = True,
+) -> list[dict[str, Any]]:
+    stmt = (
+        select(AuditLog)
+        .where(AuditLog.target_user_id == user.id)
+        .where(AuditLog.action == EMPLOYEE_NOTIFICATION_ACTION)
+    )
+    if since_id > 0:
+        stmt = stmt.where(AuditLog.id > since_id)
+    if newest_first:
+        stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+    else:
+        stmt = stmt.order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
+    rows = session.exec(stmt.limit(limit)).all()
+    notifications: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            payload = json.loads(row.details_json or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        notifications.append(
+            {
+                "id": row.id,
+                "kind": str(payload.get("kind") or "general"),
+                "title": str(payload.get("title") or "Team update"),
+                "body": str(payload.get("body") or ""),
+                "link_path": str(payload.get("link_path") or "/team/"),
+                "created_at": row.created_at,
+                "sms": payload.get("sms") if isinstance(payload.get("sms"), dict) else {},
+            }
+        )
+    return notifications
+
+
+@router.get("/team/notifications/poll")
+def team_notifications_poll(
+    request: Request,
+    since_id: int = Query(default=0),
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(
+        request, session, resource_key="page.announcements"
+    )
+    if denial:
+        return denial
+    notifications = _employee_notifications_for(
+        session,
+        user,
+        limit=10,
+        since_id=max(0, since_id),
+        newest_first=False,
+    )
+    latest_seen = max(
+        [since_id]
+        + [int(note["id"]) for note in notifications if note.get("id") is not None]
+    )
+    return {
+        "latest_id": latest_seen,
+        "notifications": [
+            {
+                "id": note["id"],
+                "kind": note["kind"],
+                "title": note["title"],
+                "body": note["body"],
+                "link_path": note["link_path"],
+                "created_at": note["created_at"].isoformat()
+                if note.get("created_at")
+                else None,
+            }
+            for note in notifications
+        ],
+    }
 
 
 @router.get("/team/announcements", response_class=HTMLResponse)
@@ -619,6 +1112,158 @@ def team_announcements(
     )
 
 
+@router.get("/team/notifications", response_class=HTMLResponse)
+def team_notifications(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(
+        request, session, resource_key="page.announcements"
+    )
+    if denial:
+        return denial
+    profile_completion = _profile_completion_for(session, user)
+    timeoff_rows = session.exec(
+        select(TimeOffRequest)
+        .where(TimeOffRequest.submitted_by_user_id == user.id)
+        .where(TimeOffRequest.status.in_(("approved", "denied")))
+        .order_by(TimeOffRequest.updated_at.desc(), TimeOffRequest.id.desc())
+        .limit(5)
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "team/notifications.html",
+        {
+            "request": request,
+            "title": "Notifications",
+            "active": "notifications",
+            "current_user": user,
+            "notifications": _employee_notifications_for(session, user),
+            "active_announcements": _active_announcements_for(session, limit=5),
+            "timeoff_rows": list(timeoff_rows),
+            "profile_completion": profile_completion,
+            "sms_enabled": bool(profile_completion.get("phone_ready")),
+            "csrf_token": issue_token(request),
+            **_nav_context(session, user),
+        },
+    )
+
+
+@router.get("/team/help", response_class=HTMLResponse)
+def team_help(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(request, session, resource_key="page.dashboard")
+    if denial:
+        return denial
+    return templates.TemplateResponse(
+        request,
+        "team/help.html",
+        {
+            "request": request,
+            "title": "Ask for Help",
+            "active": "",
+            "current_user": user,
+            "csrf_token": issue_token(request),
+            **_nav_context(session, user),
+        },
+    )
+
+
+def _team_tool_response(
+    request: Request,
+    session: Session,
+    *,
+    user: User,
+    active: str,
+    title: str,
+    tool_title: str,
+    tool_subtitle: str,
+    tool_url: str,
+    open_url: str,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "team/tool_frame.html",
+        {
+            "request": request,
+            "title": title,
+            "active": active,
+            "current_user": user,
+            "tool_title": tool_title,
+            "tool_subtitle": tool_subtitle,
+            "tool_url": tool_url,
+            "open_url": open_url,
+            "csrf_token": issue_token(request),
+            **_nav_context(session, user),
+        },
+    )
+
+
+@router.get("/team/tools/inventory", response_class=HTMLResponse)
+def team_tool_inventory(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(request, session, resource_key="page.dashboard")
+    if denial:
+        return denial
+    return _team_tool_response(
+        request,
+        session,
+        user=user,
+        active="inventory",
+        title="Inventory",
+        tool_title="Inventory scan",
+        tool_subtitle="Scan a barcode or look up inventory without leaving the team portal.",
+        tool_url="/inventory/scan?team_shell=1",
+        open_url="/inventory/scan",
+    )
+
+
+@router.get("/team/tools/degen-eye", response_class=HTMLResponse)
+def team_tool_degen_eye(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(request, session, resource_key="page.dashboard")
+    if denial:
+        return denial
+    return _team_tool_response(
+        request,
+        session,
+        user=user,
+        active="degen-eye",
+        title="Degen Eye",
+        tool_title="Card scanner",
+        tool_subtitle="Use the scanner from inside the employee portal shell.",
+        tool_url="/degen_eye/v2?team_shell=1",
+        open_url="/degen_eye/v2",
+    )
+
+
+@router.get("/team/tools/live-stream", response_class=HTMLResponse)
+def team_tool_live_stream(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(request, session, resource_key="page.dashboard")
+    if denial:
+        return denial
+    return _team_tool_response(
+        request,
+        session,
+        user=user,
+        active="live-stream",
+        title="Live Stream",
+        tool_title="TikTok live stream",
+        tool_subtitle="Watch live orders, goals, and chat while staying in the employee portal.",
+        tool_url="/tiktok/streamer?team_shell=1",
+        open_url="/tiktok/streamer",
+    )
+
+
 _SHIFT_START_RE = re.compile(
     r"^\s*(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>a|am|p|pm)?\b",
     re.IGNORECASE,
@@ -649,11 +1294,56 @@ def _parse_shift_start_minutes(label: str) -> Optional[int]:
     return hour * 60 + minute
 
 
+def _today_shifts_for(
+    session: Session,
+    user: User,
+    *,
+    today: Optional[date] = None,
+) -> list[dict[str, Any]]:
+    today = today or date.today()
+    shifts = list(
+        session.exec(
+            select(ShiftEntry)
+            .where(ShiftEntry.user_id == user.id)
+            .where(ShiftEntry.shift_date == today)
+            .where(
+                ~ShiftEntry.kind.in_(
+                    (SHIFT_KIND_REQUEST, SHIFT_KIND_OFF, SHIFT_KIND_BLANK)
+                )
+            )
+            .order_by(ShiftEntry.sort_order, ShiftEntry.id)
+        ).all()
+    )
+    if not shifts:
+        return []
+
+    day_note_row = session.exec(
+        select(ScheduleDayNote).where(ScheduleDayNote.day_date == today)
+    ).first()
+    day_note = None
+    if day_note_row is not None:
+        day_note = (
+            (day_note_row.location_label or "").strip()
+            or (day_note_row.notes or "").strip()
+            or None
+        )
+    return [
+        {
+            "shift_date": shift.shift_date,
+            "label": shift.label,
+            "kind": shift.kind,
+            "day_note": day_note,
+        }
+        for shift in shifts
+    ]
+
+
 def _upcoming_shifts_for(
     session: Session,
     user: User,
     *,
     today: Optional[date] = None,
+    limit: int = 5,
 ) -> list[dict[str, Any]]:
     today = today or date.today()
     shifts = list(
@@ -667,7 +1357,7 @@ def _upcoming_shifts_for(
                 )
             )
             .order_by(ShiftEntry.shift_date, ShiftEntry.sort_order, ShiftEntry.id)
-            .limit(3)
+            .limit(limit)
         ).all()
     )
     if not shifts:
@@ -792,6 +1482,7 @@ def team_profile(
     emergency_contact_name = decrypt_pii(profile.emergency_contact_name_enc) or ""
     emergency_contact_phone = decrypt_pii(profile.emergency_contact_phone_enc) or ""
     address = _decode_address(profile.address_enc)
+    profile_completion = _profile_completion_for(session, user, profile=profile)
     return templates.TemplateResponse(
         request,
         "team/profile.html",
@@ -808,6 +1499,7 @@ def team_profile(
             "emergency_contact_name": emergency_contact_name,
             "emergency_contact_phone": emergency_contact_phone,
             "address": address,
+            "profile_completion": profile_completion,
             "flash": flash,
             "csrf_token": issue_token(request),
             **_nav_context(session, user),
@@ -1161,16 +1853,6 @@ def team_schedule(
     denial, user = _require_employee(request, session, resource_key="page.schedule")
     if denial:
         return denial
-    # If this user can edit the schedule (admins / managers), send them to
-    # the editable admin page instead of the read-only employee view. This
-    # fixes a confusing case on mobile where tapping the bottom-nav
-    # Schedule icon landed admins on /team/schedule (no + cells, no modal)
-    # and looked like the editor was "broken on mobile."
-    if has_permission(session, user, "admin.schedule.edit"):
-        target = "/team/admin/schedule"
-        if week:
-            target += f"?week={week}"
-        return RedirectResponse(url=target, status_code=303)
     # Reuse the admin grid builder so the employee view is literally the
     # same visual — no translation layer, no "my shifts" fork. Everyone
     # sees the published grid the same way; only the top-level wrapper

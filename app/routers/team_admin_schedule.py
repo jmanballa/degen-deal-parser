@@ -49,6 +49,7 @@ from ..models import (
 )
 from ..pii import decrypt_pii
 from ..shared import templates
+from ..team_notifications import notify_employee
 from .team_admin import _admin_gate, _permission_gate
 
 router = APIRouter()
@@ -477,6 +478,7 @@ def _grid_context(
     *,
     staff_kind: Optional[str] = None,
     flash: Optional[str] = None,
+    include_financials: bool = True,
 ) -> dict:
     """Collect all the data the schedule grid template needs.
 
@@ -621,7 +623,7 @@ def _grid_context(
     day_hours: dict[str, float] = {d.isoformat(): 0.0 for d in week_days}
     total_shifts = 0
     profile_map: dict[int, EmployeeProfile] = {}
-    if user_ids_on_grid:
+    if include_financials and user_ids_on_grid:
         profiles = list(
             session.exec(
                 select(EmployeeProfile).where(
@@ -631,13 +633,14 @@ def _grid_context(
         )
         profile_map = {p.user_id: p for p in profiles}
 
-    hourly_rate_cents_by_user: dict[int, int] = {}
     missing_rate_count = 0
-    for uid in user_ids_on_grid:
-        rate_cents, missing = _profile_hourly_rate_cents(profile_map.get(uid))
-        hourly_rate_cents_by_user[uid] = rate_cents
-        if missing:
-            missing_rate_count += 1
+    hourly_rate_cents_by_user: dict[int, int] = {}
+    if include_financials:
+        for uid in user_ids_on_grid:
+            rate_cents, missing = _profile_hourly_rate_cents(profile_map.get(uid))
+            hourly_rate_cents_by_user[uid] = rate_cents
+            if missing:
+                missing_rate_count += 1
 
     labor_total_cents = 0
     # Sum hours and count shifts across every entry in every cell — multi-
@@ -656,9 +659,10 @@ def _grid_context(
             if hrs > 0:
                 user_hours[uid] = user_hours.get(uid, 0.0) + hrs
                 day_hours[iso] = day_hours.get(iso, 0.0) + hrs
-                labor_total_cents += _labor_cents_for_hours(
-                    hrs, hourly_rate_cents_by_user.get(uid, 0)
-                )
+                if include_financials:
+                    labor_total_cents += _labor_cents_for_hours(
+                        hrs, hourly_rate_cents_by_user.get(uid, 0)
+                    )
     grand_hours = round(sum(user_hours.values()), 2)
     # Count distinct employees who have at least one worked cell on any day.
     people_with_shifts = sum(
@@ -835,13 +839,31 @@ def admin_schedule_view(
     if denial:
         return denial
     week_start = _parse_week_start(week)
+    can_edit = has_permission(session, user, "admin.schedule.edit")
+    can_edit_employee_profile = has_permission(
+        session, user, "admin.employees.edit"
+    )
+    can_edit_schedule_roster = has_permission(
+        session, user, "admin.employee_roster.edit"
+    )
+    can_view_labor_financials = has_permission(
+        session,
+        user,
+        "admin.labor_financials.view",
+    )
     storefront_ctx = _grid_context(
-        session, week_start, staff_kind=STAFF_KIND_STOREFRONT, flash=flash
+        session,
+        week_start,
+        staff_kind=STAFF_KIND_STOREFRONT,
+        flash=flash,
+        include_financials=can_view_labor_financials,
     )
     stream_ctx = _grid_context(
-        session, week_start, staff_kind=STAFF_KIND_STREAM
+        session,
+        week_start,
+        staff_kind=STAFF_KIND_STREAM,
+        include_financials=False,
     )
-    can_edit = has_permission(session, user, "admin.schedule.edit")
     # Edit mode is opt-in per visit. The default is a clean read-only
     # view for everyone (including admins) — safer on mobile and avoids
     # accidental cell edits. Admins flip it on with ?edit=1.
@@ -917,6 +939,9 @@ def admin_schedule_view(
             "active": "schedule",
             "current_user": user,
             "can_edit": can_edit,
+            "can_edit_employee_profile": can_edit_employee_profile,
+            "can_edit_schedule_roster": can_edit_schedule_roster,
+            "can_view_labor_financials": can_view_labor_financials,
             "edit_mode": edit_mode,
             "stream_accounts": stream_accounts,
             "stream_account_colors": stream_account_colors,
@@ -1014,6 +1039,7 @@ async def admin_schedule_save(
     touched: int = 0
     emptied: int = 0
     recurred: int = 0
+    changed_user_ids: set[int] = set()
 
     # Per-shift recurrence we need to project forward. Each tuple is
     # (uid, base_date, [shift_spec, ...]) where shift_spec is
@@ -1118,6 +1144,7 @@ async def admin_schedule_save(
             )
 
             if not identical:
+                changed_user_ids.add(uid)
                 for e in existing_list:
                     session.delete(e)
                 for i, spec in enumerate(specs):
@@ -1207,6 +1234,7 @@ async def admin_schedule_save(
                 for e in existing:
                     session.delete(e)
                 for i, spec in enumerate(active):
+                    changed_user_ids.add(uid)
                     session.add(
                         ShiftEntry(
                             user_id=uid,
@@ -1287,6 +1315,17 @@ async def admin_schedule_save(
                 ip_address=(request.client.host if request.client else None),
             )
         )
+        for changed_user_id in sorted(changed_user_ids):
+            notify_employee(
+                session,
+                user_id=changed_user_id,
+                actor_user_id=current.id,
+                kind="schedule_change",
+                title="Your schedule was updated",
+                body=f"Week of {week_start.strftime('%b %d')} was changed. Open the schedule to review your shifts.",
+                link_path=f"/team/schedule?week={week_start.isoformat()}",
+                request=request,
+            )
         session.commit()
         flash = (
             f"Saved · {added} added · {touched} updated · {emptied} cleared"
@@ -1392,6 +1431,7 @@ async def _save_stream_shifts(
     updated = 0
     cleared = 0
     recurred = 0
+    changed_user_ids: set[int] = set()
 
     # Per-cell recurrence plans. Each entry is (uid, base_date, shifts)
     # where shifts is the full list of normalized stream-shift dicts we
@@ -1524,6 +1564,8 @@ async def _save_stream_shifts(
         if clear_cell:
             _, _, c = _write_cell(streamer.id, iso, [])
             cleared += c
+            if c:
+                changed_user_ids.add(uid)
             continue
 
         if not shifts:
@@ -1533,6 +1575,8 @@ async def _save_stream_shifts(
         added += a
         updated += u
         cleared += c
+        if a or u or c:
+            changed_user_ids.add(uid)
 
         if any(s["recur_n"] > 1 for s in shifts):
             try:
@@ -1555,6 +1599,8 @@ async def _save_stream_shifts(
             active = [s for s in shifts if s["recur_n"] > offset]
             _, _, _ = _write_cell(streamer.id, iso_fut, active)
             recurred += len(active) if active else 0
+            if active:
+                changed_user_ids.add(uid)
 
     total = added + updated + cleared + recurred
     if total:
@@ -1573,6 +1619,17 @@ async def _save_stream_shifts(
                 ip_address=(request.client.host if request.client else None),
             )
         )
+        for changed_user_id in sorted(changed_user_ids):
+            notify_employee(
+                session,
+                user_id=changed_user_id,
+                actor_user_id=current.id,
+                kind="schedule_change",
+                title="Your stream schedule was updated",
+                body=f"Week of {week_start.strftime('%b %d')} was changed. Open the schedule to review your stream shifts.",
+                link_path=f"/team/schedule?week={week_start.isoformat()}",
+                request=request,
+            )
         session.commit()
         flash = (
             f"Stream saved · {added} added · {updated} updated · {cleared} cleared"

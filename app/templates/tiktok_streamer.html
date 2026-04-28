@@ -132,6 +132,51 @@
         .badge-live:not(.is-live) .live-text-on { display: none; }
         .badge-live.is-live .live-text-off { display: none; }
         .badge-streamer-name { color: var(--green); border-color: rgba(0,210,160,.3); gap: 4px; font-weight: 600; font-size: 11px; }
+        .creator-control {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 34px;
+            max-width: 280px;
+            padding: 0 28px 0 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+        }
+        .creator-control:hover { background: var(--bg-card-hover); color: var(--text); }
+        .creator-prefix {
+            color: var(--tiktok-cyan);
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .creator-select {
+            min-width: 0;
+            max-width: 220px;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            appearance: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .creator-select option { color: #111; background: #fff; }
+        .creator-caret {
+            position: absolute;
+            right: 9px;
+            color: var(--text-muted);
+            pointer-events: none;
+            font-size: 10px;
+        }
+        .badge-live-room { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
         @keyframes live-pulse {
             0%, 100% { box-shadow: 0 0 0 0 transparent; }
             50% { box-shadow: 0 0 14px 2px var(--accent-glow); }
@@ -746,6 +791,11 @@
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             opacity: .85; margin-top: 1px;
         }
+        .row-multi-summary {
+            font-size: 12px; color: var(--text-muted); font-weight: 650;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            margin-top: 2px;
+        }
         .row-sub {
             display: flex; align-items: center;
             gap: 8px; margin-top: 3px; flex-wrap: wrap;
@@ -800,6 +850,15 @@
             min-width: 26px; height: 22px;
             border-radius: 7px; padding: 0 7px;
         }
+        .row-items-total-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            background: rgba(37, 244, 238, .12); color: var(--tiktok-cyan);
+            border: 1px solid rgba(37, 244, 238, .24);
+            font-size: 11px; font-weight: 800;
+            min-width: 44px; height: 22px;
+            border-radius: 7px; padding: 0 8px;
+            white-space: nowrap;
+        }
         .row-expand-hint {
             font-size: 16px; color: var(--text-muted);
             transition: transform .2s; flex-shrink: 0; margin-left: 4px;
@@ -812,7 +871,7 @@
             transition: max-height .35s cubic-bezier(.4, 0, .2, 1);
             background: var(--bg-expanded);
         }
-        .order-row.is-expanded .order-detail { max-height: 800px; }
+        .order-row.is-expanded .order-detail { max-height: 1600px; }
         .order-detail-inner {
             padding: 0 16px 16px;
             border-top: 1px solid var(--border);
@@ -1205,6 +1264,8 @@
         }
         @media (max-width: 500px) {
             .orders-panel { padding: 10px 10px 70px; }
+            .creator-control { max-width: 180px; }
+            .creator-select { max-width: 122px; }
             .gmv-value { font-size: 32px; }
             .row-thumb, .row-thumb-placeholder { width: 56px; height: 56px; }
             .row-product-name { font-size: 14px; }
@@ -1591,11 +1652,25 @@
                             <span class="live-text-on">LIVE</span>
                             <span class="live-text-off">OFFLINE</span>
                         </span>
+                        {% if creator_options %}
+                        <label class="creator-control" for="creator-select" title="Creator">
+                            <span class="creator-prefix">Creator</span>
+                            <select class="creator-select" id="creator-select">
+                                {% for creator_choice in creator_options %}
+                                <option value="{{ creator_choice.id }}" {% if creator_choice.selected %}selected{% endif %}>{{ creator_choice.label }}</option>
+                                {% endfor %}
+                            </select>
+                            <span class="creator-caret">&#9662;</span>
+                        </label>
+                        {% endif %}
+                        <span class="badge badge-live-room" id="live-room-badge" title="TikTok live_room_id" style="display:{% if live_room_id %}inline-flex{% else %}none{% endif %};">
+                            Room <span id="live-room-id-text">{{ live_room_id or '' }}</span>
+                        </span>
                         <span class="badge badge-streamer-name" id="streamer-name-badge" style="display:{% if current_streamer %}inline-flex{% else %}none{% endif %};">
                             &#x1F3A4; <span id="streamer-name-text">{{ current_streamer or '' }}</span>
                         </span>
                         <span class="badge" style="color:var(--green);" id="order-count-badge">
-                            <span id="order-count">{{ total_count }}</span> orders
+                            <span id="order-count">{% if creator_order_attribution not in ['time_window', 'live_products'] %}Feed{% else %}{{ total_count }}{% endif %}</span> <span id="order-count-unit">{% if creator_order_attribution not in ['time_window', 'live_products'] %}paused{% else %}orders{% endif %}</span>
                         </span>
                         <span class="badge badge-mute" id="mute-toggle" title="Toggle sound">
                             <span id="mute-icon">&#x1F50A;</span>
@@ -1616,7 +1691,7 @@
                                 {% set _is_admin_like = current_user and current_user.role in ("reviewer", "admin") %}
                                 <div class="nav-dropdown-label">Workspace</div>
                                 <a href="/team/">Team Portal</a>
-                                <a href="/degen_eye">Degen Eye</a>
+                                <a href="{% if team_shell %}/team/tools/degen-eye{% else %}/degen_eye{% endif %}">Degen Eye</a>
                                 {% if _is_ops %}
                                 <a href="/dashboard">Dashboard</a>
                                 <a href="/tiktok/orders">TikTok Orders</a>
@@ -1647,7 +1722,7 @@
                 <div class="gmv-hero">
                     <div class="gmv-row">
                         <div class="gmv-main">
-                            <div class="gmv-label">Today's GMV</div>
+                            <div class="gmv-label">Shop GMV Today</div>
                             <div class="gmv-value" id="gmv-value">${{ "%.2f"|format(session_gmv) }}</div>
                         </div>
                         <div class="gmv-stats">
@@ -1720,8 +1795,8 @@
                     <div class="leaderboard-header">
                         <div class="leaderboard-label" id="lb-title">Leaderboard</div>
                         <div class="lb-toggle" id="lb-toggle">
-                            <button class="lb-toggle-btn active" data-mode="today">Today</button>
-                            <button class="lb-toggle-btn" data-mode="stream">Stream</button>
+                            <button class="lb-toggle-btn {% if not creator_filter_enabled %}active{% endif %}" data-mode="today">Today</button>
+                            <button class="lb-toggle-btn {% if creator_filter_enabled %}active{% endif %}" data-mode="stream">Stream</button>
                         </div>
                     </div>
                 </div>
@@ -1944,7 +2019,6 @@
         try { _streamTopSellers = JSON.parse({{ stream_top_sellers_json|tojson }}); } catch (e) {}
         var _streamTopBuyers = [];
         try { _streamTopBuyers = JSON.parse({{ stream_top_buyers_json|tojson }}); } catch (e) {}
-        var _lbMode = 'today';
         var _knownIds = new Set(_orders.map(function(o) { return o.tiktok_order_id; }));
         var _muted = false;
         var _audioCtx = null;
@@ -1959,6 +2033,11 @@
         var _gmvGoal = {{ gmv_goal|tojson }};
         var _highValueThreshold = {{ high_value_threshold|tojson }};
         var _vipBuyerThreshold = {{ vip_buyer_threshold|tojson }};
+        var _selectedCreator = {{ selected_creator|tojson }};
+        var _creatorFilterEnabled = {{ creator_filter_enabled|tojson }};
+        var _creatorOrderAttribution = {{ creator_order_attribution|tojson }};
+        var _creatorOrderAttributionMessage = {{ creator_order_attribution_message|tojson }};
+        var _lbMode = _creatorFilterEnabled ? 'stream' : 'today';
         var _wasLive = _streamData.is_live || false;
         var _summaryDismissed = false;
         var _orderPollInFlight = false;
@@ -1975,6 +2054,7 @@
         var emptyState = document.getElementById('empty-state');
         var toastContainer = document.getElementById('toast-container');
         var countEl = document.getElementById('order-count');
+        var countUnitEl = document.getElementById('order-count-unit');
         var gmvEl = document.getElementById('gmv-value');
         var gmvPaidEl = document.getElementById('gmv-paid-count');
         var gmvTotalEl = document.getElementById('gmv-total-count');
@@ -1984,6 +2064,9 @@
         var streamOrdersEl = document.getElementById('stream-orders');
         var muteToggle = document.getElementById('mute-toggle');
         var muteIcon = document.getElementById('mute-icon');
+        var creatorSelect = document.getElementById('creator-select');
+        var liveRoomBadge = document.getElementById('live-room-badge');
+        var liveRoomIdText = document.getElementById('live-room-id-text');
 
         var chatDesktopMsgs = document.getElementById('chat-messages-desktop');
         var chatMobileMsgs = document.getElementById('chat-messages-mobile');
@@ -2370,23 +2453,36 @@
 
         /* ---- Order row ---- */
         function renderRow(order, isNew) {
-            var firstItem = order.items && order.items.length > 0 ? order.items[0] : null;
-            var totalQty = (order.items || []).reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
+            var rawItems = order.items || [];
+            var mergedItems = mergeItems(rawItems);
+            var firstItem = mergedItems.length > 0 ? mergedItems[0] : (rawItems.length > 0 ? rawItems[0] : null);
+            var totalQty = mergedItems.reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
+            var uniqueCount = mergedItems.length;
+            var isMixedOrder = uniqueCount > 1;
             var productName = firstItem ? firstItem.title : 'Unknown item';
-            var itemCount = (order.items || []).length;
+            var itemPreview = '';
+            if (isMixedOrder) {
+                productName = totalQty + ' item' + (totalQty !== 1 ? 's' : '') + ' across ' + uniqueCount + ' products';
+                itemPreview = mergedItems.slice(0, 3).map(function(item) {
+                    return item.title + ((item.quantity || 1) > 1 ? ' x' + item.quantity : '');
+                }).join(' + ');
+                if (uniqueCount > 3) itemPreview += ' + ' + (uniqueCount - 3) + ' more';
+            }
             var l4 = last4(order.order_number || order.tiktok_order_id);
             var refund = isRefundOrder(order);
 
             var rowClasses = 'order-row';
             if (refund) rowClasses += ' is-refund';
             else if (isNew) rowClasses += ' is-new';
+            if (isNew && (uniqueCount > 1 || totalQty > 1)) rowClasses += ' is-expanded';
 
             var html = '<div class="' + rowClasses + '" data-order-id="' + escAttr(order.tiktok_order_id) + '">';
             html += '<div class="order-row-main">';
             html += thumbHTML(firstItem, 'row-thumb', 'row-thumb-placeholder');
             html += '<div class="row-info">';
             html += '<div class="row-product-name">' + esc(productName) + '</div>';
-            if (firstItem && firstItem.variant) html += '<div class="row-variant">' + esc(firstItem.variant) + '</div>';
+            if (isMixedOrder) html += '<div class="row-multi-summary">' + esc(itemPreview) + '</div>';
+            else if (firstItem && firstItem.variant) html += '<div class="row-variant">' + esc(firstItem.variant) + '</div>';
             var isVip = (order.buyer_lifetime_spent || 0) >= _vipBuyerThreshold && _vipBuyerThreshold > 0;
             html += '<div class="row-sub">';
             html += '<span class="row-customer">' + esc(order.customer_name || 'Guest') + '</span>';
@@ -2395,11 +2491,12 @@
             html += '<span class="refund-badge">&#x26A0; ' + (refund ? refundLabel(order) : 'REFUND') + '</span>';
             html += '<button class="row-copy-btn" title="Copy label" data-label="' + escAttr(labelText(order)) + '" onclick="event.stopPropagation();window._copyRow(this)">&#x1F4CB;</button>';
             html += '<span class="row-time" data-created-at="' + escAttr(order.created_at || '') + '">' + relativeTime(order.created_at) + '</span>';
-            if (itemCount > 1) html += '<span class="row-items-count">' + itemCount + ' items</span>';
+            if (isMixedOrder) html += '<span class="row-items-count">' + uniqueCount + ' products</span>';
             html += '</div></div>';
             html += '<div class="row-right">';
             html += '<span class="row-price">$' + (order.total_price || 0).toFixed(2) + '</span>';
-            if (totalQty > 1) html += '<span class="row-qty-badge">x' + totalQty + '</span>';
+            if (isMixedOrder) html += '<span class="row-items-total-badge">' + totalQty + ' total</span>';
+            else if (totalQty > 1) html += '<span class="row-qty-badge">x' + totalQty + '</span>';
             html += '</div>';
             html += '<span class="row-expand-hint">&#x25BC;</span>';
             html += '</div>';
@@ -2453,6 +2550,41 @@
                 esc(dateStr) + ' Livestream</span></div>';
         }
 
+        function hasPreciseCreatorOrders() {
+            return !_creatorFilterEnabled || _creatorOrderAttribution === 'time_window' || _creatorOrderAttribution === 'live_products';
+        }
+
+        function setEmptyStateMessage() {
+            var titleEl = emptyState.querySelector('.empty-state-text');
+            var subEl = emptyState.querySelector('.empty-state-sub');
+            if (!titleEl || !subEl) return;
+            if (!hasPreciseCreatorOrders()) {
+                titleEl.textContent = 'Creator order feed paused';
+                subEl.textContent = _creatorOrderAttributionMessage || 'Stream totals are still using TikTok live analytics.';
+                return;
+            }
+            titleEl.textContent = 'Waiting for orders...';
+            subEl.textContent = 'New orders will slide in here automatically';
+        }
+
+        function updateOrderCountBadge(count) {
+            if (!countEl || !countUnitEl) return;
+            if (!hasPreciseCreatorOrders()) {
+                countEl.textContent = 'Feed';
+                countUnitEl.textContent = 'paused';
+                return;
+            }
+            countEl.textContent = count != null ? count : _orders.length;
+            countUnitEl.textContent = 'orders';
+        }
+
+        function clearVisibleOrders() {
+            _orders = [];
+            window.__streamerOrders = _orders;
+            _knownIds.clear();
+            list.innerHTML = '';
+        }
+
         function orderGroupInfo(order) {
             var stream = findStreamForOrder(order);
             if (stream) return { key: stream.id, stream: stream };
@@ -2460,7 +2592,8 @@
         }
 
         function renderAll() {
-            if (_orders.length === 0) {
+            setEmptyStateMessage();
+            if (!hasPreciseCreatorOrders() || _orders.length === 0) {
                 list.style.display = 'none';
                 emptyState.style.display = '';
                 return;
@@ -2513,6 +2646,10 @@
         }
 
         function prependRows(newOrders) {
+            if (!hasPreciseCreatorOrders()) {
+                renderAll();
+                return;
+            }
             if (newOrders.length === 0) return;
             emptyState.style.display = 'none';
             list.style.display = '';
@@ -2694,16 +2831,20 @@
         }
 
         /* ---- GMV Goal Bar ---- */
+        function goalTargetMarkup(value) {
+            if (value > 0) return '$<span id="goal-target-text">' + value.toFixed(0) + '</span>';
+            return '<span id="goal-target-text">Set goal</span>';
+        }
+
         function updateGoalBar(currentGmv) {
             var wrap = document.getElementById('goal-bar-wrap');
-            if (!_gmvGoal || _gmvGoal <= 0) { wrap.style.display = 'none'; return; }
             wrap.style.display = 'block';
-            var pct = Math.min((currentGmv / _gmvGoal) * 100, 100);
+            var pct = _gmvGoal > 0 ? Math.min((currentGmv / _gmvGoal) * 100, 100) : 0;
             document.getElementById('goal-current').textContent = '$' + currentGmv.toFixed(0);
-            document.getElementById('goal-target-text').textContent = _gmvGoal.toFixed(0);
+            document.getElementById('goal-edit-target').innerHTML = goalTargetMarkup(_gmvGoal || 0);
             var fill = document.getElementById('goal-bar-fill');
             fill.style.width = pct.toFixed(1) + '%';
-            if (currentGmv >= _gmvGoal) fill.classList.add('reached');
+            if (_gmvGoal > 0 && currentGmv >= _gmvGoal) fill.classList.add('reached');
             else fill.classList.remove('reached');
         }
 
@@ -2730,7 +2871,7 @@
                     newTarget.className = 'goal-edit-target';
                     newTarget.id = 'goal-edit-target';
                     newTarget.title = 'Click to edit goal';
-                    newTarget.innerHTML = '$<span id="goal-target-text">' + val.toFixed(0) + '</span>';
+                    newTarget.innerHTML = goalTargetMarkup(val);
                     inp.replaceWith(newTarget);
                     initGoalEditOn(newTarget);
                     updateGoalBar(_lastStreamGmv || 0);
@@ -2761,7 +2902,7 @@
                     newTarget.className = 'goal-edit-target';
                     newTarget.id = 'goal-edit-target';
                     newTarget.title = 'Click to edit goal';
-                    newTarget.innerHTML = '$<span id="goal-target-text">' + val.toFixed(0) + '</span>';
+                    newTarget.innerHTML = goalTargetMarkup(val);
                     inp.replaceWith(newTarget);
                     initGoalEditOn(newTarget);
                     updateGoalBar(_lastStreamGmv || 0);
@@ -2864,14 +3005,39 @@
         var tiktokGmvValue = document.getElementById('tiktok-gmv-value');
         var streamGmvLabel = document.getElementById('stream-gmv-label');
 
+        if (creatorSelect) {
+            creatorSelect.addEventListener('change', function() {
+                var nextUrl = new URL(window.location.href);
+                nextUrl.searchParams.delete('account');
+                nextUrl.searchParams.delete('stream');
+                nextUrl.searchParams.set('creator', creatorSelect.value);
+                window.location.href = nextUrl.toString();
+            });
+        }
+
+        function buildOrderPollUrl() {
+            var params = new URLSearchParams();
+            if (_latestUpdatedAt) params.set('since', _latestUpdatedAt);
+            if (_creatorFilterEnabled && _selectedCreator) {
+                params.set('creator', _selectedCreator);
+            }
+            var qs = params.toString();
+            return '/tiktok/streamer/poll' + (qs ? '?' + qs : '');
+        }
+
         function updateStreamGmv(data) {
             if (data.stream_gmv != null && data.stream_start_utc) {
                 streamGmvWrap.style.display = '';
                 streamGmvValue.textContent = formatGmv(data.stream_gmv);
                 streamItemsSold.textContent = data.stream_items || 0;
                 streamOrdersEl.textContent = data.stream_orders || 0;
-                if (data.stream_range_source === 'auto') {
+                if (data.stream_metric_source === 'tiktok_live_session') {
+                    var creatorLabel = data.selected_creator ? ' @' + data.selected_creator : '';
+                    streamGmvLabel.textContent = 'Stream GMV' + creatorLabel;
+                } else if (data.stream_range_source === 'auto') {
                     streamGmvLabel.textContent = 'Stream GMV (auto)';
+                } else if (data.stream_range_source === 'schedule') {
+                    streamGmvLabel.textContent = 'Stream GMV (schedule)';
                 } else {
                     streamGmvLabel.textContent = 'Stream GMV';
                 }
@@ -2899,12 +3065,24 @@
 
         var streamerBadge = document.getElementById('streamer-name-badge');
         var streamerText = document.getElementById('streamer-name-text');
+        var hiddenStreamer = document.getElementById('hf-streamer');
         function updateStreamerBadge(name) {
+            if (hiddenStreamer) hiddenStreamer.value = name || '';
             if (name) {
                 streamerText.textContent = name;
                 streamerBadge.style.display = 'inline-flex';
             } else {
                 streamerBadge.style.display = 'none';
+            }
+        }
+        function updateLiveRoomBadge(roomId) {
+            if (!liveRoomBadge || !liveRoomIdText) return;
+            if (roomId) {
+                liveRoomIdText.textContent = roomId;
+                liveRoomBadge.style.display = 'inline-flex';
+            } else {
+                liveRoomIdText.textContent = '';
+                liveRoomBadge.style.display = 'none';
             }
         }
 
@@ -2919,20 +3097,32 @@
                 stream_items: data.stream_items,
                 stream_start_utc: data.stream_start_utc,
                 tiktok_gmv: data.tiktok_gmv,
-                stream_range_source: data.stream_range_source
+                stream_range_source: data.stream_range_source,
+                stream_metric_source: data.stream_metric_source,
+                selected_creator: data.selected_creator || _selectedCreator
             });
             if (data.is_live != null) updateLiveBadge(data.is_live);
             updateStreamerBadge(data.current_streamer || '');
+            if (data.selected_creator != null) _selectedCreator = data.selected_creator;
+            if (data.creator_filter_enabled != null) _creatorFilterEnabled = !!data.creator_filter_enabled;
+            if (data.creator_order_attribution != null) _creatorOrderAttribution = data.creator_order_attribution;
+            if (data.creator_order_attribution_message != null) _creatorOrderAttributionMessage = data.creator_order_attribution_message;
+            updateOrderCountBadge(data.total_count);
             if (data.top_sellers) _topSellers = data.top_sellers;
             if (data.top_buyers) _topBuyers = data.top_buyers;
             if (data.stream_top_sellers) _streamTopSellers = data.stream_top_sellers;
             if (data.stream_top_buyers) _streamTopBuyers = data.stream_top_buyers;
             renderLeaderboard();
+            if (!hasPreciseCreatorOrders()) {
+                clearVisibleOrders();
+                renderAll();
+            }
             if (data.stream_sessions && data.stream_sessions.length > 0) {
                 var oldLen = _streamSessions.length;
                 _streamSessions = data.stream_sessions.slice().sort(function(a, b) { return (b.end_time || 0) - (a.end_time || 0); });
                 if (_streamSessions.length !== oldLen) renderAll();
             }
+            updateLiveRoomBadge(data.live_room_id || '');
         }
 
         /* ---- Order polling ---- */
@@ -3013,7 +3203,7 @@
             if (_orderPollInFlight) return;
             _orderPollInFlight = true;
             try {
-                var url = '/tiktok/streamer/poll' + (_latestUpdatedAt ? '?since=' + encodeURIComponent(_latestUpdatedAt) : '');
+                var url = buildOrderPollUrl();
                 var resp = await fetch(url, { cache: 'no-store' });
                 if (!resp.ok) {
                     console.warn('Poll error: orders poll HTTP', resp.status, resp.statusText);
@@ -3027,7 +3217,6 @@
                     return;
                 }
 
-                if (data.total_count != null) countEl.textContent = data.total_count;
                 if (data.latest_updated_at) _latestUpdatedAt = data.latest_updated_at;
                 updateGMV(data);
 
@@ -3042,6 +3231,8 @@
                     showPostStreamSummary(data);
                 }
                 _wasLive = isLiveNow;
+
+                if (!hasPreciseCreatorOrders()) return;
 
                 var newOrders = [];
                 var refundUpdates = [];
@@ -3315,6 +3506,7 @@
         });
 
         /* ---- Init ---- */
+        updateOrderCountBadge({{ total_count|tojson }});
         renderAll();
         updateGoalBar(_streamData.stream_gmv || {{ session_gmv|tojson }} || 0);
         _lastStreamGmv = _streamData.stream_gmv || {{ session_gmv|tojson }} || 0;

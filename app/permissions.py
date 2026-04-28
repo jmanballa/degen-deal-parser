@@ -54,6 +54,7 @@ RESOURCE_KEYS: List[str] = [
     # Wave 4 — admin surface
     "admin.employees.view",
     "admin.employees.edit",
+    "admin.employee_roster.edit",
     "admin.employees.reveal_pii",
     "admin.employees.reset_password",
     "admin.employees.terminate",
@@ -67,6 +68,10 @@ RESOURCE_KEYS: List[str] = [
     # Wave 4.7 — schedule admin surface
     "admin.schedule.view",
     "admin.schedule.edit",
+    # Payroll exports expose compensation totals.
+    "admin.labor_financials.view",
+    "admin.payroll.view",
+    "admin.payroll.lock",
     # Wave C — announcements admin surface
     "admin.announcements.view",
     "admin.announcements.create",
@@ -101,6 +106,7 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "action.employee.purge": "Purge employee (PII erase)",
     "admin.permissions.view": "View permissions matrix",
     "admin.permissions.edit": "Edit permissions matrix",
+    "admin.employee_roster.edit": "Admin - Edit schedule roster fields",
     "admin.employees.view": "Admin · View employee list + profiles",
     "admin.employees.edit": "Admin · Edit employee profile",
     "admin.employees.reveal_pii": "Admin · Reveal employee PII (audited)",
@@ -115,6 +121,9 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "admin.timeoff.approve": "Admin · Approve/deny time-off",
     "admin.schedule.view": "Admin · View schedule grid",
     "admin.schedule.edit": "Admin · Edit schedule grid",
+    "admin.labor_financials.view": "Admin · View compensation and labor costs",
+    "admin.payroll.view": "Admin · View payroll export",
+    "admin.payroll.lock": "Admin · Lock payroll export window",
     "admin.announcements.view": "Admin · View announcements management",
     "admin.announcements.create": "Admin · Create/archive announcements",
     "page.admin.schedule": "Admin · Schedule",

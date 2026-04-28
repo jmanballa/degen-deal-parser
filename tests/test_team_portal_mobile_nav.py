@@ -9,9 +9,9 @@ on every authenticated portal page:
      close button (`#pt-drawer-close`) so the JS can wire up tap-to-close.
   3. A bottom nav (`.pt-mobile-bottom-nav`) with a primary center FAB.
 
-We also verify the drawer JS is loaded and that the bottom nav adapts by
-role: employees get the employee schedule and no tools, while privileged
-portal roles get Stream + Eye and the editable admin schedule.
+We also verify the drawer JS is loaded and that the bottom nav exposes the
+employee-facing ops tools through the team shell. Privileged portal roles
+still get the editable admin schedule.
 """
 from __future__ import annotations
 
@@ -108,23 +108,21 @@ class MobileNavTests(unittest.TestCase):
         self.assertIn('id="pt-drawer-backdrop"', html)
         self.assertIn("/static/portal-drawer.js", html)
 
-    def test_bottom_nav_hides_tools_for_employee(self):
+    def test_bottom_nav_shows_employee_tools(self):
         self._current_user = self._login_as("employee", user_id=503, username="emp3")
         html = self._dashboard_html()
         self.assertIn('class="pt-mobile-bottom-nav"', html)
         # Five expected bottom-nav destinations for a plain employee:
         for needle in (
             'href="/team/"',
-            'href="/team/policies"',
-            'href="/team/supply"',
+            'href="/team/tools/live-stream"',
+            'href="/team/tools/degen-eye"',
             'href="/team/schedule"',
             'href="/team/profile"',
         ):
             self.assertIn(needle, html, f"missing bottom-nav link: {needle}")
         self.assertNotIn('href="/team/admin/schedule"', html)
-        self.assertNotIn('href="/tiktok/streamer"', html)
-        self.assertNotIn('href="/degen_eye"', html)
-        # Center FAB still exists, but it points to employee supply requests.
+        # Center FAB still exists, and now points to Degen Eye in the team shell.
         self.assertIn('class="pt-mbn-fab"', html)
         self.assertIn('pt-mbn-item-center', html)
 
@@ -133,8 +131,8 @@ class MobileNavTests(unittest.TestCase):
         html = self._dashboard_html()
         for needle in (
             'href="/team/"',
-            'href="/tiktok/streamer"',
-            'href="/degen_eye"',
+            'href="/team/tools/live-stream"',
+            'href="/team/tools/degen-eye"',
             'href="/team/admin/schedule"',
             'href="/team/profile"',
         ):

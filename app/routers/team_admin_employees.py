@@ -12,6 +12,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -26,6 +27,7 @@ from ..auth import (
     is_draft_user,
 )
 from ..csrf import issue_token, require_csrf
+from ..config import get_settings
 from ..db import get_session
 from ..models import (
     AuditLog,
@@ -43,7 +45,8 @@ from ..models import (
 from ..pii import decrypt_pii, encrypt_pii
 from ..rate_limit import rate_limited_or_429
 from ..shared import templates
-from .team_admin import _admin_gate, _permission_gate
+from ..sms import mask_sms_phone, normalize_sms_phone, send_sms, sms_phone_fingerprint
+from .team_admin import _admin_denied_response, _admin_gate, _permission_gate
 
 router = APIRouter()
 
@@ -523,6 +526,30 @@ def _base_url(request: Request) -> str:
     return f"{scheme}://{netloc}"
 
 
+def _public_base_url(request: Request) -> str:
+    configured = (get_settings().public_base_url or "").strip().rstrip("/")
+    return configured or _base_url(request)
+
+
+def _invite_accept_url(request: Request, raw_token: str) -> str:
+    return f"{_public_base_url(request)}/team/invite/accept/{raw_token}"
+
+
+def _employee_detail_redirect(user_id: int, flash: str) -> RedirectResponse:
+    return RedirectResponse(
+        f"/team/admin/employees/{user_id}?{urlencode({'flash': flash})}",
+        status_code=303,
+    )
+
+
+def _invite_sms_body(invite_url: str) -> str:
+    return (
+        "Degen Team invite: "
+        f"{invite_url}\n"
+        "Expires in 24 hours. Reply STOP to opt out."
+    )
+
+
 def _detail_context(
     request: Request,
     session: Session,
@@ -542,6 +569,23 @@ def _detail_context(
         )
         .order_by(InviteToken.created_at.desc())
     ).first()
+    can_reveal_pii = has_permission(session, current, "admin.employees.reveal_pii")
+    can_issue_invite = has_permission(session, current, "admin.invites.issue")
+    can_edit_profile = has_permission(session, current, "admin.employees.edit")
+    can_edit_schedule_roster = has_permission(
+        session, current, "admin.employee_roster.edit"
+    )
+    can_view_labor_financials = has_permission(
+        session,
+        current,
+        "admin.labor_financials.view",
+    )
+    hourly_rate_cents = (
+        _decrypt_hourly_rate_cents(profile) if can_view_labor_financials else None
+    )
+    monthly_salary_cents = (
+        _decrypt_monthly_salary_cents(profile) if can_view_labor_financials else None
+    )
     return {
         "request": request,
         "title": f"Employee · {employee.username}",
@@ -554,9 +598,11 @@ def _detail_context(
         "current_compensation_type": _normalize_compensation_type(
             profile.compensation_type if profile is not None else ""
         ),
-        "monthly_salary_value": _format_money_dollars(
-            _decrypt_monthly_salary_cents(profile)
+        "hourly_rate_cents_value": (
+            "" if hourly_rate_cents is None else str(hourly_rate_cents)
         ),
+        "hourly_rate_display": _format_money_dollars(hourly_rate_cents),
+        "monthly_salary_value": _format_money_dollars(monthly_salary_cents),
         "monthly_salary_pay_day_value": profile.monthly_salary_pay_day or "",
         "monthly_salary_pay_date_label": _format_date_label(
             _next_monthly_pay_date(utcnow().date(), profile.monthly_salary_pay_day)
@@ -571,9 +617,8 @@ def _detail_context(
         "csrf_token": issue_token(request),
         "is_draft": is_draft_user(employee),
         "outstanding_invite": outstanding,
-        "can_reveal_pii": has_permission(
-            session, current, "admin.employees.reveal_pii"
-        ),
+        "has_phone_on_file": bool(profile and profile.phone_enc),
+        "can_reveal_pii": can_reveal_pii,
         "can_reset_password": has_permission(
             session, current, "admin.employees.reset_password"
         ),
@@ -583,12 +628,12 @@ def _detail_context(
         "can_purge": has_permission(
             session, current, "admin.employees.purge"
         ),
-        "can_edit_profile": has_permission(
-            session, current, "admin.employees.edit"
-        ),
-        "can_issue_invite": has_permission(
-            session, current, "admin.invites.issue"
-        ),
+        "can_edit_profile": can_edit_profile,
+        "can_edit_schedule_roster": can_edit_schedule_roster,
+        "can_view_labor_financials": can_view_labor_financials,
+        "can_manage_compensation": can_edit_profile and can_view_labor_financials,
+        "can_issue_invite": can_issue_invite,
+        "can_text_invite": can_issue_invite and can_reveal_pii,
     }
 
 
@@ -660,6 +705,17 @@ def admin_employees_list(
                 ).all()
                 if inv.target_user_id is not None
             }
+    can_reveal_pii = has_permission(session, user, "admin.employees.reveal_pii")
+    can_issue_invite = has_permission(session, user, "admin.invites.issue")
+    can_edit_employee_profile = has_permission(session, user, "admin.employees.edit")
+    can_edit_schedule_roster = has_permission(
+        session, user, "admin.employee_roster.edit"
+    )
+    can_view_labor_financials = has_permission(
+        session,
+        user,
+        "admin.labor_financials.view",
+    )
     return templates.TemplateResponse(
         request,
         "team/admin/employees_list.html",
@@ -671,9 +727,12 @@ def admin_employees_list(
             "profiles": profiles,
             "outstanding_invite_ids": outstanding_invite_ids,
             "is_draft_user": is_draft_user,
-            "can_reveal_pii": has_permission(
-                session, user, "admin.employees.reveal_pii"
-            ),
+            "can_reveal_pii": can_reveal_pii,
+            "can_issue_invite": can_issue_invite,
+            "can_edit_employee_profile": can_edit_employee_profile,
+            "can_edit_schedule_roster": can_edit_schedule_roster,
+            "can_view_labor_financials": can_view_labor_financials,
+            "can_text_invite": can_issue_invite and can_reveal_pii,
             "q": q or "",
             "flash": flash,
             "show_inactive": include_inactive,
@@ -742,7 +801,11 @@ def admin_employee_new_page(
     error: Optional[str] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    denial, current = _permission_gate(request, session, "admin.employees.edit")
+    denial, current = _permission_gate(
+        request,
+        session,
+        "admin.labor_financials.view",
+    )
     if denial:
         return denial
     return templates.TemplateResponse(
@@ -822,9 +885,8 @@ async def admin_employee_send_invite(
     if employee is None:
         return HTMLResponse("Employee not found", status_code=404)
     if not is_draft_user(employee):
-        return RedirectResponse(
-            f"/team/admin/employees/{user_id}?flash=This+employee+already+has+an+active+account.",
-            status_code=303,
+        return _employee_detail_redirect(
+            user_id, "This employee already has an active account."
         )
     try:
         raw = generate_invite_token(
@@ -835,10 +897,7 @@ async def admin_employee_send_invite(
             target_user_id=user_id,
         )
     except ValueError as exc:
-        return RedirectResponse(
-            f"/team/admin/employees/{user_id}?flash=Could+not+issue+invite:+{exc}",
-            status_code=303,
-        )
+        return _employee_detail_redirect(user_id, f"Could not issue invite: {exc}")
     session.add(
         AuditLog(
             actor_user_id=current.id,
@@ -850,7 +909,7 @@ async def admin_employee_send_invite(
         )
     )
     session.commit()
-    invite_url = f"{_base_url(request)}/team/invite/accept/{raw}"
+    invite_url = _invite_accept_url(request, raw)
     return templates.TemplateResponse(
         request,
         "team/admin/invite_issued.html",
@@ -862,6 +921,182 @@ async def admin_employee_send_invite(
             "role": employee.role,
             "email_hint": employee.display_name or "",
             "csrf_token": issue_token(request),
+            "sms_result": None,
+            "sms_phone_label": "",
+        },
+    )
+
+
+@router.post(
+    "/team/admin/employees/{user_id}/text-invite",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_employee_text_invite(
+    request: Request,
+    user_id: int,
+    session: Session = Depends(get_session),
+):
+    denial, current = _admin_gate(request, session, "admin.invites.issue")
+    if denial:
+        return denial
+    pii_denial, _ = _admin_gate(request, session, "admin.employees.reveal_pii")
+    if pii_denial:
+        return pii_denial
+    if limited := rate_limited_or_429(
+        request,
+        key_prefix=f"text_invite:{current.id}",
+        max_requests=20,
+        window_seconds=900,
+    ):
+        return limited
+
+    employee = session.get(User, user_id)
+    if employee is None:
+        return HTMLResponse("Employee not found", status_code=404)
+    if not is_draft_user(employee):
+        return _employee_detail_redirect(
+            user_id, "This employee already has an active account."
+        )
+
+    profile = session.get(EmployeeProfile, user_id)
+    if profile is None or not profile.phone_enc:
+        return _employee_detail_redirect(
+            user_id, "Add a phone number before texting an invite."
+        )
+
+    ip_address = request.client.host if request.client else None
+    _audit_then_commit(
+        session,
+        AuditLog(
+            actor_user_id=current.id,
+            target_user_id=user_id,
+            action="pii.use_for_invite_sms",
+            resource_key="admin.employees.reveal_pii",
+            details_json=json.dumps({"field": "phone", "purpose": "invite_sms"}),
+            ip_address=ip_address,
+        ),
+    )
+    session.commit()
+
+    try:
+        phone_plain = _safe_decrypt(profile.phone_enc) or ""
+    except PIIDecryptError:
+        session.add(
+            AuditLog(
+                actor_user_id=current.id,
+                target_user_id=user_id,
+                action="invite.text_failed",
+                resource_key="admin.invites.issue",
+                details_json=json.dumps(
+                    {"reason": "phone_decrypt_failed"}, sort_keys=True
+                ),
+                ip_address=ip_address,
+            )
+        )
+        session.commit()
+        return _employee_detail_redirect(
+            user_id, "Could not text invite because the saved phone could not be decrypted."
+        )
+
+    to_phone = normalize_sms_phone(phone_plain)
+    if not to_phone:
+        session.add(
+            AuditLog(
+                actor_user_id=current.id,
+                target_user_id=user_id,
+                action="invite.text_failed",
+                resource_key="admin.invites.issue",
+                details_json=json.dumps({"reason": "invalid_phone"}, sort_keys=True),
+                ip_address=ip_address,
+            )
+        )
+        session.commit()
+        return _employee_detail_redirect(
+            user_id, "Saved phone number is not a valid SMS number."
+        )
+
+    try:
+        raw = generate_invite_token(
+            session,
+            role=employee.role or "employee",
+            created_by_user_id=current.id,
+            email_hint=(employee.display_name or "").strip() or None,
+            target_user_id=user_id,
+        )
+    except ValueError as exc:
+        return _employee_detail_redirect(user_id, f"Could not issue invite: {exc}")
+
+    invite_url = _invite_accept_url(request, raw)
+    body = _invite_sms_body(invite_url)
+    sms_result = send_sms(
+        to_phone=to_phone,
+        body=body,
+        settings=get_settings(),
+    )
+    invite_row = session.exec(
+        select(InviteToken)
+        .where(InviteToken.target_user_id == user_id)
+        .order_by(InviteToken.created_at.desc())
+    ).first()
+    invite_id = invite_row.id if invite_row is not None else None
+    phone_label = mask_sms_phone(to_phone)
+    safe_details = {
+        "provider": sms_result.provider,
+        "status": sms_result.status,
+        "dry_run": sms_result.dry_run,
+        "success": sms_result.success,
+        "invite_id": invite_id,
+        "phone": phone_label,
+        "phone_fingerprint": sms_phone_fingerprint(to_phone),
+    }
+    if sms_result.message_id:
+        safe_details["message_id"] = sms_result.message_id
+    if sms_result.error:
+        safe_details["error"] = sms_result.error[:240]
+    session.add(
+        AuditLog(
+            actor_user_id=current.id,
+            target_user_id=user_id,
+            action="invite.issued_for_draft",
+            resource_key="admin.invites.issue",
+            details_json=json.dumps(
+                {"role": employee.role, "delivery": "sms", "invite_id": invite_id},
+                sort_keys=True,
+            ),
+            ip_address=ip_address,
+        )
+    )
+    session.add(
+        AuditLog(
+            actor_user_id=current.id,
+            target_user_id=user_id,
+            action=(
+                "invite.text_dry_run"
+                if sms_result.success and sms_result.dry_run
+                else "invite.text_sent"
+                if sms_result.success
+                else "invite.text_failed"
+            ),
+            resource_key="admin.invites.issue",
+            details_json=json.dumps(safe_details, sort_keys=True),
+            ip_address=ip_address,
+        )
+    )
+    session.commit()
+
+    return templates.TemplateResponse(
+        request,
+        "team/admin/invite_issued.html",
+        {
+            "request": request,
+            "title": "Invite issued",
+            "current_user": current,
+            "invite_url": invite_url,
+            "role": employee.role,
+            "email_hint": employee.display_name or "",
+            "csrf_token": issue_token(request),
+            "sms_result": sms_result,
+            "sms_phone_label": phone_label,
         },
     )
 
@@ -1142,9 +1377,14 @@ async def admin_employee_pay_rates_post(
     show_inactive: str = Form(default=""),
     session: Session = Depends(get_session),
 ):
-    denial, current = _admin_gate(request, session, "admin.employees.edit")
+    denial, current = _permission_gate(request, session, "admin.employee_roster.edit")
     if denial:
         return denial
+    if not has_permission(session, current, "admin.labor_financials.view"):
+        return HTMLResponse(
+            "You do not have permission to view compensation.",
+            status_code=403,
+        )
 
     form = await request.form()
     now = utcnow()
@@ -1283,7 +1523,7 @@ async def admin_employee_pay_rates_post(
             AuditLog(
                 actor_user_id=current.id,
                 action="admin.pay_rates.bulk_update",
-                resource_key="admin.employees.edit",
+                resource_key="admin.employee_roster.edit",
                 details_json=json.dumps(
                     {
                         "updated_count": len(changed_user_ids),
@@ -1485,6 +1725,7 @@ async def admin_employee_profile_update(
     role: str = Form(default=""),
     display_name: str = Form(default=""),
     staff_kind: str = Form(default=""),
+    is_schedulable: str = Form(default=""),
     compensation_type: str = Form(default=""),
     compensation_effective_date: str = Form(default=""),
     hourly_rate_cents: str = Form(default=""),
@@ -1496,9 +1737,17 @@ async def admin_employee_profile_update(
     clockify_user_id: str = Form(default=""),
     session: Session = Depends(get_session),
 ):
-    denial, current = _admin_gate(request, session, "admin.employees.edit")
+    denial, current = _permission_gate(request, session, "admin.employees.view")
     if denial:
         return denial
+    can_edit_profile = has_permission(session, current, "admin.employees.edit")
+    can_edit_schedule_roster = has_permission(
+        session,
+        current,
+        "admin.employee_roster.edit",
+    )
+    if not can_edit_profile and not can_edit_schedule_roster:
+        return _admin_denied_response(request, session, current)
     employee = session.get(User, user_id)
     if employee is None:
         return HTMLResponse("Employee not found", status_code=404)
@@ -1510,104 +1759,127 @@ async def admin_employee_profile_update(
 
     changed: list[str] = []
     now = utcnow()
-    before_compensation_signature = _compensation_signature_from_profile(profile)
+    can_manage_compensation = can_edit_profile and has_permission(
+        session,
+        current,
+        "admin.labor_financials.view",
+    )
+    before_compensation_signature = (
+        _compensation_signature_from_profile(profile)
+        if can_manage_compensation
+        else None
+    )
     effective_date = _parse_compensation_effective_date(
         compensation_effective_date,
         now.date(),
-    )
+    ) if can_manage_compensation else now.date()
 
-    new_role = (role or "").strip().lower()
-    if new_role in ROLES and new_role != employee.role:
-        employee.role = new_role
-        employee.updated_at = now
-        session.add(employee)
-        changed.append("role")
+    if can_edit_profile:
+        new_role = (role or "").strip().lower()
+        if new_role in ROLES and new_role != employee.role:
+            employee.role = new_role
+            employee.updated_at = now
+            session.add(employee)
+            changed.append("role")
 
-    new_display = (display_name or "").strip()
-    if new_display and new_display != (employee.display_name or ""):
-        employee.display_name = new_display
-        employee.updated_at = now
-        session.add(employee)
-        changed.append("display_name")
+        new_display = (display_name or "").strip()
+        if new_display and new_display != (employee.display_name or ""):
+            employee.display_name = new_display
+            employee.updated_at = now
+            session.add(employee)
+            changed.append("display_name")
 
-    new_kind = (staff_kind or "").strip().lower()
-    if new_kind in STAFF_KINDS and new_kind != (employee.staff_kind or ""):
-        employee.staff_kind = new_kind
-        employee.updated_at = now
-        session.add(employee)
-        changed.append("staff_kind")
-
-    if (compensation_type or "").strip():
-        new_compensation = _normalize_compensation_type(compensation_type)
-        if new_compensation != _normalize_compensation_type(
-            profile.compensation_type or ""
-        ):
-            profile.compensation_type = new_compensation
-            changed.append("compensation_type")
-
-    effective_compensation = _normalize_compensation_type(
-        profile.compensation_type or ""
-    )
+    if can_edit_profile or can_edit_schedule_roster:
+        new_kind = (staff_kind or "").strip().lower()
+        if new_kind in STAFF_KINDS and new_kind != (employee.staff_kind or ""):
+            employee.staff_kind = new_kind
+            employee.updated_at = now
+            session.add(employee)
+            changed.append("staff_kind")
+        new_schedulable = is_schedulable in ("1", "true", "yes", "on")
+        if employee.is_schedulable != new_schedulable:
+            employee.is_schedulable = new_schedulable
+            employee.updated_at = now
+            session.add(employee)
+            changed.append("is_schedulable")
 
     rate_invalid = False
-    if effective_compensation == COMPENSATION_TYPE_HOURLY:
-        rate_int, rate_invalid = _clamp_hourly_rate_cents(hourly_rate_cents)
-    else:
-        rate_int = None
-    if rate_int is not None:
-        from ..pii import decrypt_pii, encrypt_pii
-        try:
-            current_rate = decrypt_pii(profile.hourly_rate_cents_enc) or ""
-        except ValueError:
-            current_rate = ""
-        if str(rate_int) != current_rate:
-            profile.hourly_rate_cents_enc = encrypt_pii(str(rate_int))
-            changed.append("hourly_rate_cents")
-
     salary_invalid = False
     pay_day_invalid = False
-    if effective_compensation == COMPENSATION_TYPE_MONTHLY:
-        salary_int, salary_invalid = _parse_monthly_salary_dollars(
-            monthly_salary_dollars
+    if can_manage_compensation:
+        if (compensation_type or "").strip():
+            new_compensation = _normalize_compensation_type(compensation_type)
+            if new_compensation != _normalize_compensation_type(
+                profile.compensation_type or ""
+            ):
+                profile.compensation_type = new_compensation
+                changed.append("compensation_type")
+
+        effective_compensation = _normalize_compensation_type(
+            profile.compensation_type or ""
         )
-        if salary_int is not None:
-            from ..pii import encrypt_pii
 
-            current_salary = _decrypt_monthly_salary_cents(profile)
-            if salary_int != current_salary:
-                profile.monthly_salary_cents_enc = encrypt_pii(str(salary_int))
-                changed.append("monthly_salary_cents")
+        if effective_compensation == COMPENSATION_TYPE_HOURLY:
+            rate_int, rate_invalid = _clamp_hourly_rate_cents(hourly_rate_cents)
+        else:
+            rate_int = None
+        if rate_int is not None:
+            from ..pii import decrypt_pii, encrypt_pii
+            try:
+                current_rate = decrypt_pii(profile.hourly_rate_cents_enc) or ""
+            except ValueError:
+                current_rate = ""
+            if str(rate_int) != current_rate:
+                profile.hourly_rate_cents_enc = encrypt_pii(str(rate_int))
+                changed.append("hourly_rate_cents")
 
-        pay_day_int, pay_day_invalid = _parse_monthly_pay_day(monthly_salary_pay_day)
-        if (monthly_salary_pay_day or "").strip() and not pay_day_invalid:
-            if pay_day_int != profile.monthly_salary_pay_day:
-                profile.monthly_salary_pay_day = pay_day_int
-                changed.append("monthly_salary_pay_day")
+        if effective_compensation == COMPENSATION_TYPE_MONTHLY:
+            salary_int, salary_invalid = _parse_monthly_salary_dollars(
+                monthly_salary_dollars
+            )
+            if salary_int is not None:
+                from ..pii import encrypt_pii
 
-    if (
-        (payment_method or "").strip()
-        and effective_compensation != COMPENSATION_TYPE_UNPAID
-    ):
-        new_payment_method = _normalize_payment_method(payment_method)
-        if new_payment_method != _normalize_payment_method(profile.payment_method or ""):
-            profile.payment_method = new_payment_method
-            changed.append("payment_method")
+                current_salary = _decrypt_monthly_salary_cents(profile)
+                if salary_int != current_salary:
+                    profile.monthly_salary_cents_enc = encrypt_pii(str(salary_int))
+                    changed.append("monthly_salary_cents")
 
-    for form_val, attr, label in (
-        (hire_date, "hire_date", "hire_date"),
-        (termination_date, "termination_date", "termination_date"),
-    ):
-        raw = (form_val or "").strip()
-        if raw:
-            parsed = _parse_date(raw)
-            if parsed is not None and parsed != getattr(profile, attr):
-                setattr(profile, attr, parsed)
-                changed.append(label)
+            pay_day_int, pay_day_invalid = _parse_monthly_pay_day(
+                monthly_salary_pay_day
+            )
+            if (monthly_salary_pay_day or "").strip() and not pay_day_invalid:
+                if pay_day_int != profile.monthly_salary_pay_day:
+                    profile.monthly_salary_pay_day = pay_day_int
+                    changed.append("monthly_salary_pay_day")
 
-    clk_raw = (clockify_user_id or "").strip()
-    if clk_raw != (profile.clockify_user_id or ""):
-        profile.clockify_user_id = clk_raw or None
-        changed.append("clockify_user_id")
+        if (
+            (payment_method or "").strip()
+            and effective_compensation != COMPENSATION_TYPE_UNPAID
+        ):
+            new_payment_method = _normalize_payment_method(payment_method)
+            if new_payment_method != _normalize_payment_method(
+                profile.payment_method or ""
+            ):
+                profile.payment_method = new_payment_method
+                changed.append("payment_method")
+
+    if can_edit_profile:
+        for form_val, attr, label in (
+            (hire_date, "hire_date", "hire_date"),
+            (termination_date, "termination_date", "termination_date"),
+        ):
+            raw = (form_val or "").strip()
+            if raw:
+                parsed = _parse_date(raw)
+                if parsed is not None and parsed != getattr(profile, attr):
+                    setattr(profile, attr, parsed)
+                    changed.append(label)
+
+        clk_raw = (clockify_user_id or "").strip()
+        if clk_raw != (profile.clockify_user_id or ""):
+            profile.clockify_user_id = clk_raw or None
+            changed.append("clockify_user_id")
 
     if changed:
         history_recorded = False
@@ -1631,7 +1903,11 @@ async def admin_employee_profile_update(
                 actor_user_id=current.id,
                 target_user_id=user_id,
                 action="admin.profile_update",
-                resource_key="admin.employees.edit",
+                resource_key=(
+                    "admin.employees.edit"
+                    if can_edit_profile
+                    else "admin.employee_roster.edit"
+                ),
                 details_json=json.dumps(details, sort_keys=True),
                 ip_address=(request.client.host if request.client else None),
             ),

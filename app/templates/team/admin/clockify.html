@@ -1,5 +1,7 @@
 {% extends "team/admin/base.html" %}
 {% set active = 'clockify' %}
+{% set can_edit_employee_links = can_edit_employee_links if can_edit_employee_links is defined else true %}
+{% set can_view_labor_financials = can_view_labor_financials if can_view_labor_financials is defined else true %}
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
 {% if error %}<div class="ta-flash warn">{{ error }}</div>{% endif %}
@@ -29,9 +31,13 @@
         {% endif %}
     </table>
     {% if not configured %}
-    <p style="font-size:12px; color:var(--lx-muted); margin:12px 0 0;">
-        Add CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID to the environment, then restart the app.
-    </p>
+    <div class="ta-flash warn" style="margin:12px 0 0;">
+        {% if can_view_labor_financials %}
+        Clockify is not fully connected yet. Labor stats, estimated pay, and shift tracking can only use cached webhook data until CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID are set.
+        {% else %}
+        Clockify is not fully connected yet. Hours and shift tracking can only use cached webhook data until CLOCKIFY_API_KEY and CLOCKIFY_WORKSPACE_ID are set.
+        {% endif %}
+    </div>
     {% endif %}
 </div>
 
@@ -58,6 +64,7 @@
 
     <p style="font-size:13px; color:var(--lx-muted); margin:0 0 12px;">
         Auto-match checks portal emails first, then safe name matches for active and draft employees.
+        {% if not can_edit_employee_links %}Managers can review links here, but only admins can change Clockify mappings.{% endif %}
     </p>
     {% if can_sync %}
     <form method="post" action="/team/admin/clockify/sync-users" style="margin:0;">
@@ -120,7 +127,7 @@
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
                             <input type="hidden" name="user_id" value="{{ employee.id }}"/>
                             <select name="clockify_user_id"
-                                    {% if not configured or not clockify_users %}disabled{% endif %}
+                                    {% if not configured or not clockify_users or not can_edit_employee_links %}disabled{% endif %}
                                     style="width:100%; max-width:360px; padding:6px 8px; border-radius:8px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
                                 <option value="">Not linked</option>
                                 {% for cu in clockify_users %}
@@ -133,7 +140,7 @@
                                     </option>
                                 {% endfor %}
                             </select>
-                            <button class="ta-btn" type="submit" {% if not configured or not clockify_users %}disabled{% endif %}>Save</button>
+                            <button class="ta-btn" type="submit" {% if not configured or not clockify_users or not can_edit_employee_links %}disabled{% endif %}>Save</button>
                         </form>
                     </td>
                     <td style="padding:12px 14px; border-bottom:1px solid var(--lx-br);"></td>

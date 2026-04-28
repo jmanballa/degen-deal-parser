@@ -8,105 +8,169 @@
 {% endblock %}
 {% block content %}
 
-<div class="pt-card pt-hero" style="display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap;">
-    <div style="max-width:640px;">
-        <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--pt-accent); font-weight:600; margin-bottom:8px;">Welcome to the Degen team</div>
-        <h2 class="pt-card-title" style="font-size:22px;">Catch 'em all. One shift at a time.</h2>
-        <p class="pt-card-sub">
-            Your hub for schedules, hours, policies, and supply requests. Poke around —
-            everything is where you'd expect it. If something's missing, hit up your manager.
-        </p>
-    </div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        {% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
-        {# Managers/reviewers/admins do double-duty on both portals — give
-           them a one-click escape hatch from the team portal back into the
-           ops dashboard so they're not hunting for "Back to Ops" in the
-           sidebar footer. Employees and viewers never see this button. #}
-        <a class="pt-btn primary" href="/dashboard" title="Switch to the ops dashboard">
-            <span aria-hidden="true" style="margin-right:6px;">→</span>Go to Ops
-        </a>
-        {% endif %}
-        <a class="pt-btn" href="/team/profile">Update my profile</a>
-        <a class="pt-btn{% if not (current_user and current_user.role in ('admin','manager','reviewer')) %} primary{% endif %}" href="/team/supply">Request supplies</a>
-    </div>
-</div>
-
+{% set today_shift_rows = today_shifts|default([]) %}
+{% set upcoming_rows = upcoming_shifts|default([]) %}
+{% set pay = dashboard_pay|default({}) %}
 {% set announcements_preview = active_announcements|default([]) %}
-{% if announcements_preview %}
-  <div class="pt-card pt-announcements-preview" style="margin-top:20px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:12px;">
-      <div class="pt-card-title">Announcements</div>
-      <a class="pt-link" href="/team/announcements" style="font-size:13px;">Read more</a>
-    </div>
-    <div style="display:grid; gap:12px;">
-      {% for ann in announcements_preview[:3] %}
-        <div style="padding-top:{% if not loop.first %}12px{% else %}0{% endif %}; border-top:{% if not loop.first %}1px solid var(--pt-border){% else %}0{% endif %};">
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <div style="font-weight:700;">{{ ann.title }}</div>
-            {% if ann.pinned %}<span class="pt-chip">Pinned</span>{% endif %}
-          </div>
-          <div class="pt-card-sub" style="margin-top:4px;">
-            {{ ann.body[:200] }}{% if ann.body|length > 200 %}...{% endif %}
-          </div>
+{% set focus = today_focus|default({'items': [], 'todo_count': 0}) %}
+{% set completion = profile_completion|default({'items': [], 'complete_count': 0, 'total_count': 0, 'percent': 0}) %}
+
+<section class="pt-shift-hero">
+  <div>
+    <div class="pt-widget-label">Today's shift</div>
+    {% if today_shift_rows %}
+      {% for shift in today_shift_rows %}
+        <div class="pt-shift-title">{{ shift.label or 'Shift' }}</div>
+        <div class="pt-shift-sub">
+          {{ shift.kind|replace('_', ' ')|title }}{% if shift.day_note %} · {{ shift.day_note }}{% endif %}
         </div>
+      {% endfor %}
+    {% else %}
+      <div class="pt-shift-title">No shift today</div>
+      <div class="pt-shift-sub">Check upcoming shifts below or open the full schedule.</div>
+    {% endif %}
+  </div>
+  <div class="pt-shift-day-stats" aria-label="Today's timecard status">
+    <div>
+      <div class="pt-widget-label">Clocked in today</div>
+      <div class="pt-mini-stat">{{ pay.clocked_in_today_label|default('Not clocked in') }}</div>
+    </div>
+    <div>
+      <div class="pt-widget-label">Hours today</div>
+      <div class="pt-mini-stat">{{ pay.hours_today_label|default('0m') }}</div>
+    </div>
+    <div>
+      <div class="pt-widget-label">Break</div>
+      <div class="pt-mini-stat">{{ pay.break_today_label|default('Not yet') }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="pt-today-focus">
+  <div class="pt-card pt-focus-card">
+    <div class="pt-panel-head">
+      <div>
+        <div class="pt-card-title">What do I need to do today?</div>
+        <div class="pt-card-sub">
+          {% if focus.todo_count %}{{ focus.todo_count }} item{{ 's' if focus.todo_count != 1 else '' }} to check.{% else %}You are caught up right now.{% endif %}
+        </div>
+      </div>
+      <a class="pt-link-inline" href="/team/notifications">Notifications</a>
+    </div>
+    <div class="pt-focus-list">
+      {% for item in focus["items"] %}
+        <a class="pt-focus-row is-{{ item.state }}" href="{{ item.href }}">
+          <span class="pt-focus-dot"></span>
+          <span>
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }}</span>
+          </span>
+        </a>
       {% endfor %}
     </div>
   </div>
-{% endif %}
-
-{# TODO: Re-enable hidden placeholder widget blocks once live dashboard data is wired:
-   dashboard.hours_this_week, dashboard.estimated_pay, dashboard.todays_tasks. #}
-{% set hidden_widget_keys = ("dashboard.hours_this_week", "dashboard.estimated_pay", "dashboard.todays_tasks") %}
-{% set visible_widgets = [] %}
-{% for w in widgets|default([]) %}
-  {% if w.widget_key not in hidden_widget_keys %}
-    {% set _ = visible_widgets.append(w) %}
-  {% endif %}
-{% endfor %}
-
-{% if visible_widgets %}
-  <div class="pt-widget-grid" style="margin-top:20px;">
-    {% for w in visible_widgets %}
-      <div class="pt-widget">
-        <div class="pt-widget-label">{{ w.title }}</div>
-        {% if w.widget_key == "dashboard.upcoming_shifts" %}
-          {% set shifts = upcoming_shifts|default([]) %}
-          {% if shifts %}
-            <div style="display:grid; gap:10px;">
-              {% for shift in shifts %}
-                <div class="pt-upcoming-shift" style="display:grid; gap:3px; padding-top:{% if not loop.first %}10px{% else %}0{% endif %}; border-top:{% if not loop.first %}1px solid var(--pt-border){% else %}0{% endif %};">
-                  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                    <span style="font-size:13px; font-weight:700;">
-                      {% if shift.shift_date == today_date %}Today{% else %}{{ shift.shift_date.strftime('%a %b %d') }}{% endif %}
-                    </span>
-                    <span style="font-size:12px; color:var(--pt-muted);">{{ shift.kind|replace('_', ' ') }}</span>
-                  </div>
-                  <div style="font-size:16px; font-weight:650;">{{ shift.label or 'Shift' }}</div>
-                  {% if shift.day_note %}
-                    <div class="pt-widget-sub">{{ shift.day_note }}</div>
-                  {% endif %}
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-muted);">No upcoming shifts</div>
-          {% endif %}
-        {% elif w.widget_key == "dashboard.supply_queue_count" %}
-          <div class="pt-widget-value">{{ supply_queue_count|default(0) }}</div>
-          <div class="pt-widget-sub">Open supply requests waiting for review.</div>
-        {% else %}
-          <div class="pt-widget-empty">{{ w.description or 'Coming soon.' }}</div>
-        {% endif %}
+  <div class="pt-card pt-profile-card">
+    <div class="pt-panel-head">
+      <div>
+        <div class="pt-card-title">Profile checklist</div>
+        <div class="pt-card-sub">{{ completion.complete_count }}/{{ completion.total_count }} complete</div>
       </div>
-    {% endfor %}
+      <a class="pt-link-inline" href="/team/profile">Update</a>
+    </div>
+    <div class="pt-check-meter" aria-hidden="true"><span style="width: {{ completion.percent }}%;"></span></div>
+    <div class="pt-check-list compact">
+      {% for item in completion["items"] %}
+        <a class="pt-check-row {% if item.done %}done{% endif %}" href="{{ item.href }}">
+          <span class="pt-check-icon">{% if item.done %}OK{% else %}Fix{% endif %}</span>
+          <span>{{ item.label }}</span>
+        </a>
+      {% endfor %}
+    </div>
   </div>
-{% else %}
-  <div class="pt-card" style="margin-top:20px;">
-    <div class="pt-card-title">You're all set.</div>
-    <div class="pt-card-sub">Your admin hasn't enabled any dashboard widgets for your role yet. Everything you need is in the left sidebar.</div>
+</section>
+
+<section class="pt-dashboard-stat-grid">
+  <a class="pt-widget" href="/team/hours" style="display:block;">
+    <div class="pt-widget-label">Hours this week</div>
+    <div class="pt-widget-value">{{ pay.hours_label|default('0m') }}</div>
+    <div class="pt-widget-sub">{{ pay.hours_this_week_sub|default('Since Monday 12:00 AM') }}</div>
+  </a>
+
+  <a class="pt-widget" href="{{ schedule_href|default('/team/schedule') }}" style="display:block;">
+    <div class="pt-widget-label">Next shift</div>
+    {% if next_shift %}
+      <div class="pt-widget-value">{{ next_shift.shift_date.strftime('%a') }}</div>
+      <div class="pt-widget-sub">{{ next_shift.shift_date.strftime('%b %d') }} · {{ next_shift.label or 'Shift' }}</div>
+    {% else %}
+      <div class="pt-widget-value">None</div>
+      <div class="pt-widget-sub">No upcoming shifts posted.</div>
+    {% endif %}
+  </a>
+
+  <a class="pt-widget" href="/team/hours" style="display:block;">
+    <div class="pt-widget-label">Estimated pay</div>
+    <div class="pt-widget-value">{{ pay.estimated_pay_label|default('$0.00') }}</div>
+    <div class="pt-widget-sub">{{ pay.pay_basis|default('Clockify hours plus pay rate') }}</div>
+  </a>
+</section>
+
+<section class="pt-dashboard-lower">
+  <div class="pt-card pt-dashboard-panel">
+    <div class="pt-panel-head">
+      <div>
+        <div class="pt-card-title">Announcements</div>
+        <div class="pt-card-sub">Latest from the team.</div>
+      </div>
+      <a class="pt-link-inline" href="/team/announcements">See all</a>
+    </div>
+    {% if announcements_preview %}
+      <div class="pt-list-stack">
+        {% for ann in announcements_preview[:3] %}
+          <a class="pt-list-row" href="/team/announcements">
+            <div>
+              <div class="pt-list-title">{{ ann.title }}</div>
+              <div class="pt-list-sub">{{ ann.body[:150] }}{% if ann.body|length > 150 %}...{% endif %}</div>
+            </div>
+            {% if ann.pinned %}<span class="pt-chip">Pinned</span>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="pt-empty-panel">Nothing new right now.</div>
+    {% endif %}
   </div>
-{% endif %}
+
+  <div class="pt-card pt-dashboard-panel">
+    <div class="pt-panel-head">
+      <div>
+        <div class="pt-card-title">Upcoming</div>
+        <div class="pt-card-sub">Your next five shifts.</div>
+      </div>
+      <a class="pt-link-inline" href="{{ schedule_href|default('/team/schedule') }}">Open schedule</a>
+    </div>
+    {% if upcoming_rows %}
+      <div class="pt-list-stack">
+        {% for shift in upcoming_rows %}
+          <a class="pt-list-row pt-shift-row" href="{{ schedule_href|default('/team/schedule') }}">
+            <div class="pt-date-block">
+              <strong>{{ shift.shift_date.strftime('%a') }}</strong>
+              <span>{{ shift.shift_date.strftime('%b %d') }}</span>
+            </div>
+            <div>
+              <div class="pt-list-title">{{ shift.label or 'Shift' }}</div>
+              <div class="pt-list-sub">
+                {{ shift.kind|replace('_', ' ')|title }}{% if shift.day_note %} · {{ shift.day_note }}{% endif %}
+              </div>
+            </div>
+            <span class="pt-chip">Mine</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="pt-empty-panel">No upcoming shifts posted.</div>
+    {% endif %}
+  </div>
+</section>
 
 {% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
   {% set staffing = today_staffing|default([]) %}
@@ -126,38 +190,5 @@
     {% endif %}
   </div>
 {% endif %}
-
-{% if tools_nav_items %}
-<div class="pt-widget-grid" style="margin-top:20px;">
-    <a class="pt-widget" href="/tiktok/streamer" style="display:block;">
-        <div class="pt-widget-label">Live Stream</div>
-        <div class="pt-widget-value" style="font-size:18px; font-weight:600; color:var(--pt-accent);">Go get the goal</div>
-        <div class="pt-widget-sub">Real-time TikTok orders + session GMV. Chase the bar.</div>
-    </a>
-    <a class="pt-widget" href="/degen_eye" style="display:block;">
-        <div class="pt-widget-label">Degen Eye</div>
-        <div class="pt-widget-value" style="font-size:18px; font-weight:600;">Scan a card</div>
-        <div class="pt-widget-sub">Point your phone, get market price + buy offer.</div>
-    </a>
-</div>
-{% endif %}
-
-<div class="pt-widget-grid" style="margin-top:20px;">
-    <a class="pt-widget" href="/team/policies" style="display:block;">
-        <div class="pt-widget-label">Policies</div>
-        <div class="pt-widget-value" style="font-size:18px; font-weight:600;">Read & sign</div>
-        <div class="pt-widget-sub">Keep your acknowledgements up to date.</div>
-    </a>
-    <a class="pt-widget" href="/team/supply" style="display:block;">
-        <div class="pt-widget-label">Supplies</div>
-        <div class="pt-widget-value" style="font-size:18px; font-weight:600;">Need something?</div>
-        <div class="pt-widget-sub">Request cards, sleeves, top-loaders, anything.</div>
-    </a>
-    <a class="pt-widget" href="/team/profile" style="display:block;">
-        <div class="pt-widget-label">Profile</div>
-        <div class="pt-widget-value" style="font-size:18px; font-weight:600;">Your info</div>
-        <div class="pt-widget-sub">Update contact info, address, emergency contact.</div>
-    </a>
-</div>
 
 {% endblock %}

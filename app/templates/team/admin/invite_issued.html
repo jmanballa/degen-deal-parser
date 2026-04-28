@@ -1,6 +1,30 @@
 {% extends "team/admin/base.html" %}
 {% set active = 'invites' %}
 {% block content %}
+{% if sms_result %}
+    {% if sms_result.success and sms_result.dry_run %}
+    <div class="ta-card" style="border-color:rgba(234,179,8,0.35); background:rgba(234,179,8,0.08);">
+        <h2 style="color:#fcd34d;">SMS dry run</h2>
+        <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+            No text was sent. The system would have sent this invite to {{ sms_phone_label }}.
+        </p>
+    </div>
+    {% elif sms_result.success %}
+    <div class="ta-card" style="border-color:rgba(34,197,94,0.35); background:rgba(34,197,94,0.08);">
+        <h2 style="color:#86efac;">Text sent</h2>
+        <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+            Invite text sent to {{ sms_phone_label }} through {{ sms_result.provider }} ({{ sms_result.status }}).
+        </p>
+    </div>
+    {% else %}
+    <div class="ta-card" style="border-color:rgba(239,68,68,0.35); background:rgba(239,68,68,0.08);">
+        <h2 style="color:#fca5a5;">Text failed</h2>
+        <p style="font-size:13px; color:var(--lx-muted); margin:0;">
+            Could not text {{ sms_phone_label }}: {{ sms_result.error }}. The invite link below is still valid and visible once.
+        </p>
+    </div>
+    {% endif %}
+{% endif %}
 <div class="ta-card" style="border-color:rgba(234,179,8,0.35);">
     <h2 style="color:#fcd34d;">Invite link — visible ONCE</h2>
     <p style="font-size:13px; color:var(--lx-muted);">

@@ -183,6 +183,7 @@ try:
         fetch_live_session_list as _fetch_live_session_list,
         fetch_overview_performance_daily as _fetch_overview_performance_daily,
         fetch_stream_performance_per_minutes as _fetch_stream_performance_per_minutes,
+        fetch_live_product_performance_list as _fetch_live_product_performance_list,
     )
 except ImportError:
     pull_tiktok_orders = None
@@ -200,6 +201,7 @@ except ImportError:
     _fetch_live_session_list = None
     _fetch_overview_performance_daily = None
     _fetch_stream_performance_per_minutes = None
+    _fetch_live_product_performance_list = None
     _product_record_from_payload = None
     _upsert_tiktok_product_row = None
 
@@ -3874,9 +3876,10 @@ def redirect_to_login(request: Request) -> RedirectResponse:
 
 
 def app_home_for_role(role: str) -> str:
-    # Employees don't have access to /dashboard (admin ops UI). Route them
-    # to the employee portal home so their post-login landing doesn't 403.
-    if role == "employee":
+    # Employee-portal roles don't have a useful ops-dashboard landing.
+    # "viewer" is the real persisted employee role; "employee" is kept for
+    # older tests/data and "manager" should stay inside the team portal too.
+    if role in {"employee", "viewer", "manager"}:
         return "/team/"
     if role == "admin":
         return "/dashboard"

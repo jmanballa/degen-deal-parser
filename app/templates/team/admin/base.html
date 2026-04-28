@@ -75,11 +75,19 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
             margin-bottom: 24px;
             padding-bottom: 16px;
             border-bottom: 1px solid var(--lx-br);
         }
         .ta-h1 { font-size: 22px; font-weight: 700; margin: 0; }
+        .ta-header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
         .ta-chip {
             font-size: 11px;
             padding: 3px 8px;
@@ -142,7 +150,13 @@
         }
         @media (max-width: 860px) {
             .ta-h1 { font-size: 18px; }
-            .ta-header { margin-bottom: 16px; padding-bottom: 12px; }
+            .ta-header {
+                align-items: flex-start;
+                flex-direction: column;
+                margin-bottom: 16px;
+                padding-bottom: 12px;
+            }
+            .ta-header-actions { justify-content: flex-start; }
         }
     </style>
     {% block extra_head %}{% endblock %}
@@ -177,39 +191,30 @@
             </svg>
         </button>
         <div class="ta-brand">Degen · Team Admin</div>
-        {# Admin nav links. pt-link class applied too so portal-drawer.js's
-           click-to-close hook fires on mobile. #}
-        <a class="ta-nav-link pt-link {% if active == 'overview' %}active{% endif %}" href="/team/admin">Overview</a>
-        <a class="ta-nav-link pt-link {% if active == 'permissions' %}active{% endif %}" href="/team/admin/permissions">Permissions</a>
-        <div class="ta-nav-group">People</div>
-        <a class="ta-nav-link pt-link {% if active == 'employees' %}active{% endif %}" href="/team/admin/employees">Employees</a>
-        <a class="ta-nav-link pt-link {% if active == 'pay-rates' %}active{% endif %}" href="/team/admin/employees/pay-rates">Compensation</a>
-        <a class="ta-nav-link pt-link {% if active == 'clockify' %}active{% endif %}" href="/team/admin/clockify">Clockify</a>
-        <a class="ta-nav-link pt-link {% if active == 'shift-tracker' %}active{% endif %}" href="/team/admin/shift-tracker">Shift Tracker</a>
-        <a class="ta-nav-link pt-link {% if active == 'labor-stats' %}active{% endif %}" href="/team/admin/labor-stats">Labor Stats</a>
-        <a class="ta-nav-link pt-link {% if active == 'payroll' %}active{% endif %}" href="/team/admin/payroll">Payroll Export</a>
-        <a class="ta-nav-link pt-link {% if active == 'exceptions' %}active{% endif %}" href="/team/admin/exceptions">Exceptions</a>
-        <a class="ta-nav-link pt-link {% if active == 'schedule' %}active{% endif %}" href="/team/admin/schedule">Schedule</a>
-        {% set _can_admin_announcements = can_view_admin_announcements if can_view_admin_announcements is defined else request.state.can_view_admin_announcements|default(false) %}
-        {% set _can_admin_timeoff = can_view_admin_timeoff if can_view_admin_timeoff is defined else request.state.can_view_admin_timeoff|default(false) %}
-        {% if _can_admin_announcements %}
-        <a class="ta-nav-link pt-link {% if active == 'announcements' %}active{% endif %}" href="/team/admin/announcements">Announcements</a>
-        {% endif %}
-        <a class="ta-nav-link pt-link {% if active == 'invites' %}active{% endif %}" href="/team/admin/invites">Invites</a>
-        <a class="ta-nav-link pt-link {% if active == 'supply' %}active{% endif %}" href="/team/admin/supply">Supply queue</a>
-        {% if _can_admin_timeoff %}
-        <a class="ta-nav-link pt-link {% if active == 'time-off' %}active{% endif %}" href="/team/admin/timeoff">Time off</a>
-        {% endif %}
+        {# Route gates build this list from the same permissions the URLs use,
+           so managers don't see links that will dead-end into a 403. #}
+        {% set nav_sections = team_admin_nav_sections if team_admin_nav_sections is defined else request.state.team_admin_nav_sections|default([]) %}
+        {% for section in nav_sections %}
+          {% if section["group"] %}<div class="ta-nav-group">{{ section["group"] }}</div>{% endif %}
+          {% for item in section["items"] %}
+            <a class="ta-nav-link pt-link {% if active == item['active'] %}active{% endif %}" href="{{ item['href'] }}">{{ item["label"] }}</a>
+          {% endfor %}
+        {% endfor %}
         <div class="ta-sidebar-footer">
             <a href="/team/">← back to team portal</a>
+            {% if current_user and current_user.role == "admin" %}
             <a href="/admin">← back to ops admin</a>
+            {% endif %}
         </div>
     </aside>
     <main class="pt-main">
         <div class="ta-main-inner">
             <div class="ta-header">
                 <h1 class="ta-h1">{{ title }}</h1>
-                <span class="ta-chip">Employee Portal</span>
+                <div class="ta-header-actions">
+                    <a class="ta-btn" href="/team/help">Ask for help</a>
+                    <span class="ta-chip">Employee Portal</span>
+                </div>
             </div>
             {% block content %}{% endblock %}
             <div class="ta-footer">Degen Deal Parser · team admin</div>

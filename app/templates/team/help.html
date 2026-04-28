@@ -1,0 +1,48 @@
+{% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">Use this when something looks wrong or you are not sure what to do.</div>
+{% endblock %}
+{% block content %}
+<div class="pt-card pt-help-card">
+  <div class="pt-card-title">Ask for help</div>
+  <div class="pt-card-sub">Send your manager the page you are on and what you are trying to do. These shortcuts cover the most common employee problems.</div>
+  <div class="pt-help-grid">
+    <a class="pt-help-tile" href="/team/hours">
+      <strong>Hours or pay looks wrong</strong>
+      <span>Check Clockify hours, today status, and estimated pay.</span>
+    </a>
+    <a class="pt-help-tile" href="{{ schedule_href|default('/team/schedule') }}">
+      <strong>Schedule question</strong>
+      <span>Open the schedule and confirm the shift/date.</span>
+    </a>
+    <a class="pt-help-tile" href="/team/profile">
+      <strong>Profile or phone number</strong>
+      <span>Update contact info and emergency contact.</span>
+    </a>
+    <a class="pt-help-tile" href="/team/supply">
+      <strong>Need supplies</strong>
+      <span>Request cards, sleeves, labels, or anything missing.</span>
+    </a>
+  </div>
+</div>
+
+<div class="pt-card">
+  <div class="pt-card-title">Copy a message</div>
+  <div class="pt-copy-box" id="pt-help-copy">Hey, I need help in the employee portal. Page: {{ request.url.path }}. What I am trying to do:</div>
+  <button class="pt-btn" id="pt-copy-help" type="button">Copy message</button>
+</div>
+
+<script>
+  (function () {
+    const btn = document.getElementById("pt-copy-help");
+    const text = document.getElementById("pt-help-copy");
+    if (!btn || !text || !navigator.clipboard) return;
+    btn.addEventListener("click", function () {
+      navigator.clipboard.writeText(text.textContent.trim()).then(function () {
+        btn.textContent = "Copied";
+        window.setTimeout(function () { btn.textContent = "Copy message"; }, 1600);
+      });
+    });
+  })();
+</script>
+{% endblock %}

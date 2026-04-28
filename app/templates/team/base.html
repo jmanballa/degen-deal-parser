@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="/static/linear.css?v=2026042020">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042026">
-    <link rel="stylesheet" href="/static/portal.css?v=2026042424">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042601">
     {# Keep legacy .tp-* classes working as aliases — lets older templates coexist. #}
     <style>
         .tp-layout { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
@@ -83,6 +83,7 @@
             'policies': '☰',
             'hours': '◴',
             'announcements': '!',
+            'notifications': 'N',
             'schedule': '▦',
             'time-off': 'T',
             'supply': '+',
@@ -91,8 +92,10 @@
             'invites': '→',
             'permissions': '◉',
             'supply-queue': '⚑',
+            'team-schedule': 'S',
             'time-off-queue': 'T',
             'announcements-admin': '!',
+            'inventory': 'I',
             'live-stream': '●',
             'degen-eye': '◎'
         } %}
@@ -100,15 +103,15 @@
         {% for item in nav_items %}
           <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
             <span class="pt-link-ico">{{ nav_icons.get(item.name, '·') }}</span>
-            <span>{{ item.name|replace('-', ' ')|capitalize }}</span>
+            <span>{{ item.label|default(item.name|replace('-', ' ')|capitalize) }}</span>
           </a>
         {% endfor %}
-        {% if tools_nav_items and portal_privileged %}
-          <div class="pt-side-group">Tools</div>
+        {% if tools_nav_items %}
+          <div class="pt-side-group">Ops</div>
           {% for item in tools_nav_items %}
             <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
               <span class="pt-link-ico">{{ nav_icons.get(item.name, '·') }}</span>
-              <span>{{ item.name|replace('-', ' ')|capitalize }}</span>
+              <span>{{ item.label|default(item.name|replace('-', ' ')|capitalize) }}</span>
             </a>
           {% endfor %}
         {% endif %}
@@ -117,12 +120,12 @@
           {% for item in admin_nav_items %}
             <a class="pt-link {% if active == item.name %}active{% endif %}" href="{{ item.href }}">
               <span class="pt-link-ico">{{ nav_icons.get(item.name, '·') }}</span>
-              <span>{{ item.name|replace('-', ' ')|capitalize }}</span>
+              <span>{{ item.label|default(item.name|replace('-', ' ')|capitalize) }}</span>
             </a>
           {% endfor %}
         {% endif %}
         <div class="pt-side-footer">
-            {% if portal_privileged %}
+            {% if current_user and current_user.role in ("admin", "reviewer") %}
               <a class="pt-link" href="/dashboard" style="margin-top:6px;">
                 <span class="pt-link-ico">←</span>
                 <span>Back to Ops</span>
@@ -149,7 +152,11 @@
                 <h1 class="pt-h1">{{ title }}</h1>
                 {% block header_sub %}{% endblock %}
             </div>
-            {% if current_user %}<span class="pt-chip">Signed in</span>{% endif %}
+            <div class="pt-header-right">
+                <a class="pt-help-link" href="/team/help">Ask for help</a>
+                <div class="pt-now" id="pt-now" aria-live="polite"></div>
+                {% if current_user %}<span class="pt-chip">Signed in</span>{% endif %}
+            </div>
         </div>
         {% if flash %}<div class="pt-flash">{{ flash }}</div>{% endif %}
         {% if error %}<div class="pt-error">{{ error }}</div>{% endif %}
@@ -158,5 +165,71 @@
 </div>
 {% include "_team_mobile_bottom_nav.html" %}
 <script src="/static/portal-drawer.js?v=2026042025"></script>
+<script>
+  (function () {
+    const el = document.getElementById("pt-now");
+    if (!el) return;
+    const opts = {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    };
+    const update = () => {
+      el.textContent = new Intl.DateTimeFormat(undefined, opts).format(new Date());
+    };
+    update();
+    window.setInterval(update, 30000);
+  })();
+</script>
+{% if current_user %}
+<script>
+  (function () {
+    if (!("Notification" in window) || !window.fetch || !window.localStorage) return;
+    const key = "pt_last_notification_id_{{ current_user.id }}";
+    async function pollNotifications() {
+      const raw = window.localStorage.getItem(key) || "0";
+      const since = Number.parseInt(raw, 10) || 0;
+      let payload;
+      try {
+        const res = await window.fetch("/team/notifications/poll?since_id=" + encodeURIComponent(String(since)), {
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" }
+        });
+        if (!res.ok) return;
+        payload = await res.json();
+      } catch (err) {
+        return;
+      }
+      const latest = Number.parseInt(String(payload.latest_id || 0), 10) || 0;
+      const notes = Array.isArray(payload.notifications) ? payload.notifications : [];
+      if (!since) {
+        if (latest) window.localStorage.setItem(key, String(latest));
+        return;
+      }
+      if (Notification.permission === "granted") {
+        notes.forEach(function (note) {
+          if (!note || !note.id) return;
+          try {
+            const alert = new Notification(note.title || "Degen Team update", {
+              body: note.body || "Open the employee portal for details."
+            });
+            alert.onclick = function () {
+              window.focus();
+              if (note.link_path) window.location.href = note.link_path;
+            };
+          } catch (err) {
+            // Browser notification support varies by device/browser.
+          }
+        });
+      }
+      if (latest) window.localStorage.setItem(key, String(Math.max(since, latest)));
+    }
+    pollNotifications();
+    window.setInterval(pollNotifications, 60000);
+  })();
+</script>
+{% endif %}
 </body>
 </html>

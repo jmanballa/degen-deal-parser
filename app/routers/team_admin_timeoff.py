@@ -26,6 +26,7 @@ from ..models import (
     utcnow,
 )
 from ..shared import templates
+from ..team_notifications import notify_employee
 from .team_admin import _permission_gate
 
 router = APIRouter()
@@ -222,6 +223,19 @@ def _transition_timeoff(
             ),
             ip_address=(request.client.host if request and request.client else None),
         )
+    )
+    notify_employee(
+        session,
+        user_id=row.submitted_by_user_id,
+        actor_user_id=actor.id,
+        kind=f"timeoff_{new_status}",
+        title=f"Time off {new_status}",
+        body=(
+            f"{row.start_date.strftime('%b %d')} - {row.end_date.strftime('%b %d')}"
+            + (f": {clean_notes}" if clean_notes else "")
+        ),
+        link_path="/team/timeoff",
+        request=request,
     )
     session.commit()
     return None

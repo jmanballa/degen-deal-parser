@@ -1,5 +1,8 @@
 {% extends "team/admin/base.html" %}
 {% set active = 'employees' %}
+{% set can_edit_employee_profile = can_edit_employee_profile if can_edit_employee_profile is defined else true %}
+{% set can_edit_schedule_roster = can_edit_schedule_roster if can_edit_schedule_roster is defined else can_edit_employee_profile %}
+{% set can_view_labor_financials = can_view_labor_financials if can_view_labor_financials is defined else true %}
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
 
@@ -21,13 +24,17 @@
         <button class="ta-btn" type="submit">Search</button>
         {% if q or show_inactive %}<a class="ta-btn" href="/team/admin/employees">Clear</a>{% endif %}
     </form>
+    {% if can_edit_employee_profile %}
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% if can_view_labor_financials %}
         <a class="ta-btn" href="/team/admin/employees/pay-rates">Compensation</a>
+        {% endif %}
         <a class="ta-btn" href="/team/admin/employees/new"
            style="background:#3b82f6; color:white; border-color:#3b82f6; font-weight:600;">
             + Add employee
         </a>
     </div>
+    {% endif %}
 </div>
 
 <p style="font-size:12px; color:var(--lx-muted); margin:-10px 0 16px;">
@@ -94,6 +101,7 @@
                     {% endif %}
                 </td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br); text-align:center;">
+                    {% if can_edit_schedule_roster %}
                     <form method="post" action="/team/admin/employees/{{ u.id }}/schedulable-toggle" style="display:inline; margin:0;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
                         <input type="hidden" name="return_show_inactive" value="{{ '1' if show_inactive else '' }}"/>
@@ -108,6 +116,13 @@
                                    aria-label="Toggle schedulable for {{ u.display_name or u.username }}"/>
                         </label>
                     </form>
+                    {% else %}
+                        {% if u.is_schedulable %}
+                            <span style="color:#86efac; font-weight:700;">Yes</span>
+                        {% else %}
+                            <span style="color:var(--lx-muted);">No</span>
+                        {% endif %}
+                    {% endif %}
                 </td>
                 <td style="padding:10px 14px; border-bottom:1px solid var(--lx-br);">
                     {% if profile and profile.hire_date %}{{ profile.hire_date }}{% else %}—{% endif %}
@@ -121,6 +136,14 @@
                         <span style="padding:2px 8px; border-radius:999px; background:rgba(134,239,172,0.15); color:#86efac; font-size:11px; font-weight:500; letter-spacing:0.03em;">active</span>
                     {% else %}
                         <span style="padding:2px 8px; border-radius:999px; background:rgba(252,165,165,0.15); color:#fca5a5; font-size:11px; font-weight:500; letter-spacing:0.03em;">inactive</span>
+                    {% endif %}
+                    {% if draft and can_text_invite and profile and profile.phone_enc %}
+                    <form method="post" action="/team/admin/employees/{{ u.id }}/text-invite" style="margin:8px 0 0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                        <button class="ta-btn" type="submit" style="font-size:11px; padding:4px 8px;">Text invite</button>
+                    </form>
+                    {% elif draft and can_text_invite %}
+                    <div style="font-size:11px; color:#fcd34d; margin-top:6px;">No phone</div>
                     {% endif %}
                 </td>
             </tr>

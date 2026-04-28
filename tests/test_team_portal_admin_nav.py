@@ -108,22 +108,22 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
     def test_admin_sees_all_privileged_sidebar_links(self):
         self._current_user = self._login_as("admin", user_id=101, username="adm")
         html = self._dashboard_html()
-        self.assertIn("Update my profile", html)
+        self.assertIn("What do I need to do today?", html)
         self.assertIn('href="/team/admin/schedule"', html)
         self.assertIn('href="/team/admin/employees"', html)
         self.assertIn('href="/team/admin/invites"', html)
         self.assertIn('href="/team/admin/permissions"', html)
         self.assertIn('href="/team/admin/supply"', html)
         self.assertIn('href="/team/admin/timeoff"', html)
-        self.assertIn('href="/tiktok/streamer"', html)
-        self.assertIn('href="/degen_eye"', html)
+        self.assertIn('href="/team/tools/live-stream"', html)
+        self.assertIn('href="/team/tools/degen-eye"', html)
         self.assertIn('href="/dashboard"', html)
         self.assertIn(">Admin<", html, "admin group divider should render")
 
     def test_employee_sees_no_admin_or_tools_links(self):
         self._current_user = self._login_as("employee", user_id=102, username="emp")
         html = self._dashboard_html()
-        self.assertIn("Update my profile", html)
+        self.assertIn("What do I need to do today?", html)
         self.assertIn('href="/team/profile"', html)
         self.assertIn('href="/team/supply"', html)
         self.assertIn('href="/team/schedule"', html)
@@ -132,8 +132,9 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         self.assertNotIn('href="/team/admin/invites"', html)
         self.assertNotIn('href="/team/admin/permissions"', html)
         self.assertNotIn('href="/team/admin/supply"', html)
-        self.assertNotIn('href="/tiktok/streamer"', html)
-        self.assertNotIn('href="/degen_eye"', html)
+        self.assertIn('href="/team/tools/inventory"', html)
+        self.assertIn('href="/team/tools/live-stream"', html)
+        self.assertIn('href="/team/tools/degen-eye"', html)
         self.assertNotIn('href="/dashboard"', html)
         self.assertNotIn('href="/admin"', html)
         self.assertNotIn("Back to Ops", html)
@@ -146,7 +147,7 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         self.assertNotIn(
             '<div class="pt-side-group">Tools</div>',
             html,
-            "tools divider leaked into an employee's sidebar",
+            "legacy tools divider leaked into an employee's sidebar",
         )
 
     def test_manager_sees_queue_links(self):
@@ -156,9 +157,10 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         # page.admin.supply is manager=True in DEFAULT_ROLE_PERMISSIONS.
         self.assertIn('href="/team/admin/supply"', html)
         self.assertIn('href="/team/admin/timeoff"', html)
-        self.assertIn('href="/tiktok/streamer"', html)
-        self.assertIn('href="/degen_eye"', html)
-        self.assertIn('href="/dashboard"', html)
+        self.assertIn('href="/team/tools/live-stream"', html)
+        self.assertIn('href="/team/tools/degen-eye"', html)
+        self.assertNotIn('href="/dashboard"', html)
+        self.assertNotIn("Back to Ops", html)
         # These employee-management pages stay admin-only.
         self.assertNotIn('href="/team/admin/employees"', html)
         self.assertNotIn('href="/team/admin/invites"', html)
@@ -169,8 +171,8 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         html = self._dashboard_html()
         self.assertIn('href="/team/admin/supply"', html)
         self.assertIn('href="/team/admin/timeoff"', html)
-        self.assertIn('href="/tiktok/streamer"', html)
-        self.assertIn('href="/degen_eye"', html)
+        self.assertIn('href="/team/tools/live-stream"', html)
+        self.assertIn('href="/team/tools/degen-eye"', html)
         self.assertNotIn('href="/team/admin/employees"', html)
         self.assertNotIn('href="/team/admin/invites"', html)
         self.assertNotIn('href="/team/admin/permissions"', html)
@@ -182,9 +184,9 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         self.assertNotIn("isn't hooked up", html)
         self.assertNotIn("lands soon", html)
         upper = unescape(html).upper()
-        self.assertNotIn("HOURS THIS WEEK", upper)
-        self.assertNotIn("ESTIMATED PAY", upper)
-        self.assertNotIn("TODAY'S TASKS", upper)
+        self.assertIn("HOURS THIS WEEK", upper)
+        self.assertIn("ESTIMATED PAY", upper)
+        self.assertIn("WHAT DO I NEED TO DO TODAY?", upper)
         self.assertNotIn("Coming with payroll integration", html)
         self.assertNotIn("Task assignments pending", html)
 

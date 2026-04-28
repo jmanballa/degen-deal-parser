@@ -156,11 +156,11 @@ class PayrollOpsTests(unittest.TestCase):
             settings=self._settings(),
             now=datetime(2026, 4, 26, 12, 0, tzinfo=LA),
         )
-        self.assertEqual(summary["rows"][0]["total_label"], "$160.00")
+        self.assertEqual(summary["rows"][0]["total_label"], "$150.00")
         self.assertEqual(summary["rows"][0]["pending_day_count"], 1)
         csv_text = mod.payroll_summary_to_csv(summary)
         self.assertIn("Worker", csv_text)
-        self.assertIn("$160.00", csv_text)
+        self.assertIn("$150.00", csv_text)
 
         result = mod.lock_payroll_window(
             self.session,
@@ -229,8 +229,8 @@ class PayrollOpsTests(unittest.TestCase):
             settings=self._settings(),
             now=datetime(2026, 4, 21, 20, 0, tzinfo=LA),
         )
-        self.assertEqual(summary["rows"][0]["total_label"], "$400.00")
-        self.assertEqual(summary["rows"][0]["hourly_label"], "$400.00")
+        self.assertEqual(summary["rows"][0]["total_label"], "$375.00")
+        self.assertEqual(summary["rows"][0]["hourly_label"], "$375.00")
 
     def test_exceptions_catches_mapping_rates_no_shows_and_rejections(self):
         from app.models import ShiftEntry, TimecardApproval

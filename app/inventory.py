@@ -333,7 +333,10 @@ async def inventory_scan_page(request: Request):
     return _templates.TemplateResponse(
         request,
         "inventory_scan.html",
-        {"current_user": _current_user(request)},
+        {
+            "current_user": _current_user(request),
+            "team_shell": request.query_params.get("team_shell") == "1",
+        },
     )
 
 
@@ -781,7 +784,11 @@ async def inventory_scan_pokemon_page(request: Request):
     return _templates.TemplateResponse(
         request,
         "inventory_scan_pokemon.html",
-        {"current_user": _current_user(request), "conditions": CONDITIONS},
+        {
+            "current_user": _current_user(request),
+            "conditions": CONDITIONS,
+            "team_shell": request.query_params.get("team_shell") == "1",
+        },
     )
 
 
@@ -1017,7 +1024,11 @@ async def degen_eye_v2_page(request: Request):
     return _templates.TemplateResponse(
         request,
         "inventory_scan_pokemon_v2.html",
-        {"current_user": _current_user(request), "conditions": CONDITIONS},
+        {
+            "current_user": _current_user(request),
+            "conditions": CONDITIONS,
+            "team_shell": request.query_params.get("team_shell") == "1",
+        },
     )
 
 

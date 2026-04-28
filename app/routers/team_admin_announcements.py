@@ -21,6 +21,7 @@ from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import AuditLog, TeamAnnouncement, User, utcnow
 from ..shared import templates
+from ..team_notifications import notify_active_employees
 from .team_admin import _permission_gate
 
 router = APIRouter()
@@ -255,6 +256,15 @@ async def admin_announcements_create(
             ),
             ip_address=(request.client.host if request.client else None),
         )
+    )
+    notify_active_employees(
+        session,
+        actor_user_id=current.id,
+        kind="announcement",
+        title=f"New announcement: {row.title}",
+        body=(row.body or "Open the employee portal to read it.")[:240],
+        link_path="/team/announcements",
+        request=request,
     )
     session.commit()
     return _flash_redirect("Announcement published.")

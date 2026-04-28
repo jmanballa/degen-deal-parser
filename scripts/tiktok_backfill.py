@@ -60,6 +60,7 @@ LIVE_ANALYTICS_PATH = "/analytics/202509/shop_lives/overview_performance"
 LIVE_CORE_STATS_PATH_TEMPLATE = "/analytics/202502/live_rooms/{live_room_id}/core_stats"
 LIVE_SESSION_LIST_PATH = "/analytics/202509/shop_lives/performance"
 LIVE_PER_MINUTES_PATH_TEMPLATE = "/analytics/202510/shop_lives/{live_id}/performance_per_minutes"
+LIVE_PRODUCTS_PERFORMANCE_PATH_TEMPLATE = "/analytics/202512/shop/{live_id}/products_performance"
 DEFAULT_SHOP_API_BASE_URL = "https://open-api.tiktokglobalshop.com"
 
 
@@ -945,7 +946,6 @@ def fetch_live_session_list(
         "sort_field": "gmv",
         "sort_order": "DESC",
         "currency": currency,
-        "account_type": "OFFICIAL_ACCOUNTS",
         "page_size": 20,
     }
     url, _body_json, headers = build_tiktok_request(
@@ -994,6 +994,11 @@ def fetch_live_session_list(
             end_ts = int(s.get("end_time") or 0)
         except (TypeError, ValueError):
             end_ts = 0
+        avg_price_obj = sp.get("avg_price") or {}
+        try:
+            avg_price = float(avg_price_obj.get("amount") or 0)
+        except (TypeError, ValueError):
+            avg_price = 0.0
         results.append({
             "id": str(s.get("id") or ""),
             "title": str(s.get("title") or ""),
@@ -1002,9 +1007,13 @@ def fetch_live_session_list(
             "end_time": end_ts,
             "gmv": gmv,
             "currency": str(gmv_obj.get("currency") or currency),
+            "avg_price": avg_price,
             "items_sold": int(sp.get("items_sold") or 0),
             "customers": int(sp.get("customers") or 0),
+            "created_sku_orders": int(sp.get("created_sku_orders") or 0),
             "sku_orders": int(sp.get("sku_orders") or 0),
+            "different_products_sold": int(sp.get("different_products_sold") or 0),
+            "products_added": int(sp.get("products_added") or 0),
         })
     return results
 
@@ -1159,6 +1168,89 @@ def fetch_stream_performance_per_minutes(
         })
 
     return {"overall": overall, "intervals": intervals}
+
+
+def fetch_live_product_performance_list(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    app_key: str,
+    app_secret: str,
+    access_token: str,
+    shop_cipher: str,
+    live_id: str,
+    currency: str = "USD",
+) -> list[dict[str, Any]]:
+    """Fetch product-level sales attributed directly to one LIVE session.
+
+    This endpoint is useful when multiple creators stream from the same shop
+    at once: order payloads are shop-level, but this product performance data
+    is scoped to the selected live_id.
+    """
+    live_id = str(live_id or "").strip()
+    if not live_id:
+        return []
+    path = LIVE_PRODUCTS_PERFORMANCE_PATH_TEMPLATE.format(live_id=live_id)
+    extra_query: dict[str, Any] = {
+        "currency": currency,
+        "page_size": 50,
+    }
+    url, _body_json, headers = build_tiktok_request(
+        base_url=base_url,
+        path=path,
+        app_key=app_key,
+        app_secret=app_secret,
+        shop_id="",
+        shop_cipher=shop_cipher,
+        access_token=access_token,
+        body=None,
+        extra_query=extra_query,
+        api_version="",
+    )
+    headers["Content-Type"] = "application/json"
+    try:
+        resp = client.request("GET", url, headers=headers)
+    except Exception:
+        return []
+    try:
+        payload = resp.json()
+    except Exception:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    if resp.status_code == 403 or payload.get("code") not in (0, "0"):
+        return []
+
+    data = payload.get("data") or {}
+    products_raw = data.get("products") or []
+    if not isinstance(products_raw, list):
+        return []
+
+    results: list[dict[str, Any]] = []
+    for product in products_raw:
+        if not isinstance(product, dict):
+            continue
+        product_id = str(product.get("id") or product.get("product_id") or "").strip()
+        if not product_id:
+            continue
+        sales = product.get("sales") or {}
+        direct_gmv_obj = sales.get("direct_gmv") or {}
+        try:
+            direct_gmv = float(direct_gmv_obj.get("amount") or 0)
+        except (TypeError, ValueError):
+            direct_gmv = 0.0
+        results.append({
+            "id": product_id,
+            "name": str(product.get("name") or product.get("title") or "").strip(),
+            "direct_gmv": direct_gmv,
+            "currency": str(direct_gmv_obj.get("currency") or currency),
+            "items_sold": int(sales.get("items_sold") or 0),
+            "customers": int(sales.get("customers") or 0),
+            "created_sku_orders": int(sales.get("created_sku_orders") or 0),
+            "sku_orders": int(sales.get("sku_orders") or 0),
+            "main_orders": int(sales.get("main_orders") or 0),
+        })
+    return results
 
 
 def fetch_tiktok_product_list_page(

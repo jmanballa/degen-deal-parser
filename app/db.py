@@ -969,11 +969,17 @@ DEFAULT_ROLE_PERMISSIONS: tuple[tuple[str, str, bool], ...] = tuple(
         ("admin.timeoff.approve", (False, False, True, False, True)),
         # Wave 4.5 — edit key distinct from view
         ("admin.employees.edit", (False, False, False, False, True)),
+        ("admin.employee_roster.edit", (False, False, True, False, True)),
         # Wave 4.7 — schedule admin surface. Managers can also view/edit
         # since scheduling is typically a floor-manager responsibility;
         # admin is the one required role.
         ("admin.schedule.view", (False, False, True, False, True)),
         ("admin.schedule.edit", (False, False, True, False, True)),
+        # Payroll exports expose compensation totals, so they stay admin-only
+        # unless the permissions matrix explicitly grants them.
+        ("admin.labor_financials.view", (False, False, False, False, True)),
+        ("admin.payroll.view", (False, False, False, False, True)),
+        ("admin.payroll.lock", (False, False, False, False, True)),
         # Wave C — announcements comms hub.
         ("admin.announcements.view", (False, False, True, True, True)),
         ("admin.announcements.create", (False, False, True, False, True)),

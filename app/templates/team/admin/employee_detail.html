@@ -1,5 +1,6 @@
 {% extends "team/admin/base.html" %}
 {% set active = 'employees' %}
+{% set can_edit_schedule_roster = can_edit_schedule_roster if can_edit_schedule_roster is defined else can_edit_profile|default(false) %}
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
 
@@ -7,7 +8,9 @@
     <a class="ta-btn" href="/team/admin/employees/{{ employee.id }}/timecards" style="background:linear-gradient(135deg,#86efac22,#60a5fa22); border-color:rgba(134,239,172,0.45); color:#bbf7d0;">
         📅 View weekly timecards →
     </a>
+    {% if can_view_labor_financials %}
     <a class="ta-btn" href="/team/admin/employees/pay-rates">Edit compensation</a>
+    {% endif %}
 </div>
 
 {% if is_draft %}
@@ -25,22 +28,41 @@
         <strong>Invite already issued.</strong>
         Expires <span style="color:var(--lx-muted);">{{ outstanding_invite.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>.
         {% if can_issue_invite %}
-        <form method="post" action="/team/admin/employees/{{ employee.id }}/send-invite" style="display:inline; margin-left:8px;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
-            <button class="ta-btn" type="submit">Issue a fresh link</button>
-        </form>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            <form method="post" action="/team/admin/employees/{{ employee.id }}/send-invite" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                <button class="ta-btn" type="submit">Generate fresh copy link</button>
+            </form>
+            {% if can_text_invite and has_phone_on_file %}
+            <form method="post" action="/team/admin/employees/{{ employee.id }}/text-invite" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+                <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6;">Text fresh invite</button>
+            </form>
+            {% endif %}
+        </div>
         {% endif %}
         <p style="font-size:11px; color:var(--lx-muted); margin:6px 0 0;">
-            For security, each link is only shown once. Issuing a new link invalidates the old one.
+            For security, each link is only shown once. Generating or texting a fresh link invalidates the old one.
         </p>
+        {% if can_text_invite and not has_phone_on_file %}
+        <p style="font-size:11px; color:#fcd34d; margin:6px 0 0;">Add a phone number before texting an invite.</p>
+        {% endif %}
     </div>
     {% elif can_issue_invite %}
     <form method="post" action="/team/admin/employees/{{ employee.id }}/send-invite" style="margin:0;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
         <button class="ta-btn" type="submit" style="background:#3b82f6; color:white; border-color:#3b82f6;">
-            Send invite link →
+            Generate copy link
         </button>
     </form>
+    {% if can_text_invite and has_phone_on_file %}
+    <form method="post" action="/team/admin/employees/{{ employee.id }}/text-invite" style="display:inline-block; margin:8px 0 0 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
+        <button class="ta-btn" type="submit">Text invite link</button>
+    </form>
+    {% elif can_text_invite %}
+    <p style="font-size:12px; color:#fcd34d; margin:8px 0 0;">Add a phone number before texting an invite.</p>
+    {% endif %}
     {% else %}
     <p style="font-size:12px; color:var(--lx-muted);">An admin with invite permissions needs to send the link.</p>
     {% endif %}
@@ -69,8 +91,10 @@
 
 <div class="ta-card">
     <h2>Account</h2>
-    {% if not can_edit_profile %}
+    {% if not can_edit_profile and not can_edit_schedule_roster %}
     <p style="font-size:12px; color:var(--lx-muted); margin:0 0 8px;">View-only — you do not have permission to edit this profile.</p>
+    {% elif not can_edit_profile %}
+    <p style="font-size:12px; color:var(--lx-muted); margin:0 0 8px;">Roster-only edit: you can change schedule type and whether this person appears in schedule pickers.</p>
     {% endif %}
     <form method="post" action="/team/admin/employees/{{ employee.id }}/profile-update">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
@@ -80,12 +104,12 @@
             <tr><td style="padding:6px 0; color:var(--lx-muted);">Status</td><td>{% if employee.is_active %}<span style="color:#86efac;">active</span>{% else %}<span style="color:#fca5a5;">inactive</span>{% endif %}</td></tr>
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Display name</td>
-                <td><input type="text" name="display_name" value="{{ employee.display_name or '' }}" style="width:280px; padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/></td>
+                <td><input type="text" name="display_name" value="{{ employee.display_name or '' }}" {% if not can_edit_profile %}disabled{% endif %} style="width:280px; padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/></td>
             </tr>
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Role</td>
                 <td>
-                    <select name="role" style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
+                    <select name="role" {% if not can_edit_profile %}disabled{% endif %} style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
                         {% for r in roles %}<option value="{{ r }}" {% if r == employee.role %}selected{% endif %}>{{ r }}</option>{% endfor %}
                     </select>
                     <span style="font-size:11px; color:var(--lx-muted); margin-left:8px;">permission level (admin / manager / employee / viewer / reviewer)</span>
@@ -95,7 +119,7 @@
                 <td style="padding:6px 0; color:var(--lx-muted);">Type</td>
                 <td>
                     {% set current_kind = employee.staff_kind or 'storefront' %}
-                    <select name="staff_kind" style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
+                    <select name="staff_kind" {% if not can_edit_schedule_roster and not can_edit_profile %}disabled{% endif %} style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);">
                         <option value="storefront" {% if current_kind == 'storefront' %}selected{% endif %}>Storefront</option>
                         <option value="stream" {% if current_kind == 'stream' %}selected{% endif %}>Stream</option>
                     </select>
@@ -104,7 +128,16 @@
             </tr>
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Hire date</td>
-                <td><input type="date" name="hire_date" value="{{ profile.hire_date or '' }}" style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/></td>
+                <td><input type="date" name="hire_date" value="{{ profile.hire_date or '' }}" {% if not can_edit_profile %}disabled{% endif %} style="padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/></td>
+            </tr>
+            <tr>
+                <td style="padding:6px 0; color:var(--lx-muted);">On schedule</td>
+                <td>
+                    <label style="display:inline-flex; align-items:center; gap:8px; color:var(--lx-text);">
+                        <input type="checkbox" name="is_schedulable" value="1" {% if employee.is_schedulable %}checked{% endif %} {% if not can_edit_schedule_roster and not can_edit_profile %}disabled{% endif %} style="accent-color:#3b82f6; width:16px; height:16px;"/>
+                        Include in schedule pickers
+                    </label>
+                </td>
             </tr>
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Termination date</td>
@@ -117,6 +150,7 @@
                     <span style="font-size:11px; color:var(--lx-muted); margin-left:8px;">set by the Terminate action</span>
                 </td>
             </tr>
+            {% if can_view_labor_financials %}
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Compensation</td>
                 <td>
@@ -137,7 +171,12 @@
             </tr>
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Hourly rate (cents)</td>
-                <td><input type="text" name="hourly_rate_cents" placeholder="e.g. 2500 for $25.00" style="width:200px; padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/></td>
+                <td>
+                    <input type="text" name="hourly_rate_cents" value="{{ hourly_rate_cents_value }}" placeholder="e.g. 2500 for $25.00" style="width:200px; padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/>
+                    {% if hourly_rate_display %}
+                    <span style="font-size:11px; color:var(--lx-muted); margin-left:8px;">current ${{ hourly_rate_display }}/hr</span>
+                    {% endif %}
+                </td>
             </tr>
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Monthly salary</td>
@@ -166,13 +205,16 @@
                     <span style="font-size:11px; color:var(--lx-muted); margin-left:8px;">check = official payroll; cash = cash payout</span>
                 </td>
             </tr>
+            {% endif %}
             <tr>
                 <td style="padding:6px 0; color:var(--lx-muted);">Clockify user ID</td>
-                <td><input type="text" name="clockify_user_id" value="{{ profile.clockify_user_id or '' }}" style="width:320px; padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/></td>
+                <td><input type="text" name="clockify_user_id" value="{{ profile.clockify_user_id or '' }}" {% if not can_edit_profile %}disabled{% endif %} style="width:320px; padding:5px 8px; border-radius:6px; border:1px solid var(--lx-br); background:var(--lx-s2); color:var(--lx-text);"/></td>
             </tr>
         </table>
         {% if can_edit_profile %}
         <button class="ta-btn" type="submit" style="margin-top:10px;">Save profile</button>
+        {% elif can_edit_schedule_roster %}
+        <button class="ta-btn" type="submit" style="margin-top:10px;">Save roster settings</button>
         {% endif %}
     </form>
 </div>

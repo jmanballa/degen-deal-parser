@@ -1,5 +1,8 @@
 {% extends "team/admin/base.html" %}
 {% set active = 'schedule' %}
+{% set can_edit_employee_profile = can_edit_employee_profile if can_edit_employee_profile is defined else can_edit|default(false) %}
+{% set can_edit_schedule_roster = can_edit_schedule_roster if can_edit_schedule_roster is defined else can_edit_employee_profile %}
+{% set can_view_labor_financials = can_view_labor_financials if can_view_labor_financials is defined else true %}
 
 {% block extra_head %}
 <style>
@@ -1112,9 +1115,15 @@
         {% endif %}
         {% if not ctx.addable_users and not ctx.users %}
         <span style="font-size:12px; color:var(--lx-muted); margin-left:auto;">
+            {% if can_edit_schedule_roster %}
             Mark employees as <strong>On schedule</strong> and
             <strong>Type = {{ kind_label }}</strong> on the
             <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a> to add them here.
+            {% else %}
+            No eligible {{ kind_label|lower }} employees are available yet.
+            Ask an admin to mark them <strong>On schedule</strong>
+            {% if kind_slug == 'stream' %}and set <strong>Type = Stream</strong>{% endif %}.
+            {% endif %}
         </span>
         {% endif %}
     </div>
@@ -1339,11 +1348,28 @@
                     {% if not ctx.users %}
                     <tr><td colspan="{{ ctx.week_days|length + 2 }}" style="padding:24px; text-align:center; color:var(--lx-muted);">
                         {% if kind_slug == 'stream' %}
-                        No Stream-role employees yet. Set an employee's <strong>Type</strong> to
-                        <strong>Stream</strong> and mark them <strong>On schedule</strong> on the
-                        <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a>.
+                        {% if can_edit_schedule_roster %}
+                        No Stream-role employees yet. Open
+                        <a href="/team/admin/employees" style="color:#fdba74; font-weight:700;">Employees</a>,
+                        set <strong>Type = Stream</strong>, and turn on <strong>On schedule</strong>.
+                        {% else %}
+                        No Stream-role employees yet. Ask an admin to set an employee's
+                        <strong>Type</strong> to <strong>Stream</strong> and turn on
+                        <strong>On schedule</strong>.
+                        {% endif %}
                         {% else %}
                         No {{ kind_label|lower }} employees on this week yet.
+                        {% if edit_mode and (ctx.addable_users or ctx.prev_roster_count) %}
+                        Use the roster picker above or copy the previous week.
+                        {% elif can_edit and (ctx.addable_users or ctx.prev_roster_count) %}
+                        Tap <strong>Edit schedule</strong> above to add eligible employees or copy the previous week.
+                        {% elif can_edit_schedule_roster %}
+                        Open
+                        <a href="/team/admin/employees" style="color:#fdba74; font-weight:700;">Employees</a>
+                        to mark people <strong>On schedule</strong>.
+                        {% else %}
+                        Ask an admin to mark employees <strong>On schedule</strong>, then add them here.
+                        {% endif %}
                         {% endif %}
                     </td></tr>
                     {% endif %}
@@ -1449,10 +1475,12 @@
         <span class="sch-stat-num">{{ '%.1f'|format(storefront.grand_hours) }}</span>
         <span class="sch-stat-lbl">Scheduled hours</span>
     </div>
+    {% if can_view_labor_financials %}
     <div class="sch-summary-stat">
         <span class="sch-stat-num {% if storefront.labor_total_display.startswith('—') %}is-warn{% endif %}">{{ storefront.labor_total_display }}</span>
         <span class="sch-stat-lbl">Labor this week</span>
     </div>
+    {% endif %}
     <div class="sch-summary-stat">
         <span class="sch-stat-num">{{ storefront.total_shifts }}</span>
         <span class="sch-stat-lbl">Shifts</span>
@@ -1465,7 +1493,7 @@
         <span class="sch-stat-num">{{ stream.users|length }}</span>
         <span class="sch-stat-lbl">Stream roster</span>
     </div>
-    {% if storefront.missing_rate_count > 0 %}
+    {% if can_view_labor_financials and storefront.missing_rate_count > 0 %}
     <div class="sch-summary-missing">⚠ {{ storefront.missing_rate_count }} missing rates</div>
     {% endif %}
     <div class="sch-summary-actions">
@@ -1481,9 +1509,9 @@
     by the <strong>Type</strong> column on the
     <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a>.
     {% else %}
-    Storefront hours update as soon as you save. Labor is shown only as a weekly
-    aggregate; missing rates count as $0 until fixed. Stream cells are color-coded
-    per stream account. Employee type is controlled by the <strong>Type</strong>
+    Storefront hours update as soon as you save. {% if can_view_labor_financials %}Labor is shown only as a weekly
+    aggregate; missing rates count as $0 until fixed.{% endif %}
+    Stream cells are color-coded per stream account. Employee type is controlled by the <strong>Type</strong>
     column on the <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a>.
     {% endif %}
 </p>

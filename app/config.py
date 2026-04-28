@@ -205,6 +205,13 @@ class Settings(BaseSettings):
     tiktok_live_api_key: str = Field(default="", alias="TIKTOK_LIVE_API_KEY")
     tiktok_live_username: str = Field(default="", alias="TIKTOK_LIVE_USERNAME")
 
+    # Optional external username-resolver service (scripts/scraper_server.py
+    # running on OpenClaw or another Linux host). When base_url + api_key are
+    # set the app will attempt to resolve buyer @usernames from order IDs.
+    username_scraper_base_url: str = Field(default="", alias="USERNAME_SCRAPER_BASE_URL")
+    username_scraper_api_key: str = Field(default="", alias="USERNAME_SCRAPER_API_KEY")
+    username_scraper_timeout_seconds: float = Field(default=8.0, alias="USERNAME_SCRAPER_TIMEOUT_SECONDS")
+
     # Inventory
     shopify_access_token: str = Field(default="", alias="SHOPIFY_ACCESS_TOKEN")
     scrydex_api_key: str = Field(default="", alias="SCRYDEX_API_KEY")
@@ -232,6 +239,12 @@ class Settings(BaseSettings):
     employee_pii_key: str = Field(default="", alias="EMPLOYEE_PII_KEY")
     employee_email_hash_salt: str = Field(default="", alias="EMPLOYEE_EMAIL_HASH_SALT")
     employee_token_hmac_key: str = Field(default="", alias="EMPLOYEE_TOKEN_HMAC_KEY")
+    sms_provider: str = Field(default="dry_run", alias="SMS_PROVIDER")
+    sms_from_number: str = Field(default="", alias="SMS_FROM_NUMBER")
+    sms_twilio_account_sid: str = Field(default="", alias="TWILIO_ACCOUNT_SID")
+    sms_twilio_auth_token: str = Field(default="", alias="TWILIO_AUTH_TOKEN")
+    sms_twilio_messaging_service_sid: str = Field(default="", alias="TWILIO_MESSAGING_SERVICE_SID")
+    sms_timeout_seconds: float = Field(default=10.0, alias="SMS_TIMEOUT_SECONDS")
     trust_x_forwarded_for: bool = Field(default=False, alias="TRUST_X_FORWARDED_FOR")
     trusted_proxy_ips: str = Field(default="127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", alias="TRUSTED_PROXY_IPS")
     clockify_api_key: str = Field(default="", alias="CLOCKIFY_API_KEY")

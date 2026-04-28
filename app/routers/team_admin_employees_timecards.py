@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
+from ..auth import has_permission
 from ..clockify import (
     ClockifyApiError,
     ClockifyConfigError,
@@ -69,6 +70,8 @@ WEEKLY_OVERTIME_SECONDS = 40 * 3600
 _LABOR_KINDS = {SHIFT_KIND_WORK, SHIFT_KIND_ALL}
 _COMPENSATION_MONTHLY_SALARY = "monthly_salary"
 _BREAK_KEYWORDS = ("break", "lunch", "meal", "rest")
+MISSED_BREAK_THRESHOLD_SECONDS = 5 * 3600
+MISSED_BREAK_DEDUCTION_SECONDS = 30 * 60
 _TIMECARD_AUDIT_ACTIONS = (
     "admin.timecard.status_update",
     "admin.timecard.bulk_approve",
@@ -262,6 +265,25 @@ def _entry_is_break(entry: ClockifyEntryView) -> bool:
     return any(re.search(rf"\b{re.escape(word)}\b", text) for word in _BREAK_KEYWORDS)
 
 
+def _apply_missed_break_deduction(
+    work_seconds: int,
+    break_seconds: int,
+) -> tuple[int, int, int]:
+    work_seconds = max(0, int(work_seconds or 0))
+    break_seconds = max(0, int(break_seconds or 0))
+    if work_seconds <= MISSED_BREAK_THRESHOLD_SECONDS or break_seconds > 0:
+        return work_seconds, break_seconds, 0
+    deduction = min(MISSED_BREAK_DEDUCTION_SECONDS, work_seconds)
+    return max(0, work_seconds - deduction), break_seconds + deduction, deduction
+
+
+def _format_break_label(break_seconds: int, auto_break_seconds: int = 0) -> str:
+    label = format_hours(break_seconds)
+    if auto_break_seconds > 0:
+        label = f"{label} ({format_hours(auto_break_seconds)} auto)"
+    return label
+
+
 def _format_signed_minutes(minutes: int) -> str:
     sign = "+" if minutes > 0 else "-" if minutes < 0 else ""
     total = abs(minutes)
@@ -326,6 +348,8 @@ class _DayRow:
     actual_label: str
     break_seconds: int
     break_label: str
+    missed_break_deduction_seconds: int
+    missed_break_deduction_label: str
     first_clock_in_label: str
     last_clock_out_label: str
     variance_minutes: Optional[int]
@@ -471,6 +495,13 @@ def _build_day_rows(
             and not any(_entry_is_break(e) for e in day_entries)
         ):
             actual_seconds = daily_totals.get(day, 0)
+        has_break_entry = any(_entry_is_break(e) for e in day_entries)
+        if has_break_entry and break_seconds <= 0:
+            missed_break_deduction_seconds = 0
+        else:
+            actual_seconds, break_seconds, missed_break_deduction_seconds = (
+                _apply_missed_break_deduction(actual_seconds, break_seconds)
+            )
         work_entries = [e for e in day_entries if not _entry_is_break(e)]
         first_clock_in_label = _fmt_time(
             min((e.start_local for e in work_entries if e.start_local), default=None)
@@ -493,7 +524,14 @@ def _build_day_rows(
         daily_overtime_seconds = max(0, actual_seconds - DAILY_OVERTIME_SECONDS)
         pills, running = _anomaly_pills(day_shifts, day_entries, day, tz, today)
         if break_seconds > 0:
-            pills.append({"label": f"Break {format_hours(break_seconds)}", "tone": "info"})
+            pills.append(
+                {
+                    "label": (
+                        f"Break {_format_break_label(break_seconds, missed_break_deduction_seconds)}"
+                    ),
+                    "tone": "warn" if missed_break_deduction_seconds else "info",
+                }
+            )
         if daily_overtime_seconds > 0:
             pills.append({"label": f"OT {format_hours(daily_overtime_seconds)}", "tone": "warn"})
         date_label = _format_month_day(day)
@@ -509,7 +547,14 @@ def _build_day_rows(
                 actual_seconds=actual_seconds,
                 actual_label=format_hours(actual_seconds),
                 break_seconds=break_seconds,
-                break_label=format_hours(break_seconds),
+                break_label=_format_break_label(
+                    break_seconds,
+                    missed_break_deduction_seconds,
+                ),
+                missed_break_deduction_seconds=missed_break_deduction_seconds,
+                missed_break_deduction_label=format_hours(
+                    missed_break_deduction_seconds
+                ),
                 first_clock_in_label=first_clock_in_label,
                 last_clock_out_label=last_clock_out_label,
                 variance_minutes=variance_minutes,
@@ -847,66 +892,77 @@ def admin_employee_timecards(
         for status in TIMECARD_STATUS_VALUES
     }
 
-    history_rows = compensation_history_rows_for_users(
+    can_view_labor_financials = has_permission(
         session,
-        [user_id],
-        end_day=week_end_inclusive,
-    ).get(user_id, [])
-    week_snapshot = compensation_snapshot_for_day(
-        profile,
-        week_end_inclusive,
-        history_rows=history_rows,
+        current,
+        "admin.labor_financials.view",
     )
-    compensation_type = str(week_snapshot.get("compensation_type") or "hourly")
-    salary_employee = compensation_type == _COMPENSATION_MONTHLY_SALARY
-    if salary_employee:
-        salary_cents = int(week_snapshot.get("monthly_salary_cents") or 0)
-        pay_missing = week_snapshot.get("monthly_salary_cents") is None
-        labor_cents = salary_cents
-        labor_tile_label = "Monthly pay"
-        labor_basis_label = "Fixed monthly salary effective this week"
-        labor_missing_label = "salary not set"
-        labor_missing_help = "Add a monthly salary on the profile"
-        # Drop the plaintext amount before building the context to keep it out
-        # of both the template namespace and any future locals() dumps.
-        del salary_cents
-    elif compensation_type == "unpaid":
-        labor_cents = 0
-        pay_missing = False
-        labor_tile_label = "Labor cost"
-        labor_basis_label = "Employee marked unpaid for this week"
-        labor_missing_label = "unpaid"
-        labor_missing_help = "Change the pay type on the profile"
-    else:
-        labor_cents = 0
-        missing_rate = False
-        has_hourly_seconds = False
-        for row in day_rows:
-            seconds = int(row.actual_seconds or 0)
-            if seconds <= 0:
-                continue
-            day_snapshot = compensation_snapshot_for_day(
-                profile,
-                row.day,
-                history_rows=history_rows,
-            )
-            if day_snapshot.get("compensation_type") != "hourly":
-                continue
-            has_hourly_seconds = True
-            rate_cents = day_snapshot.get("hourly_rate_cents")
-            if rate_cents is None:
-                missing_rate = True
-                continue
-            labor_cents += _labor_cents(seconds, int(rate_cents))
-        pay_missing = (
-            missing_rate
-            if has_hourly_seconds
-            else week_snapshot.get("hourly_rate_cents") is None
+    salary_employee = False
+    labor_cents = 0
+    pay_missing = False
+    labor_tile_label = "Labor cost"
+    labor_basis_label = ""
+    labor_missing_label = ""
+    labor_missing_help = ""
+    if can_view_labor_financials:
+        history_rows = compensation_history_rows_for_users(
+            session,
+            [user_id],
+            end_day=week_end_inclusive,
+        ).get(user_id, [])
+        week_snapshot = compensation_snapshot_for_day(
+            profile,
+            week_end_inclusive,
+            history_rows=history_rows,
         )
-        labor_tile_label = "Labor cost"
-        labor_basis_label = "Paid Clockify hours x effective hourly rate"
-        labor_missing_label = "rate not set"
-        labor_missing_help = "Add an hourly rate on the profile"
+        compensation_type = str(week_snapshot.get("compensation_type") or "hourly")
+        salary_employee = compensation_type == _COMPENSATION_MONTHLY_SALARY
+        if salary_employee:
+            salary_cents = int(week_snapshot.get("monthly_salary_cents") or 0)
+            pay_missing = week_snapshot.get("monthly_salary_cents") is None
+            labor_cents = salary_cents
+            labor_tile_label = "Monthly pay"
+            labor_basis_label = "Fixed monthly salary effective this week"
+            labor_missing_label = "salary not set"
+            labor_missing_help = "Add a monthly salary on the profile"
+            # Drop the plaintext amount before building the context to keep it out
+            # of both the template namespace and any future locals() dumps.
+            del salary_cents
+        elif compensation_type == "unpaid":
+            pay_missing = False
+            labor_tile_label = "Labor cost"
+            labor_basis_label = "Employee marked unpaid for this week"
+            labor_missing_label = "unpaid"
+            labor_missing_help = "Change the pay type on the profile"
+        else:
+            missing_rate = False
+            has_hourly_seconds = False
+            for row in day_rows:
+                seconds = int(row.actual_seconds or 0)
+                if seconds <= 0:
+                    continue
+                day_snapshot = compensation_snapshot_for_day(
+                    profile,
+                    row.day,
+                    history_rows=history_rows,
+                )
+                if day_snapshot.get("compensation_type") != "hourly":
+                    continue
+                has_hourly_seconds = True
+                rate_cents = day_snapshot.get("hourly_rate_cents")
+                if rate_cents is None:
+                    missing_rate = True
+                    continue
+                labor_cents += _labor_cents(seconds, int(rate_cents))
+            pay_missing = (
+                missing_rate
+                if has_hourly_seconds
+                else week_snapshot.get("hourly_rate_cents") is None
+            )
+            labor_tile_label = "Labor cost"
+            labor_basis_label = "Paid Clockify hours x effective hourly rate"
+            labor_missing_label = "rate not set"
+            labor_missing_help = "Add an hourly rate on the profile"
 
     has_any_scheduled = bool(shift_rows)
     has_any_actual = any(row.actual_seconds or row.break_seconds for row in day_rows)
@@ -971,6 +1027,7 @@ def admin_employee_timecards(
         "labor_missing_help": labor_missing_help,
         "labor_basis_label": labor_basis_label,
         "salary_employee": salary_employee,
+        "can_view_labor_financials": can_view_labor_financials,
         "has_any_scheduled": has_any_scheduled,
         "has_any_actual": has_any_actual,
         "csrf_token": issue_token(request),

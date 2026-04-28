@@ -68,8 +68,10 @@
 </head>
 <body>
 <div class="page">
+    {% if not team_shell %}
     {% include "_linear_sidebar.html" %}
     <a href="/inventory" class="back-link">← Back to Inventory</a>
+    {% endif %}
 
     <div class="card">
         <span class="eyebrow">Inventory</span>

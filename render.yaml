@@ -6,6 +6,10 @@ services:
     autoDeploy: true
     buildCommand: pip install -r requirements.txt
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: degen-eye-data
+      mountPath: /var/data
+      sizeGB: 10
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -43,6 +47,12 @@ services:
         sync: false
       - key: REVIEWER_DISPLAY_NAME
         value: Degen Reviewer
+      - key: DEGEN_EYE_V2_CAPTURE_ENABLED
+        value: "true"
+      - key: DEGEN_EYE_V2_CAPTURE_DIR
+        value: /var/data/v2_training_scans
+      - key: DEGEN_EYE_V2_INDEX_PATH
+        value: /var/data/phash_index.sqlite
   - type: worker
     name: degen-deal-parser-worker
     runtime: python

@@ -331,18 +331,20 @@
         <div class="tc-tile-value">{{ variance_total_label }}</div>
         <div class="tc-tile-sub">Paid minus scheduled for the week</div>
     </div>
-    {% if labor_rate_missing %}
-    <div class="tc-tile tc-tile-muted">
-        <div class="tc-tile-label">{{ labor_tile_label }}</div>
-        <div class="tc-tile-value">-- ({{ labor_missing_label }})</div>
-        <div class="tc-tile-sub">{{ labor_missing_help }}</div>
-    </div>
-    {% else %}
-    <div class="tc-tile">
-        <div class="tc-tile-label">{{ labor_tile_label }}</div>
-        <div class="tc-tile-value">{{ labor_total_label }}</div>
-        <div class="tc-tile-sub">{{ labor_basis_label }}</div>
-    </div>
+    {% if can_view_labor_financials %}
+        {% if labor_rate_missing %}
+        <div class="tc-tile tc-tile-muted">
+            <div class="tc-tile-label">{{ labor_tile_label }}</div>
+            <div class="tc-tile-value">-- ({{ labor_missing_label }})</div>
+            <div class="tc-tile-sub">{{ labor_missing_help }}</div>
+        </div>
+        {% else %}
+        <div class="tc-tile">
+            <div class="tc-tile-label">{{ labor_tile_label }}</div>
+            <div class="tc-tile-value">{{ labor_total_label }}</div>
+            <div class="tc-tile-sub">{{ labor_basis_label }}</div>
+        </div>
+        {% endif %}
     {% endif %}
     <div class="tc-tile">
         <div class="tc-tile-label">Approvals</div>

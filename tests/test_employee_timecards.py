@@ -258,7 +258,7 @@ class EmployeeTimecardsTests(unittest.TestCase):
         self.assertIn("No-show", body)
 
     def test_timecards_labor_total_respects_wage_privacy(self):
-        # $25/hr => 2500 cents. 7.5 hours => $187.50 total.
+        # $25/hr => 2500 cents. 7.5 clocked hours with no break => 7 paid hours.
         self._seed_profile(clockify_user_id="ck-1", hourly_rate_cents=2500)
         entries = [
             _make_entry(
@@ -268,7 +268,8 @@ class EmployeeTimecardsTests(unittest.TestCase):
         ]
         response, _ = self._render(entries=entries)
         body = response.body.decode("utf-8")
-        self.assertIn("$187.50", body)
+        self.assertIn("$175.00", body)
+        self.assertIn("break 30m (30m auto)", body)
         self.assertNotIn("2500", body)
         self.assertNotIn("$25.00", body)
         self.assertNotIn("25.00/", body)

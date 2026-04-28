@@ -3,6 +3,29 @@
 <div class="pt-h1-sub">Keep this up to date so we can reach you. Everything sensitive is encrypted.</div>
 {% endblock %}
 {% block content %}
+{% set completion = profile_completion|default({'items': [], 'complete_count': 0, 'total_count': 0, 'percent': 0}) %}
+<div class="pt-card pt-profile-completion">
+  <div class="pt-panel-head">
+    <div>
+      <div class="pt-card-title">Profile completion</div>
+      <div class="pt-card-sub">{{ completion.complete_count }}/{{ completion.total_count }} complete. Keep this finished so managers can reach you and your hours show correctly.</div>
+    </div>
+    <span class="pt-chip">{{ completion.percent }}%</span>
+  </div>
+  <div class="pt-check-meter" aria-hidden="true"><span style="width: {{ completion.percent }}%;"></span></div>
+  <div class="pt-check-list">
+    {% for item in completion["items"] %}
+      <a class="pt-check-row {% if item.done %}done{% endif %}" href="{{ item.href }}">
+        <span class="pt-check-icon">{% if item.done %}OK{% else %}Fix{% endif %}</span>
+        <span>
+          <strong>{{ item.label }}</strong>
+          <small>{{ item.hint }}</small>
+        </span>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
 <div class="pt-two-col">
   <div>
     <div class="pt-card">
