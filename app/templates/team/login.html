@@ -20,7 +20,22 @@
     </div>
     <button class="pt-btn primary lg" type="submit" style="width:100%; margin-top:6px;">Sign in</button>
 </form>
-<div class="pt-auth-hint"><a href="/team/password/forgot">Trouble signing in?</a></div>
+<div class="pt-login-help-card">
+    <div class="pt-login-help-title">Forgot your password?</div>
+    <div class="pt-login-help-copy">
+        Enter your username or email. If your phone is on file, we will text you a reset link.
+        If texting is not available, your manager will see a reset request.
+    </div>
+    <form method="post" action="/team/password/forgot" autocomplete="on">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="pt-field-label" for="login-help-identifier">Username or email</label>
+        <div class="pt-login-help-row">
+            <input class="pt-input" type="text" name="identifier" id="login-help-identifier" autocomplete="username" placeholder="jane.doe or you@example.com">
+            <button class="pt-btn" type="submit">Text me login help</button>
+        </div>
+    </form>
+</div>
+<div class="pt-auth-hint"><a href="/team/password/forgot">Open full reset page</a></div>
 <script>
 (function(){
     document.querySelectorAll('[data-pw-target]').forEach(function(btn){

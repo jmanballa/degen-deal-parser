@@ -8,7 +8,7 @@
        .pt-mobile-bottom-nav). Admin pages reuse the exact same pattern
        as /team/ so the hamburger pops out the admin sidebar on phones
        instead of a weird horizontal chip strip. #}
-    <link rel="stylesheet" href="/static/portal.css?v=2026042424">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042803">
     <style>
         * { box-sizing: border-box; }
         body {
@@ -24,12 +24,23 @@
            pt-side handles position/size/drawer animation; these rules handle
            the admin-only nav look. */
         .ta-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
             font-weight: 700;
             font-size: 14px;
-            letter-spacing: 0.04em;
+            letter-spacing: -0.01em;
+            color: var(--lx-text);
+            padding: 0 10px 20px;
+        }
+        .ta-brand-main { line-height: 1; }
+        .ta-brand-sub {
+            display: block;
+            margin-top: 2px;
+            font-size: 10px;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
             color: var(--lx-muted);
-            padding: 0 10px 18px;
         }
         .ta-nav-link {
             display: block;
@@ -174,8 +185,10 @@
         </svg>
     </button>
     <a href="/team/admin" class="pt-mobile-brand" aria-label="Degen Team Admin home">
-        <span class="pt-brand-dot"></span>
-        <span>Team Admin</span>
+        <span class="pt-brand-mark" aria-hidden="true">
+            <img src="/static/icons/degen-collectibles-180.png" alt="">
+        </span>
+        <span class="pt-mobile-brand-text">Team Admin</span>
     </a>
     <span class="pt-topbar-spacer"></span>
     {% if current_user %}<span class="pt-topbar-chip">{{ current_user.role }}</span>{% endif %}
@@ -190,7 +203,15 @@
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
         </button>
-        <div class="ta-brand">Degen · Team Admin</div>
+        <div class="ta-brand">
+            <span class="pt-brand-mark" aria-hidden="true">
+                <img src="/static/icons/degen-collectibles-180.png" alt="">
+            </span>
+            <span>
+                <span class="ta-brand-main">Degen</span>
+                <span class="ta-brand-sub">Team Admin</span>
+            </span>
+        </div>
         {# Route gates build this list from the same permissions the URLs use,
            so managers don't see links that will dead-end into a 403. #}
         {% set nav_sections = team_admin_nav_sections if team_admin_nav_sections is defined else request.state.team_admin_nav_sections|default([]) %}

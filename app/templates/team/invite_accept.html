@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="/static/linear.css?v=2026042020">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042026">
-    <link rel="stylesheet" href="/static/portal.css?v=2026042801">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042803">
 </head>
 <body class="onb-body">
 
@@ -84,6 +84,24 @@
                 nothing sensitive leaves your device in the clear, and everything gets
                 encrypted before it's stored. Takes about two minutes.
             </p>
+            <div class="onb-role-brief" aria-label="Employee setup preview">
+                <div>
+                    <strong>Create login</strong>
+                    <span>Pick the username and password you will use every day.</span>
+                </div>
+                <div>
+                    <strong>Add contact info</strong>
+                    <span>Phone and email help managers reach you about shifts.</span>
+                </div>
+                <div>
+                    <strong>Install on phone</strong>
+                    <span>Add Degen to your Home Screen so it feels like an app.</span>
+                </div>
+                <div>
+                    <strong>Learn shifts, hours, and pay</strong>
+                    <span>The last step shows where everything is in the portal.</span>
+                </div>
+            </div>
             {% endif %}
             <div class="onb-actions">
                 <div class="spacer"></div>
@@ -205,7 +223,7 @@
             <div class="onb-actions">
                 <button type="button" class="onb-btn ghost" data-back>← Back</button>
                 <div class="spacer"></div>
-                <button type="button" class="onb-btn ghost" data-next>Skip for now</button>
+                <button type="button" class="onb-btn ghost" data-next>I'll add this later</button>
                 <button type="button" class="onb-btn" data-next>Continue →</button>
             </div>
         </section>
@@ -230,7 +248,7 @@
             <div class="onb-actions">
                 <button type="button" class="onb-btn ghost" data-back>← Back</button>
                 <div class="spacer"></div>
-                <button type="button" class="onb-btn ghost" data-next>Skip</button>
+                <button type="button" class="onb-btn ghost" data-next>I'll add this later</button>
                 <button type="button" class="onb-btn" data-next>Continue →</button>
             </div>
         </section>
@@ -283,6 +301,19 @@
                         <div><strong>Add Degen to your Home Screen</strong><span>Choose Add to Home Screen or Install app, keep the name Degen, then tap Add.</span></div>
                     </div>
                 </div>
+            </div>
+
+            <div class="onb-device-helper" aria-label="Open this invite on your phone">
+                <div>
+                    <strong>Opened this on the wrong device?</strong>
+                    <span>Copy this invite link or open a text message to send it to your phone.</span>
+                </div>
+                <div class="onb-link-tools">
+                    <input class="onb-copy-input" id="invite-link-copy" type="text" readonly value="{{ request.url }}">
+                    <button class="onb-btn ghost onb-mini-btn" type="button" data-copy-invite>Copy link</button>
+                    <a class="onb-btn ghost onb-mini-btn" id="sms-invite-link" href="#">Text this link to my phone</a>
+                </div>
+                <div class="onb-device-status" id="invite-copy-status" aria-live="polite"></div>
             </div>
 
             <div class="onb-actions">
@@ -489,6 +520,35 @@
             btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
         });
     });
+
+    // Make it easy to move the invite onto a phone without hunting for the URL.
+    const inviteInput = document.getElementById('invite-link-copy');
+    const copyInviteBtn = document.querySelector('[data-copy-invite]');
+    const smsInviteLink = document.getElementById('sms-invite-link');
+    const inviteCopyStatus = document.getElementById('invite-copy-status');
+    if (inviteInput) inviteInput.value = window.location.href;
+    if (smsInviteLink) {
+        smsInviteLink.href = 'sms:?&body=' + encodeURIComponent('Degen invite link: ' + window.location.href);
+    }
+    if (copyInviteBtn && inviteInput) {
+        copyInviteBtn.addEventListener('click', async () => {
+            const link = inviteInput.value || window.location.href;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(link);
+                } else {
+                    inviteInput.focus();
+                    inviteInput.select();
+                    document.execCommand('copy');
+                }
+                if (inviteCopyStatus) inviteCopyStatus.textContent = 'Invite link copied.';
+            } catch (err) {
+                inviteInput.focus();
+                inviteInput.select();
+                if (inviteCopyStatus) inviteCopyStatus.textContent = 'Copy the highlighted link.';
+            }
+        });
+    }
 
     // Guard against a double-submit on the final button (iOS Safari can
     // send the POST twice on a laggy connection otherwise).

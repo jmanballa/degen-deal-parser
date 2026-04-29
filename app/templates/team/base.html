@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="/static/linear.css?v=2026042020">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042026">
-    <link rel="stylesheet" href="/static/portal.css?v=2026042801">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042803">
     {# Keep legacy .tp-* classes working as aliases — lets older templates coexist. #}
     <style>
         .tp-layout { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
@@ -60,9 +60,11 @@
             <line x1="3" y1="18" x2="21" y2="18"/>
         </svg>
     </button>
-    <a href="/team/" class="pt-mobile-brand" aria-label="Degen Team home">
-        <span class="pt-brand-dot"></span>
-        <span>Degen Team</span>
+    <a href="/team/" class="pt-mobile-brand" aria-label="Degen home">
+        <span class="pt-brand-mark" aria-hidden="true">
+            <img src="/static/icons/degen-collectibles-180.png" alt="">
+        </span>
+        <span class="pt-mobile-brand-text">Degen</span>
     </a>
     <span class="pt-topbar-spacer"></span>
     {% if current_user %}<span class="pt-topbar-chip">{{ current_user.role }}</span>{% endif %}
@@ -78,9 +80,11 @@
             </svg>
         </button>
         <div class="pt-brand">
-            <span class="pt-brand-dot"></span>
+            <span class="pt-brand-mark" aria-hidden="true">
+                <img src="/static/icons/degen-collectibles-180.png" alt="">
+            </span>
             <span>
-                <span class="pt-brand-name">Degen Team</span>
+                <span class="pt-brand-name">Degen</span>
                 <div class="pt-brand-sub">Portal</div>
             </span>
         </div>
