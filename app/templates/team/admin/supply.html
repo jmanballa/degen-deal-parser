@@ -293,15 +293,15 @@
     <div class="supply-finder-head">
         <div>
             <h2>Supply deal finder</h2>
-            <p class="supply-finder-title">Open exact searches, then compare delivered cost per unit before ordering.</p>
+            <p class="supply-finder-title">Run the exact search, then compare delivered cost per unit before you order.</p>
             <p class="supply-finder-sub">
-                These links target the supplies Degen keeps buying and sort where the marketplace supports it.
-                Use the calculator for candidate listings so shipping and pack size do not hide the real best deal.
+                These links hit the stuff Degen buys regularly and sort by price where the marketplace allows it.
+                Drop candidate listings into the calculator so shipping and pack size don't hide the real best deal.
             </p>
         </div>
         <div class="supply-custom-search">
             <input class="supply-input" id="supply-custom-query" type="search"
-                   placeholder="Custom supply search, e.g. 9x6x4 boxes">
+                   placeholder="Custom search, e.g. 9x6x4 boxes">
             <button class="ta-btn" id="supply-custom-open" type="button">Search all</button>
         </div>
     </div>
@@ -325,8 +325,8 @@
     <div class="supply-live-results" id="supply-live-results">
         <div class="supply-live-head">
             <div>
-                <div class="supply-live-title">Pick a supply item to look up live deals.</div>
-                <div class="supply-muted">Listings are ranked by delivered price per unit when pack size is detectable.</div>
+                <div class="supply-live-title">Pick a supply item to pull live deals.</div>
+                <div class="supply-muted">Ranked by delivered price per unit whenever pack size is readable.</div>
             </div>
         </div>
     </div>
@@ -351,7 +351,7 @@
         <button class="ta-btn" type="submit">Add compare</button>
     </form>
     <div class="supply-results" id="supply-results" aria-live="polite">
-        <div class="supply-muted">Add a few candidate listings and the cheapest delivered unit cost floats to the top.</div>
+        <div class="supply-muted">Add a few candidate listings — cheapest delivered unit cost rises to the top.</div>
     </div>
 </div>
 
@@ -398,7 +398,7 @@
                         </form>
                         <form method="post" action="/team/admin/supply/{{ r.id }}/deny" style="display:flex; gap:6px; align-items:flex-start;">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
-                            <textarea name="notes" placeholder="Reason for denial (optional but encouraged)" rows="2" maxlength="2000"
+                            <textarea name="notes" placeholder="Why deny it? (optional, but helpful)" rows="2" maxlength="2000"
                                       style="min-width:0; flex:1; padding:7px 9px; border:1px solid var(--lx-br); border-radius:8px; background:var(--lx-s2); color:var(--lx-text); font:inherit; resize:vertical;"></textarea>
                             <button class="ta-btn danger" type="submit">Deny</button>
                         </form>
@@ -413,7 +413,7 @@
             </tr>
             {% endfor %}
             {% if not requests %}
-            <tr><td colspan="6" style="padding:20px 14px; text-align:center; color:var(--lx-muted);">No supply requests in this view.</td></tr>
+            <tr><td colspan="6" style="padding:20px 14px; text-align:center; color:var(--lx-muted);">Nothing in this view.</td></tr>
             {% endif %}
         </tbody>
     </table>
@@ -479,7 +479,7 @@
     }
 
     function formatRating(row) {
-        if (!row.rating && !row.rating_count) return "No review data";
+        if (!row.rating && !row.rating_count) return "No reviews yet";
         const rating = row.rating ? `${row.rating.toFixed(1)} stars` : "Rating n/a";
         const count = row.rating_count ? `${row.rating_count.toLocaleString()} reviews` : "review count n/a";
         return `${rating} · ${count}`;
@@ -500,9 +500,9 @@
             parts.push(`Watch: ${row.risk_warnings.join(", ")}`);
         }
         if (row.is_saved_deal) {
-            parts.push("Saved deal; click through to confirm current price before ordering");
+            parts.push("Saved deal — click through to confirm the current price before ordering");
         }
-        return parts.join(" · ") || "Reliability details unavailable";
+        return parts.join(" · ") || "No reliability info";
     }
 
     function formatMarketProof(row) {
@@ -581,7 +581,7 @@
                     </div>
                 </a>
             `;
-        }).join("") : '<div class="supply-muted">No live listings parsed yet. Use the marketplace links below for direct search.</div>';
+        }).join("") : '<div class="supply-muted">No live listings yet — use the marketplace links below to search direct.</div>';
         liveResults.innerHTML = `
             <div class="supply-live-head">
                 <div>

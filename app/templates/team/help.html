@@ -1,36 +1,36 @@
 {% extends "team/base.html" %}
 {% block header_sub %}
-<div class="pt-h1-sub">Use this when something looks wrong or you are not sure what to do.</div>
+<div class="pt-h1-sub">Stuck or something looks off? Start here.</div>
 {% endblock %}
 {% block content %}
 <div class="pt-card pt-help-card">
   <div class="pt-card-title">Ask for help</div>
-  <div class="pt-card-sub">Send your manager the page you are on and what you are trying to do. These shortcuts cover the most common employee problems.</div>
+  <div class="pt-card-sub">Tell your manager which page you're on and what you were trying to do. These shortcuts cover the stuff that comes up most.</div>
   <div class="pt-help-grid">
     <a class="pt-help-tile" href="/team/hours">
       <strong>Hours or pay looks wrong</strong>
-      <span>Check Clockify hours, today status, and estimated pay.</span>
+      <span>Check today's status, Clockify hours, and your estimated pay.</span>
     </a>
     <a class="pt-help-tile" href="{{ schedule_href|default('/team/schedule') }}">
       <strong>Schedule question</strong>
-      <span>Open the schedule and confirm the shift/date.</span>
+      <span>Pull up the schedule and double-check the shift and date.</span>
     </a>
     <a class="pt-help-tile" href="/team/profile">
       <strong>Profile or phone number</strong>
-      <span>Update contact info and emergency contact.</span>
+      <span>Update your contact info and emergency contact.</span>
     </a>
     <a class="pt-help-tile" href="/team/supply">
       <strong>Need supplies</strong>
-      <span>Request cards, sleeves, labels, or anything missing.</span>
+      <span>Ask for cards, sleeves, labels, or anything we're out of.</span>
     </a>
     <a class="pt-help-tile" href="/team/help/tutorial">
       <strong>{% if current_user and current_user.role == "manager" %}Manager{% else %}Employee{% endif %} portal tour</strong>
-      <span>Quick guide for shifts, hours, schedules, announcements, policies, profile, and help.</span>
+      <span>Where to find shifts, hours, schedules, announcements, policies, profile, and help.</span>
     </a>
     {% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
     <a class="pt-help-tile" href="/team/admin/tutorial">
       <strong>Team Admin guide</strong>
-      <span>How to schedule people, clear manager queues, and know what each admin page does.</span>
+      <span>Scheduling people, clearing the queues, and what each admin page is for.</span>
     </a>
     {% endif %}
   </div>
@@ -38,7 +38,7 @@
 
 <div class="pt-card pt-help-install">
   <div class="pt-card-title">Install Degen on your phone</div>
-  <div class="pt-card-sub">Use this if the portal opens in a browser and you want it on your Home Screen like an app.</div>
+  <div class="pt-card-sub">If the portal still opens in a browser, put it on your Home Screen so it acts like an app.</div>
   <div class="onb-ios-card" aria-label="Phone Add to Home Screen instructions">
     <div class="onb-ios-phone" aria-hidden="true">
       <div class="onb-ios-notch"></div>
@@ -52,7 +52,7 @@
     <div class="onb-ios-steps">
       <div class="onb-ios-step">
         <span class="onb-ios-num">1</span>
-        <div><strong>Open the team portal in your browser</strong><span>Use Safari on iPhone or Chrome on Android, not an in-app browser.</span></div>
+        <div><strong>Open the team portal in your browser</strong><span>Use Safari on iPhone or Chrome on Android — not an in-app browser.</span></div>
       </div>
       <div class="onb-ios-step">
         <span class="onb-ios-num">2</span>
@@ -70,12 +70,12 @@
               <span></span><span></span><span></span>
             </span>
           </strong>
-          <span>On iPhone, tap Share. On Android, tap the three-dot menu.</span>
+          <span>iPhone: tap Share. Android: tap the three-dot menu.</span>
         </div>
       </div>
       <div class="onb-ios-step">
         <span class="onb-ios-num">3</span>
-        <div><strong>Add Degen to your Home Screen</strong><span>Choose Add to Home Screen or Install app, keep the name Degen, then tap Add.</span></div>
+        <div><strong>Add Degen to your Home Screen</strong><span>Pick Add to Home Screen or Install app, leave the name as Degen, and tap Add.</span></div>
       </div>
     </div>
   </div>
@@ -83,7 +83,7 @@
 
 <div class="pt-card">
   <div class="pt-card-title">Copy a message</div>
-  <div class="pt-copy-box" id="pt-help-copy">Hey, I need help in the employee portal. Page: {{ request.url.path }}. What I am trying to do:</div>
+  <div class="pt-copy-box" id="pt-help-copy">Hey, I need help with the employee portal. Page: {{ request.url.path }}. What I'm trying to do:</div>
   <button class="pt-btn" id="pt-copy-help" type="button">Copy message</button>
 </div>
 

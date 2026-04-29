@@ -1151,7 +1151,7 @@
             <strong>Type = {{ kind_label }}</strong> on the
             <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a> to add them here.
             {% else %}
-            No eligible {{ kind_label|lower }} employees are available yet.
+            No {{ kind_label|lower }} employees yet.
             Ask an admin to mark them <strong>On schedule</strong>
             {% if kind_slug == 'stream' %}and set <strong>Type = Stream</strong>{% endif %}.
             {% endif %}
@@ -1467,8 +1467,8 @@
     <summary>How to schedule people</summary>
     <div class="sch-guide-body">
         <p style="margin:0;">
-            Fast path: pick the week, tap <strong>Edit schedule</strong>, add the employee to the roster if needed,
-            click their day cell, choose the shift type, set times/notes, then save the storefront schedule.
+            Fast path: pick the week → <strong>Edit schedule</strong> → add the employee to the roster →
+            click their day cell → set shift type, times, and notes → save.
         </p>
         <ol>
             <li><strong>Pick the week:</strong> Prev, Next, or Jump to this week. Weeks start Monday.</li>
@@ -1479,8 +1479,8 @@
             <li><strong>Save:</strong> unsaved changes get a dot. Storefront and Stream grids save separately.</li>
         </ol>
         <p style="margin:10px 0 0;">
-            Need the full page-by-page breakdown? <a href="/team/admin/tutorial#schedule-guide">Open the Team Admin guide</a>.
-            Want screenshots? <a href="/team/admin/tutorial#schedule-example">See the Tour Employee example</a>.
+            Full breakdown: <a href="/team/admin/tutorial#schedule-guide">Team Admin guide</a>.
+            Screenshots: <a href="/team/admin/tutorial#schedule-example">Tour Employee example</a>.
         </p>
     </div>
 </details>
@@ -1511,14 +1511,14 @@
             ✎ Edit schedule
         </a>
         {% else %}
-        <span style="font-size:12px; color:var(--lx-muted);">View-only — you do not have edit permissions.</span>
+        <span style="font-size:12px; color:var(--lx-muted);">View only — no edit permission.</span>
         {% endif %}
     </div>
 </div>
 
 {% if not edit_mode %}
 <div class="sch-viewonly-banner">
-    Read-only view. {% if can_edit %}Tap <strong>Edit schedule</strong> above to make changes, add shifts, or generate a week from the previous schedule.{% else %}Only admins with schedule edit permission can modify this page.{% endif %}
+    Read-only. {% if can_edit %}Tap <strong>Edit schedule</strong> to add shifts or generate from last week.{% else %}Only admins with schedule edit permission can modify this page.{% endif %}
 </div>
 {% endif %}
 
@@ -1556,15 +1556,14 @@
 
 <p style="font-size:12px; color:var(--lx-muted); margin:-4px 0 14px; max-width:860px;">
     {% if edit_mode %}
-    Click any cell to add, edit, or clear a shift. Stream-grid edits save
-    to the <a href="/stream-manager" style="color:#fdba74;">Stream Manager</a>
-    (and vice versa), so both stay in sync. Employee type is controlled
-    by the <strong>Type</strong> column on the
+    Click any cell to add, edit, or clear a shift. Stream edits sync with
+    the <a href="/stream-manager" style="color:#fdba74;">Stream Manager</a>
+    both ways, so both stay in sync. Employee type is set by the <strong>Type</strong> column on the
     <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a>.
     {% else %}
     Storefront hours update as soon as you save. {% if can_view_labor_financials %}Labor is shown only as a weekly
     aggregate; missing rates count as $0 until fixed.{% endif %}
-    Stream cells are color-coded per stream account. Employee type is controlled by the <strong>Type</strong>
+    Stream cells are color-coded per stream account. Employee type is set by the <strong>Type</strong>
     column on the <a href="/team/admin/employees" style="color:#fdba74;">Employees page</a>.
     {% endif %}
 </p>
@@ -1718,7 +1717,7 @@
             </div>
         </div>
         <div class="sch-recur-help">
-            Multi-day repeat is coming soon. For now, the shift repeats only on its anchor day each week.
+            Multi-day repeat isn't supported yet — repeats run only on the anchor weekday.
         </div>
 
         <div class="sch-recur-row">
@@ -1761,8 +1760,8 @@
         <div class="sch-holiday-body">
             <h3 id="sch-holiday-title">🎉 Store-closed days</h3>
             <div class="sch-holiday-sub">
-                Check the legal holidays your store is closed. Closed dates show a <strong>Closed</strong> tag
-                on the matching day in the schedule grid. You can also add any custom date below.
+                Check the legal holidays the store is closed for. Closed dates get a <strong>Closed</strong> tag
+                on the schedule grid. Add custom dates below.
             </div>
 
             {% for y in legal_years_set %}

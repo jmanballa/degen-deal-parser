@@ -224,7 +224,7 @@
           if (!note || !note.id) return;
           try {
             const alert = new Notification(note.title || "Degen Team update", {
-              body: note.body || "Open the employee portal for details."
+              body: note.body || "Open the portal for details."
             });
             alert.onclick = function () {
               window.focus();

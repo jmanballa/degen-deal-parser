@@ -33,14 +33,14 @@
 
 {% if error %}
   <div style="max-width:560px; margin:0 auto 8px; padding:0 24px;">
-    <div class="pt-error">There was a problem: {{ error }}. Try again below.</div>
+    <div class="pt-error">Something went wrong: {{ error }}. Give it another try below.</div>
   </div>
 {% endif %}
 {% if problems %}
   <div style="max-width:560px; margin:0 auto 8px; padding:0 24px;">
     <div class="pt-warn-banner">
       <div>
-        <strong>Your password needs work:</strong>
+        <strong>Tighten up your password:</strong>
         <ul style="margin:6px 0 0 18px; padding:0;">
           {% for p in problems %}{% if p %}<li>{{ p }}</li>{% endif %}{% endfor %}
         </ul>
@@ -59,47 +59,47 @@
             <div class="onb-eyebrow">Manager setup</div>
             <h1 class="onb-title">Set up your manager account.</h1>
             <p class="onb-lede">
-                We will grab the basics, then show you exactly where to schedule people,
-                handle requests, post announcements, and ask for help. Takes about two minutes.
+                Quick basics, then we'll show you where to schedule people,
+                handle requests, post announcements, and find help. About two minutes.
             </p>
             <div class="onb-role-brief" aria-label="Manager setup preview">
                 <div>
                     <strong>Schedule people</strong>
-                    <span>Admin, then Schedule, then Edit schedule.</span>
+                    <span>Admin → Schedule → Edit schedule.</span>
                 </div>
                 <div>
                     <strong>Handle requests</strong>
-                    <span>Time off, supply queue, and announcements live in Admin.</span>
+                    <span>Time off, supply queue, and announcements all sit under Admin.</span>
                 </div>
                 <div>
                     <strong>Get unstuck</strong>
-                    <span>The Help page keeps the manager tour and scheduling guide.</span>
+                    <span>Help has the manager tour and the scheduling guide.</span>
                 </div>
             </div>
             {% else %}
-            <div class="onb-eyebrow">Welcome, trainer</div>
+            <div class="onb-eyebrow">Welcome</div>
             <h1 class="onb-title">Let's get you set up.</h1>
             <p class="onb-lede">
-                You're joining the Degen Collectibles crew. We'll ask a few quick things —
-                nothing sensitive leaves your device in the clear, and everything gets
-                encrypted before it's stored. Takes about two minutes.
+                You're on the Degen Collectibles crew now. Just a few quick questions —
+                sensitive info is encrypted before it's stored.
+                About two minutes.
             </p>
             <div class="onb-role-brief" aria-label="Employee setup preview">
                 <div>
                     <strong>Create login</strong>
-                    <span>Pick the username and password you will use every day.</span>
+                    <span>Pick the username and password you'll use every shift.</span>
                 </div>
                 <div>
                     <strong>Add contact info</strong>
-                    <span>Phone and email help managers reach you about shifts.</span>
+                    <span>So managers can reach you about shifts.</span>
                 </div>
                 <div>
                     <strong>Install on phone</strong>
-                    <span>Add Degen to your Home Screen so it feels like an app.</span>
+                    <span>Drop Degen on your Home Screen so it acts like an app.</span>
                 </div>
                 <div>
                     <strong>Learn shifts, hours, and pay</strong>
-                    <span>The last step shows where everything is in the portal.</span>
+                    <span>Last step shows you where everything lives in the portal.</span>
                 </div>
             </div>
             {% endif %}
@@ -113,7 +113,7 @@
         <section class="onb-step" data-step="1">
             <div class="onb-eyebrow">Step 1 of {{ setup_step_total|default(6) }} · Account</div>
             <h1 class="onb-title">Pick your sign-in.</h1>
-            <p class="onb-lede">Choose a username and a password. You'll use these every day.</p>
+            <p class="onb-lede">A username and password — you'll use these every shift.</p>
 
             <div class="onb-form">
                 <div class="onb-field">
@@ -154,7 +154,7 @@
         <section class="onb-step" data-step="2">
             <div class="onb-eyebrow">Step 2 of {{ setup_step_total|default(6) }} · About you</div>
             <h1 class="onb-title">Tell us who you are.</h1>
-            <p class="onb-lede">For payroll and to reach you when we need to.</p>
+            <p class="onb-lede">For payroll, and so we can reach you when we need to.</p>
 
             <div class="onb-form">
                 <div class="onb-field">
@@ -191,7 +191,7 @@
         <section class="onb-step" data-step="3">
             <div class="onb-eyebrow">Step 3 of {{ setup_step_total|default(6) }} · Address</div>
             <h1 class="onb-title">Where do you live?</h1>
-            <p class="onb-lede">For tax forms and mail. Stays encrypted.</p>
+            <p class="onb-lede">For tax forms and mail. Encrypted at rest.</p>
 
             <div class="onb-form">
                 <div class="onb-field">
@@ -232,7 +232,7 @@
         <section class="onb-step" data-step="4">
             <div class="onb-eyebrow">Step 4 of {{ setup_step_total|default(6) }} · Emergency contact</div>
             <h1 class="onb-title">Who should we call if something happens?</h1>
-            <p class="onb-lede">Optional, but really nice to have.</p>
+            <p class="onb-lede">Optional, but it's good to have on file.</p>
 
             <div class="onb-form">
                 <div class="onb-field">
@@ -258,7 +258,7 @@
             <div class="onb-eyebrow">Step 5 of {{ setup_step_total|default(6) }} - Phone shortcut</div>
             <h1 class="onb-title">Add this to your phone.</h1>
             <p class="onb-lede">
-                The portal works best from your Home Screen. After your account opens,
+                The portal works best from your Home Screen. Once your account is open,
                 use Safari or Chrome to add Degen like an app.
             </p>
 
@@ -275,7 +275,7 @@
                 <div class="onb-ios-steps">
                     <div class="onb-ios-step">
                         <span class="onb-ios-num">1</span>
-                        <div><strong>Open the team portal in your browser</strong><span>Use Safari on iPhone or Chrome on Android, not an in-app browser.</span></div>
+                        <div><strong>Open the team portal in your browser</strong><span>Safari on iPhone or Chrome on Android — not an in-app browser.</span></div>
                     </div>
                     <div class="onb-ios-step">
                         <span class="onb-ios-num">2</span>
@@ -293,12 +293,12 @@
                                     <span></span><span></span><span></span>
                                 </span>
                             </strong>
-                            <span>On iPhone, tap Share. On Android, tap the three-dot menu.</span>
+                            <span>iPhone: tap Share. Android: tap the three-dot menu.</span>
                         </div>
                     </div>
                     <div class="onb-ios-step">
                         <span class="onb-ios-num">3</span>
-                        <div><strong>Add Degen to your Home Screen</strong><span>Choose Add to Home Screen or Install app, keep the name Degen, then tap Add.</span></div>
+                        <div><strong>Add Degen to your Home Screen</strong><span>Pick Add to Home Screen or Install app, leave the name as Degen, and tap Add.</span></div>
                     </div>
                 </div>
             </div>
@@ -306,7 +306,7 @@
             <div class="onb-device-helper" aria-label="Open this invite on your phone">
                 <div>
                     <strong>Opened this on the wrong device?</strong>
-                    <span>Copy this invite link or open a text message to send it to your phone.</span>
+                    <span>Copy the invite link or send it to your phone as a text.</span>
                 </div>
                 <div class="onb-link-tools">
                     <input class="onb-copy-input" id="invite-link-copy" type="text" readonly value="{{ request.url }}">
@@ -330,15 +330,15 @@
               <div class="onb-eyebrow">Step 6 of {{ setup_step_total|default(7) }} - Manager portal tour</div>
               <h1 class="onb-title">Learn the manager basics.</h1>
               <p class="onb-lede">
-                  If you only remember one thing: open Admin, then Schedule, then Edit schedule.
-                  This tour points at the pages you will use most.
+                  Remember one thing: Admin → Schedule → Edit schedule.
+                  This tour walks the pages you'll use most.
               </p>
             {% else %}
               <div class="onb-eyebrow">Step 6 of {{ setup_step_total|default(7) }} - Employee portal tour</div>
               <h1 class="onb-title">Know where everything lives.</h1>
               <p class="onb-lede">
-                  Quick map for shifts, hours, estimated pay, announcements, policies,
-                  supplies, and getting help. You can skip this and reopen it from Help later.
+                  Quick map of shifts, hours, estimated pay, announcements, policies,
+                  supplies, and asking for help. Skip it now and reopen from Help anytime.
               </p>
             {% endif %}
 
@@ -361,10 +361,10 @@
         <!-- Final step: Review + submit -->
         <section class="onb-step" data-step="{{ setup_step_total|default(6) }}">
             <div class="onb-eyebrow">Step {{ setup_step_total|default(6) }} of {{ setup_step_total|default(6) }} · Review</div>
-            <h1 class="onb-title">Ready to roll?</h1>
+            <h1 class="onb-title">Does everything look right?</h1>
             <p class="onb-lede">
-                Quick check. Everything sensitive is encrypted at rest.
-                {% if show_portal_tutorial %}The portal tour is always available from Help.{% endif %}
+                Last look. Anything sensitive is stored encrypted.
+                {% if show_portal_tutorial %}The portal tour is always one tap away from Help.{% endif %}
             </p>
 
             <div class="onb-review" id="review-card">
@@ -379,7 +379,7 @@
 
             <div class="onb-lock-note">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                Encrypted with a key only Degen admins control. Only admins can reveal it, and every reveal is logged.
+                Encrypted with a key only Degen admins hold. Only they can reveal it, and every reveal is logged.
             </div>
 
             <div class="onb-actions">
@@ -454,8 +454,8 @@
         el.dataset.score = String(score);
         const labels = [
             "Use at least 12 characters with 3 of: lowercase, UPPERCASE, number, symbol.",
-            "Getting there…",
-            "Almost there.",
+            "Weak password.",
+            "Okay password.",
             "Good password.",
             "Strong password."
         ];
