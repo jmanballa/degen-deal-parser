@@ -682,6 +682,29 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
         self.assertEqual(names, [paid_a.username, paid_z.username, unpaid.username])
 
+    def test_pay_rate_rows_are_limited(self):
+        from app.models import User
+        from app.routers.team_admin_employees import PAY_RATE_PAGE_LIMIT, _pay_rate_rows
+
+        users = [
+            User(
+                id=9000 + idx,
+                username=f"limit-{idx:03d}",
+                password_hash="x",
+                password_salt="x",
+                display_name=f"Limit {idx:03d}",
+                role="employee",
+                is_active=True,
+            )
+            for idx in range(PAY_RATE_PAGE_LIMIT + 5)
+        ]
+        self.session.add_all(users)
+        self.session.commit()
+
+        rows = _pay_rate_rows(self.session)
+
+        self.assertEqual(len(rows), PAY_RATE_PAGE_LIMIT)
+
     def test_payroll_cost_summary_includes_salary_accrual_and_scheduled_hourly(self):
         from datetime import date
 

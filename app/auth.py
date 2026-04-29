@@ -11,6 +11,7 @@ from typing import Optional
 
 import bcrypt
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from .config import get_settings
@@ -559,11 +560,6 @@ def create_draft_employee(
     email_hash: Optional[str] = None
     if email_clean:
         email_hash = _email_hash(email_clean)
-        clash = session.exec(
-            select(EmployeeProfile).where(EmployeeProfile.email_lookup_hash == email_hash)
-        ).first()
-        if clash is not None:
-            raise ValueError("draft_email_taken")
 
     now = utcnow()
     # Synthetic username so nothing collides; gets replaced when the
@@ -613,7 +609,19 @@ def create_draft_employee(
             ),
         )
     )
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        if email_hash:
+            clash = session.exec(
+                select(EmployeeProfile).where(
+                    EmployeeProfile.email_lookup_hash == email_hash
+                )
+            ).first()
+            if clash is not None:
+                raise ValueError("draft_email_taken") from exc
+        raise
     session.refresh(user)
     return user
 
@@ -939,6 +947,7 @@ def change_user_password(
     user.password_hash = pwd_hash
     user.password_salt = pwd_salt
     user.password_changed_at = now
+    user.session_invalidated_at = now
     user.updated_at = now
     session.add(user)
     _audit_pw_change(session, user.id, "password.self_change_succeeded", {}, ip_address)
@@ -988,6 +997,7 @@ def consume_password_reset_token(
     user.password_hash = pwd_hash
     user.password_salt = pwd_salt
     user.password_changed_at = now
+    user.session_invalidated_at = now
     user.updated_at = now
     session.exec(
         update(PasswordResetToken)

@@ -83,12 +83,13 @@ class LegacySecurityHardeningTests(unittest.TestCase):
 
     def test_csrf_protected_route_accepts_form_token_and_rejects_missing_token(self):
         import asyncio
+        from datetime import datetime, timezone
 
         from fastapi import HTTPException
         from fastapi.responses import JSONResponse
         from starlette.requests import Request
 
-        from app.csrf import CSRFProtectedRoute, SESSION_KEY
+        from app.csrf import CSRFProtectedRoute, SESSION_ISSUED_AT_KEY, SESSION_KEY
 
         async def endpoint():
             return JSONResponse({"ok": True})
@@ -104,7 +105,10 @@ class LegacySecurityHardeningTests(unittest.TestCase):
                     "path": "/mutate",
                     "headers": [(b"content-type", b"application/x-www-form-urlencoded")],
                     "query_string": b"",
-                    "session": {SESSION_KEY: "token-1"},
+                    "session": {
+                        SESSION_KEY: "token-1",
+                        SESSION_ISSUED_AT_KEY: datetime.now(timezone.utc).isoformat(),
+                    },
                     "fastapi_middleware_astack": AsyncExitStack(),
                     "fastapi_inner_astack": AsyncExitStack(),
                     "fastapi_function_astack": AsyncExitStack(),
@@ -130,6 +134,24 @@ class LegacySecurityHardeningTests(unittest.TestCase):
             self.assertEqual(ctx.exception.status_code, 403)
 
         asyncio.run(exercise())
+
+    def test_csrf_token_age_is_enforced(self):
+        from datetime import datetime, timedelta, timezone
+
+        from app.csrf import SESSION_ISSUED_AT_KEY, SESSION_KEY, verify_token
+
+        request = SimpleNamespace(
+            session={
+                SESSION_KEY: "fresh-token",
+                SESSION_ISSUED_AT_KEY: datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        self.assertTrue(verify_token(request, "fresh-token"))
+
+        request.session[SESSION_ISSUED_AT_KEY] = (
+            datetime.now(timezone.utc) - timedelta(hours=4, seconds=1)
+        ).isoformat()
+        self.assertFalse(verify_token(request, "fresh-token"))
 
     def test_tiktok_debug_requires_admin_and_redacts_previews(self):
         from app.routers.tiktok_analytics import tiktok_analytics_debug

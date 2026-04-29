@@ -185,6 +185,32 @@ class EmployeeTokenRevocationTests(unittest.TestCase):
         self.assertEqual(stale_cookie, {})
         self.assertIsNotNone(self.session.get(User, self.employee.id).session_invalidated_at)
 
+    def test_password_reset_sets_session_invalidation_and_rejects_stale_cookie(self):
+        from app.auth import consume_password_reset_token, generate_password_reset_token
+        from app.models import User
+        from app.shared import get_request_user
+
+        stale_cookie = {
+            "user_id": self.employee.id,
+            "password_changed_at": None,
+            "session_invalidated_at": None,
+        }
+        raw = generate_password_reset_token(self.session, user_id=self.employee.id)
+        consume_password_reset_token(
+            self.session,
+            raw,
+            new_password="NewResetPassword5678!",
+        )
+
+        self.session.expire_all()
+        user = self.session.get(User, self.employee.id)
+        self.assertIsNotNone(user.session_invalidated_at)
+        with patch("app.shared.managed_session", self._managed_session_for_request_user):
+            found = get_request_user(SimpleNamespace(scope={"session": stale_cookie}))
+
+        self.assertIsNone(found)
+        self.assertEqual(stale_cookie, {})
+
     def test_terminate_sets_session_invalidation_timestamp(self):
         from app.models import User
 
@@ -243,3 +269,50 @@ class EmployeeTokenRevocationTests(unittest.TestCase):
         details = json.loads(row.details_json)
         self.assertEqual(details["invite_tokens_revoked"], 1)
         self.assertEqual(details["reset_tokens_revoked"], 1)
+
+    def test_purge_creates_restorable_tombstone_before_wiping_pii(self):
+        from app.models import AuditLog, EmployeeProfile, EmployeePurgeTombstone, User
+        from app.pii import decrypt_pii, email_lookup_hash, encrypt_pii
+        from app.routers.team_admin_employees import restore_employee_purge_tombstone
+
+        profile = self.session.get(EmployeeProfile, self.employee.id)
+        profile.phone_enc = encrypt_pii("555-123-4567")
+        profile.email_ciphertext = encrypt_pii("restore@example.com")
+        profile.email_lookup_hash = email_lookup_hash("restore@example.com")
+        self.employee.display_name = "Restore Target"
+        self.session.add_all([profile, self.employee])
+        self.session.commit()
+
+        response = self._purge()
+        self.assertEqual(response.status_code, 303)
+        self.session.expire_all()
+
+        tombstone = self.session.exec(select(EmployeePurgeTombstone)).one()
+        self.assertGreater(tombstone.restore_until, tombstone.created_at)
+        purged_profile = self.session.get(EmployeeProfile, self.employee.id)
+        self.assertIsNone(purged_profile.phone_enc)
+        self.assertIsNone(purged_profile.email_ciphertext)
+
+        restore_employee_purge_tombstone(
+            self.session,
+            self.employee.id,
+            actor_user_id=self.admin.id,
+            ip_address="testclient",
+        )
+        self.session.expire_all()
+
+        restored_user = self.session.get(User, self.employee.id)
+        restored_profile = self.session.get(EmployeeProfile, self.employee.id)
+        self.assertEqual(restored_user.username, "employee-token")
+        self.assertEqual(restored_user.display_name, "Restore Target")
+        self.assertTrue(restored_user.is_active)
+        self.assertIsNotNone(restored_user.session_invalidated_at)
+        self.assertEqual(decrypt_pii(restored_profile.phone_enc), "555-123-4567")
+        self.assertEqual(
+            restored_profile.email_lookup_hash,
+            email_lookup_hash("restore@example.com"),
+        )
+        row = self.session.exec(
+            select(AuditLog).where(AuditLog.action == "account.purge_restored")
+        ).first()
+        self.assertIsNotNone(row)

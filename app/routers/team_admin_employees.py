@@ -6,6 +6,7 @@ If the audit write fails, the decrypt does not happen (fail-closed).
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from calendar import monthrange
@@ -17,6 +18,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..auth import (
@@ -33,6 +35,7 @@ from ..models import (
     AuditLog,
     EmployeeCompensationHistory,
     EmployeeProfile,
+    EmployeePurgeTombstone,
     InviteToken,
     PasswordResetToken,
     SHIFT_KIND_ALL,
@@ -71,6 +74,8 @@ PAYMENT_METHOD_LABELS = {
     "check": "Check",
 }
 COMPENSATION_HISTORY_BASELINE_DATE = date(1970, 1, 1)
+PAY_RATE_PAGE_LIMIT = 500
+PURGE_RESTORE_WINDOW = timedelta(hours=24)
 COMPENSATION_HISTORY_FIELDS = {
     "compensation_type",
     "hourly_rate_cents",
@@ -1107,6 +1112,7 @@ def _pay_rate_rows(session: Session, *, include_inactive: bool = False) -> list[
     stmt = select(User).order_by(User.is_active.desc(), User.display_name, User.username)
     if not include_inactive:
         stmt = stmt.where((User.is_active == True) | (User.password_hash == ""))  # noqa: E712
+    stmt = stmt.limit(PAY_RATE_PAGE_LIMIT)
     users = list(session.exec(stmt).all())
     ids = [row.id for row in users if row.id is not None]
     profiles: dict[int, EmployeeProfile] = {}
@@ -2257,6 +2263,227 @@ async def admin_employee_terminate_post(
     )
 
 
+_PURGE_PROFILE_BLOB_FIELDS = (
+    "legal_name_enc",
+    "phone_enc",
+    "address_enc",
+    "emergency_contact_name_enc",
+    "emergency_contact_phone_enc",
+    "email_ciphertext",
+    "hourly_rate_cents_enc",
+    "monthly_salary_cents_enc",
+)
+
+
+def _encode_blob(value: Optional[bytes]) -> Optional[str]:
+    if not value:
+        return None
+    return base64.b64encode(value).decode("ascii")
+
+
+def _decode_blob(value: Optional[str]) -> Optional[bytes]:
+    if not value:
+        return None
+    return base64.b64decode(value.encode("ascii"))
+
+
+def _iso_datetime(value: Optional[datetime]) -> Optional[str]:
+    return value.isoformat() if value is not None else None
+
+
+def _iso_date(value: Optional[date]) -> Optional[str]:
+    return value.isoformat() if value is not None else None
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _parse_iso_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _employee_purge_snapshot(
+    employee: User, profile: Optional[EmployeeProfile]
+) -> dict:
+    profile_snapshot: Optional[dict] = None
+    if profile is not None:
+        profile_snapshot = {
+            "email_lookup_hash": profile.email_lookup_hash,
+            "hire_date": _iso_date(profile.hire_date),
+            "termination_date": _iso_date(profile.termination_date),
+            "compensation_type": profile.compensation_type,
+            "monthly_salary_pay_day": profile.monthly_salary_pay_day,
+            "payment_method": profile.payment_method,
+            "clockify_user_id": profile.clockify_user_id,
+            "onboarding_completed_at": _iso_datetime(profile.onboarding_completed_at),
+            "policies_acknowledged_at": _iso_datetime(profile.policies_acknowledged_at),
+            "created_at": _iso_datetime(profile.created_at),
+            "updated_at": _iso_datetime(profile.updated_at),
+        }
+        for field_name in _PURGE_PROFILE_BLOB_FIELDS:
+            profile_snapshot[field_name] = _encode_blob(getattr(profile, field_name))
+
+    return {
+        "version": 1,
+        "user": {
+            "username": employee.username,
+            "password_hash": employee.password_hash,
+            "password_salt": employee.password_salt,
+            "display_name": employee.display_name,
+            "role": employee.role,
+            "is_active": employee.is_active,
+            "is_schedulable": employee.is_schedulable,
+            "staff_kind": employee.staff_kind,
+            "password_changed_at": _iso_datetime(employee.password_changed_at),
+            "session_invalidated_at": _iso_datetime(employee.session_invalidated_at),
+            "created_at": _iso_datetime(employee.created_at),
+            "updated_at": _iso_datetime(employee.updated_at),
+        },
+        "profile": profile_snapshot,
+    }
+
+
+def _active_purge_tombstone(
+    session: Session, user_id: int, now: datetime
+) -> Optional[EmployeePurgeTombstone]:
+    return session.exec(
+        select(EmployeePurgeTombstone)
+        .where(
+            EmployeePurgeTombstone.user_id == user_id,
+            EmployeePurgeTombstone.restored_at.is_(None),
+            EmployeePurgeTombstone.restore_until >= now,
+        )
+        .order_by(EmployeePurgeTombstone.created_at.desc())
+    ).first()
+
+
+def _ensure_purge_tombstone(
+    session: Session,
+    *,
+    employee: User,
+    profile: Optional[EmployeeProfile],
+    purged_by_user_id: Optional[int],
+    now: datetime,
+) -> EmployeePurgeTombstone:
+    existing = _active_purge_tombstone(session, employee.id or 0, now)
+    if existing is not None:
+        return existing
+    tombstone = EmployeePurgeTombstone(
+        user_id=employee.id or 0,
+        purged_by_user_id=purged_by_user_id,
+        restore_until=now + PURGE_RESTORE_WINDOW,
+        snapshot_json=json.dumps(
+            _employee_purge_snapshot(employee, profile),
+            sort_keys=True,
+        ),
+        created_at=now,
+    )
+    session.add(tombstone)
+    session.flush()
+    return tombstone
+
+
+def restore_employee_purge_tombstone(
+    session: Session,
+    user_id: int,
+    *,
+    actor_user_id: Optional[int] = None,
+    ip_address: Optional[str] = None,
+) -> User:
+    now = utcnow()
+    tombstone = _active_purge_tombstone(session, user_id, now)
+    if tombstone is None:
+        raise ValueError("purge_tombstone_unavailable")
+    employee = session.get(User, user_id)
+    if employee is None:
+        raise ValueError("employee_not_found")
+    try:
+        payload = json.loads(tombstone.snapshot_json or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError("purge_tombstone_invalid") from exc
+
+    user_snapshot = payload.get("user") or {}
+    employee.username = str(user_snapshot.get("username") or employee.username)
+    employee.password_hash = str(user_snapshot.get("password_hash") or "")
+    employee.password_salt = str(user_snapshot.get("password_salt") or "")
+    employee.display_name = str(user_snapshot.get("display_name") or "")
+    employee.role = str(user_snapshot.get("role") or "employee")
+    employee.is_active = bool(user_snapshot.get("is_active", False))
+    employee.is_schedulable = bool(user_snapshot.get("is_schedulable", False))
+    employee.staff_kind = str(user_snapshot.get("staff_kind") or "storefront")
+    employee.password_changed_at = _parse_iso_datetime(
+        user_snapshot.get("password_changed_at")
+    )
+    employee.session_invalidated_at = now
+    employee.created_at = (
+        _parse_iso_datetime(user_snapshot.get("created_at")) or employee.created_at
+    )
+    employee.updated_at = now
+    session.add(employee)
+
+    profile_snapshot = payload.get("profile")
+    if profile_snapshot:
+        profile = session.get(EmployeeProfile, user_id) or EmployeeProfile(
+            user_id=user_id
+        )
+        profile.email_lookup_hash = profile_snapshot.get("email_lookup_hash")
+        profile.hire_date = _parse_iso_date(profile_snapshot.get("hire_date"))
+        profile.termination_date = _parse_iso_date(
+            profile_snapshot.get("termination_date")
+        )
+        profile.compensation_type = str(
+            profile_snapshot.get("compensation_type") or "hourly"
+        )
+        profile.monthly_salary_pay_day = profile_snapshot.get("monthly_salary_pay_day")
+        profile.payment_method = str(profile_snapshot.get("payment_method") or "cash")
+        profile.clockify_user_id = profile_snapshot.get("clockify_user_id")
+        profile.onboarding_completed_at = _parse_iso_datetime(
+            profile_snapshot.get("onboarding_completed_at")
+        )
+        profile.policies_acknowledged_at = _parse_iso_datetime(
+            profile_snapshot.get("policies_acknowledged_at")
+        )
+        profile.created_at = (
+            _parse_iso_datetime(profile_snapshot.get("created_at"))
+            or profile.created_at
+        )
+        profile.updated_at = now
+        for field_name in _PURGE_PROFILE_BLOB_FIELDS:
+            setattr(profile, field_name, _decode_blob(profile_snapshot.get(field_name)))
+        session.add(profile)
+
+    tombstone.restored_at = now
+    session.add(tombstone)
+    session.add(
+        AuditLog(
+            actor_user_id=actor_user_id,
+            target_user_id=user_id,
+            action="account.purge_restored",
+            resource_key="admin.employees.purge",
+            details_json=json.dumps({"tombstone_id": tombstone.id}, sort_keys=True),
+            ip_address=ip_address,
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ValueError("purge_restore_conflict") from exc
+    session.refresh(employee)
+    return employee
+
+
 @router.get(
     "/team/admin/employees/{user_id}/purge",
     response_class=HTMLResponse,
@@ -2311,6 +2538,13 @@ async def admin_employee_purge_post(
     profile = session.get(EmployeeProfile, user_id)
     now = utcnow()
     invite_revoked, reset_revoked = _revoke_employee_tokens(session, user_id, now)
+    tombstone = _ensure_purge_tombstone(
+        session,
+        employee=employee,
+        profile=profile,
+        purged_by_user_id=current.id,
+        now=now,
+    )
     if profile is not None:
         for attr in (
             "legal_name_enc",
@@ -2349,6 +2583,8 @@ async def admin_employee_purge_post(
                     "username": employee.username,
                     "invite_tokens_revoked": invite_revoked,
                     "reset_tokens_revoked": reset_revoked,
+                    "tombstone_id": tombstone.id,
+                    "restore_until": tombstone.restore_until.isoformat(),
                 },
                 sort_keys=True,
             ),
@@ -2358,4 +2594,39 @@ async def admin_employee_purge_post(
     session.commit()
     return RedirectResponse(
         f"/team/admin/employees/{user_id}?flash=PII+purged.", status_code=303
+    )
+
+
+@router.post(
+    "/team/admin/employees/{user_id}/purge/undo",
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_employee_purge_undo_post(
+    request: Request,
+    user_id: int,
+    session: Session = Depends(get_session),
+):
+    denial, current = _admin_gate(request, session, "admin.employees.purge")
+    if denial:
+        return denial
+    try:
+        restore_employee_purge_tombstone(
+            session,
+            user_id,
+            actor_user_id=current.id,
+            ip_address=(request.client.host if request.client else None),
+        )
+    except ValueError as exc:
+        message = {
+            "purge_tombstone_unavailable": "Purge undo window has expired or was already used.",
+            "employee_not_found": "Employee not found.",
+            "purge_tombstone_invalid": "Purge undo snapshot could not be read.",
+            "purge_restore_conflict": (
+                "Purge undo could not restore this account because a unique value "
+                "is already in use."
+            ),
+        }.get(str(exc), "Purge undo failed.")
+        return HTMLResponse(message, status_code=400)
+    return RedirectResponse(
+        f"/team/admin/employees/{user_id}?flash=Purge+undone.", status_code=303
     )

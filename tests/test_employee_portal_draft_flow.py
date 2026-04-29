@@ -196,6 +196,43 @@ class CreateDraftEmployeeTests(unittest.TestCase, _DraftHarness):
             )
         self.assertEqual(str(cm.exception), "draft_display_name_required")
 
+    def test_duplicate_draft_email_is_reported_from_unique_constraint(self):
+        from app.auth import create_draft_employee
+        from app.models import EmployeeProfile, User
+        from app.pii import email_lookup_hash
+
+        admin = self._login_as("admin")
+        create_draft_employee(
+            self.session,
+            created_by_user_id=admin.id,
+            display_name="First Duplicate",
+            email="dup@example.com",
+        )
+
+        with self.assertRaises(ValueError) as cm:
+            create_draft_employee(
+                self.session,
+                created_by_user_id=admin.id,
+                display_name="Second Duplicate",
+                email="DUP@example.com",
+            )
+
+        self.assertEqual(str(cm.exception), "draft_email_taken")
+        self.assertIsNone(
+            self.session.exec(
+                select(User).where(User.display_name == "Second Duplicate")
+            ).first()
+        )
+        rows = list(
+            self.session.exec(
+                select(EmployeeProfile).where(
+                    EmployeeProfile.email_lookup_hash
+                    == email_lookup_hash("dup@example.com")
+                )
+            ).all()
+        )
+        self.assertEqual(len(rows), 1)
+
     def test_draft_cannot_log_in(self):
         from app.auth import authenticate_user, create_draft_employee
 
