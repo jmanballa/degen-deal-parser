@@ -1,0 +1,18 @@
+{% extends "team/base.html" %}
+{% block header_sub %}
+<div class="pt-h1-sub">A quick map of where employees should go for the most common things.</div>
+{% endblock %}
+{% block content %}
+<div class="pt-card pt-tour-page-card">
+  <div class="pt-panel-head">
+    <div>
+      <div class="pt-card-title">Employee portal tour</div>
+      <div class="pt-card-sub">Use this when you are new, forgot where something lives, or just want the fastest path.</div>
+    </div>
+    <a class="pt-link-inline" href="/team/help">Back to help</a>
+  </div>
+
+  {% set tutorial_links = true %}
+  {% include "team/_employee_portal_tutorial.html" %}
+</div>
+{% endblock %}

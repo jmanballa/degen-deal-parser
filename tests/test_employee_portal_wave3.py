@@ -280,7 +280,7 @@ class InviteAcceptTests(unittest.TestCase, _PortalHarness):
     def tearDown(self):
         self._teardown_portal()
 
-    def test_invite_accept_page_includes_ios_install_guidance(self):
+    def test_employee_invite_accept_page_includes_install_and_portal_tour(self):
         from app.auth import generate_invite_token, hash_password
         from app.models import User
 
@@ -305,7 +305,7 @@ class InviteAcceptTests(unittest.TestCase, _PortalHarness):
         r = self.client.get(f"/team/invite/accept/{raw}")
 
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.text.count('class="onb-progress-dot'), 7)
+        self.assertEqual(r.text.count('class="onb-progress-dot'), 8)
         self.assertIn("Add this to your phone.", r.text)
         self.assertIn("degen-collectibles-180.png", r.text)
         self.assertIn("keep the name Degen", r.text)
@@ -314,6 +314,42 @@ class InviteAcceptTests(unittest.TestCase, _PortalHarness):
         self.assertIn("onb-ios-share-icon", r.text)
         self.assertIn("onb-ios-more-icon", r.text)
         self.assertIn('/static/team.webmanifest', r.text)
+        self.assertIn("Know where everything lives.", r.text)
+        self.assertIn("Employee portal tour", r.text)
+        self.assertIn("employee-dashboard-tour.png", r.text)
+        self.assertIn("Step 1 of 7", r.text)
+        self.assertIn("Use the left menu to move around.", r.text)
+        self.assertIn("Use Hours for time and pay.", r.text)
+        self.assertIn("Skip tutorial", r.text)
+
+    def test_manager_invite_accept_page_does_not_show_employee_tour(self):
+        from app.auth import generate_invite_token, hash_password
+        from app.models import User
+
+        ph, salt = hash_password("AdminPass1!")
+        admin = User(
+            username="inviteadmin2",
+            password_hash=ph,
+            password_salt=salt,
+            display_name="Invite Admin",
+            role="admin",
+            is_active=True,
+        )
+        self.session.add(admin)
+        self.session.commit()
+        self.session.refresh(admin)
+        raw = generate_invite_token(
+            self.session,
+            role="manager",
+            created_by_user_id=admin.id,
+        )
+
+        r = self.client.get(f"/team/invite/accept/{raw}")
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.text.count('class="onb-progress-dot'), 7)
+        self.assertNotIn("Know where everything lives.", r.text)
+        self.assertNotIn("Skip tutorial", r.text)
 
     def test_invite_accept_creates_user_and_profile(self):
         from app.auth import generate_invite_token, hash_password
@@ -541,7 +577,7 @@ class SupplyAndPoliciesTests(unittest.TestCase, _PortalHarness):
         ).all()
         self.assertEqual(len(rows), 1)
 
-    def test_help_page_includes_phone_install_guide(self):
+    def test_help_page_includes_phone_install_guide_and_tour_link(self):
         self._seed_employee(user_id=45, username="emp_help")
 
         page = self.client.get("/team/help")
@@ -554,6 +590,23 @@ class SupplyAndPoliciesTests(unittest.TestCase, _PortalHarness):
         self.assertIn("degen-collectibles-180.png", page.text)
         self.assertIn("onb-ios-share-icon", page.text)
         self.assertIn("onb-ios-more-icon", page.text)
+        self.assertIn("Employee portal tour", page.text)
+        self.assertIn("/team/help/tutorial", page.text)
+
+    def test_help_tutorial_page_includes_employee_portal_map(self):
+        self._seed_employee(user_id=46, username="emp_help_tour")
+
+        page = self.client.get("/team/help/tutorial")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Employee portal tour", page.text)
+        self.assertIn("employee-dashboard-tour.png", page.text)
+        self.assertIn("Use the left menu to move around.", page.text)
+        self.assertIn("Start with today's shift.", page.text)
+        self.assertIn("Use Hours for time and pay.", page.text)
+        self.assertIn("Read updates and upcoming shifts.", page.text)
+        self.assertIn("Ask for help", page.text)
+        self.assertIn("/team/hours", page.text)
 
     def test_profile_post_updates_preferred_name_not_role(self):
         uid = self._seed_employee(user_id=43, username="emp_pr")

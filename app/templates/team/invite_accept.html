@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="/static/linear.css?v=2026042020">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042026">
-    <link rel="stylesheet" href="/static/portal.css?v=2026042606">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042607">
 </head>
 <body class="onb-body">
 
@@ -25,13 +25,9 @@
         <span>Degen Collectibles</span>
     </div>
     <div class="onb-progress" id="onb-progress">
-        <span class="onb-progress-dot active"></span>
-        <span class="onb-progress-dot"></span>
-        <span class="onb-progress-dot"></span>
-        <span class="onb-progress-dot"></span>
-        <span class="onb-progress-dot"></span>
-        <span class="onb-progress-dot"></span>
-        <span class="onb-progress-dot"></span>
+        {% for i in range(progress_dot_count|default(7)) %}
+        <span class="onb-progress-dot{% if loop.first %} active{% endif %}"></span>
+        {% endfor %}
     </div>
 </header>
 
@@ -74,7 +70,7 @@
 
         <!-- Step 2: Account -->
         <section class="onb-step" data-step="1">
-            <div class="onb-eyebrow">Step 1 of 6 · Account</div>
+            <div class="onb-eyebrow">Step 1 of {{ setup_step_total|default(6) }} · Account</div>
             <h1 class="onb-title">Pick your sign-in.</h1>
             <p class="onb-lede">Choose a username and a password. You'll use these every day.</p>
 
@@ -115,7 +111,7 @@
 
         <!-- Step 3: Identity -->
         <section class="onb-step" data-step="2">
-            <div class="onb-eyebrow">Step 2 of 6 · About you</div>
+            <div class="onb-eyebrow">Step 2 of {{ setup_step_total|default(6) }} · About you</div>
             <h1 class="onb-title">Tell us who you are.</h1>
             <p class="onb-lede">For payroll and to reach you when we need to.</p>
 
@@ -152,7 +148,7 @@
 
         <!-- Step 4: Address -->
         <section class="onb-step" data-step="3">
-            <div class="onb-eyebrow">Step 3 of 6 · Address</div>
+            <div class="onb-eyebrow">Step 3 of {{ setup_step_total|default(6) }} · Address</div>
             <h1 class="onb-title">Where do you live?</h1>
             <p class="onb-lede">For tax forms and mail. Stays encrypted.</p>
 
@@ -193,7 +189,7 @@
 
         <!-- Step 5: Emergency contact -->
         <section class="onb-step" data-step="4">
-            <div class="onb-eyebrow">Step 4 of 6 · Emergency contact</div>
+            <div class="onb-eyebrow">Step 4 of {{ setup_step_total|default(6) }} · Emergency contact</div>
             <h1 class="onb-title">Who should we call if something happens?</h1>
             <p class="onb-lede">Optional, but really nice to have.</p>
 
@@ -216,9 +212,9 @@
             </div>
         </section>
 
-        <!-- Step 6: iOS web app setup -->
+        <!-- Step 6: phone web app setup -->
         <section class="onb-step" data-step="5">
-            <div class="onb-eyebrow">Step 5 of 6 - Phone shortcut</div>
+            <div class="onb-eyebrow">Step 5 of {{ setup_step_total|default(6) }} - Phone shortcut</div>
             <h1 class="onb-title">Add this to your phone.</h1>
             <p class="onb-lede">
                 The portal works best from your Home Screen. After your account opens,
@@ -269,15 +265,40 @@
             <div class="onb-actions">
                 <button type="button" class="onb-btn ghost" data-back>Back</button>
                 <div class="spacer"></div>
-                <button type="button" class="onb-btn" data-next>Review account -></button>
+                <button type="button" class="onb-btn" data-next>{% if show_employee_tutorial %}Next: portal tour ->{% else %}Review account ->{% endif %}</button>
             </div>
         </section>
 
-        <!-- Step 7: Review + submit -->
-        <section class="onb-step" data-step="6">
-            <div class="onb-eyebrow">Step 6 of 6 · Review</div>
+        {% if show_employee_tutorial %}
+        <!-- Step 7: employee portal tour -->
+        <section class="onb-step onb-step-wide" data-step="6">
+            <div class="onb-eyebrow">Step 6 of {{ setup_step_total|default(7) }} - Employee portal tour</div>
+            <h1 class="onb-title">Know where everything lives.</h1>
+            <p class="onb-lede">
+                Quick map for shifts, hours, estimated pay, announcements, policies,
+                supplies, and getting help. You can skip this and reopen it from Help later.
+            </p>
+
+            {% set tutorial_links = false %}
+            {% include "team/_employee_portal_tutorial.html" %}
+
+            <div class="onb-actions">
+                <button type="button" class="onb-btn ghost" data-back>Back</button>
+                <div class="spacer"></div>
+                <button type="button" class="onb-btn ghost" data-next data-skip-tutorial>Skip tutorial</button>
+                <button type="button" class="onb-btn" data-next>Got it, review account -></button>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Final step: Review + submit -->
+        <section class="onb-step" data-step="{{ setup_step_total|default(6) }}">
+            <div class="onb-eyebrow">Step {{ setup_step_total|default(6) }} of {{ setup_step_total|default(6) }} · Review</div>
             <h1 class="onb-title">Ready to roll?</h1>
-            <p class="onb-lede">Quick check. Everything sensitive is encrypted at rest.</p>
+            <p class="onb-lede">
+                Quick check. Everything sensitive is encrypted at rest.
+                {% if show_employee_tutorial %}The portal tour is always available from Help.{% endif %}
+            </p>
 
             <div class="onb-review" id="review-card">
                 <div class="onb-review-row"><span class="k">Username</span><span class="v" data-review="new_username">—</span></div>

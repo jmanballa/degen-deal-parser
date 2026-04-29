@@ -648,6 +648,7 @@ a { color: inherit; text-decoration: none; }
   display: none;
   animation: onb-slide-in 520ms var(--pt-ease-spring) both;
 }
+.onb-step-wide { max-width: 1040px; }
 .onb-step.active { display: block; }
 .onb-step.leaving { animation: onb-slide-out 320ms var(--pt-ease-out) both; }
 
@@ -1640,6 +1641,154 @@ a { color: inherit; text-decoration: none; }
   margin-top: 18px;
   max-width: 760px;
 }
+.pt-tour-guide {
+  margin-top: 18px;
+}
+.pt-tour-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.85fr);
+  gap: 18px;
+  align-items: stretch;
+}
+.pt-tour-shot-wrap {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius-md);
+  background: #08090a;
+  box-shadow: 0 24px 60px -46px var(--pt-accent-glow);
+}
+.pt-tour-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  opacity: 0.58;
+}
+.pt-tour-hotspot {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--w);
+  height: var(--h);
+  border: 3px solid transparent;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 180ms var(--pt-ease-out), transform 180ms var(--pt-ease-out);
+}
+.pt-tour-hotspot.is-active {
+  opacity: 1;
+  transform: scale(1);
+  border-color: var(--pt-accent);
+  background: rgba(255, 107, 91, 0.12);
+  box-shadow:
+    0 0 0 999px rgba(0, 0, 0, 0.48),
+    0 0 0 7px rgba(255, 107, 91, 0.18),
+    0 16px 38px -24px var(--pt-accent-glow);
+}
+.pt-tour-hotspot.is-active::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  right: -9px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  background: var(--pt-accent);
+  box-shadow: 0 0 0 5px rgba(255, 107, 91, 0.18);
+}
+.pt-tour-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius-md);
+  background: var(--pt-surface);
+}
+.pt-tour-step-buttons {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.pt-tour-step-buttons button {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--pt-border);
+  border-radius: 999px;
+  background: var(--pt-surface-raised);
+  color: var(--pt-muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.pt-tour-step-buttons button.is-active {
+  border-color: var(--pt-accent);
+  background: var(--pt-accent);
+  color: var(--pt-accent-ink);
+}
+.pt-tour-panel {
+  display: none;
+  animation: onb-slide-in 220ms var(--pt-ease-out) both;
+}
+.pt-tour-panel.is-active {
+  display: block;
+}
+.pt-tour-kicker {
+  color: var(--pt-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.pt-tour-panel h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.12;
+  letter-spacing: 0;
+}
+.pt-tour-panel p {
+  margin: 10px 0 0;
+  color: var(--pt-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pt-tour-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 20px;
+}
+.pt-tour-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.pt-tour-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 107, 91, 0.28);
+  border-radius: 999px;
+  color: var(--pt-accent);
+  background: rgba(255, 107, 91, 0.08);
+  font-size: 12px;
+  font-weight: 750;
+  width: fit-content;
+}
+.pt-tour-open:hover {
+  background: rgba(255, 107, 91, 0.14);
+}
+.pt-tour-page-card .pt-panel-head {
+  margin-bottom: 2px;
+}
 .pt-copy-box {
   padding: 14px;
   border: 1px dashed var(--pt-border);
@@ -1685,6 +1834,10 @@ a { color: inherit; text-decoration: none; }
   .pt-shift-day-stats { grid-template-columns: 1fr; }
   .pt-dashboard-panel { min-height: 0; }
   .pt-help-grid { grid-template-columns: 1fr; }
+  .pt-tour-stage { grid-template-columns: 1fr; }
+  .pt-tour-copy { padding: 14px; }
+  .pt-tour-panel h2 { font-size: 20px; }
+  .pt-tour-hotspot { border-radius: 10px; border-width: 2px; }
   .pt-tool-shell { padding: 12px; }
   .pt-tool-frame { min-height: 640px; border-radius: 10px; }
   .pt-shift-row { grid-template-columns: 48px minmax(0, 1fr); }

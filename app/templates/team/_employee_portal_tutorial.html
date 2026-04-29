@@ -1,0 +1,121 @@
+<div class="pt-tour-guide" data-portal-tour aria-label="Employee portal step by step tour">
+  <div class="pt-tour-stage">
+    <div class="pt-tour-shot-wrap">
+      <img
+        class="pt-tour-shot"
+        src="/static/tutorial/employee-dashboard-tour.png"
+        alt="Employee dashboard with highlighted areas"
+      >
+      <span class="pt-tour-hotspot is-active" data-tour-hotspot="0" style="--x:1.0%; --y:6.5%; --w:12.0%; --h:28.5%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="1" style="--x:15.2%; --y:11.6%; --w:58.0%; --h:12.0%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="2" style="--x:15.2%; --y:25.3%; --w:37.4%; --h:37.8%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="3" style="--x:15.2%; --y:66.2%; --w:58.0%; --h:10.3%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="4" style="--x:15.2%; --y:78.4%; --w:58.0%; --h:21.0%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="5" style="--x:53.6%; --y:25.3%; --w:19.6%; --h:37.8%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="6" style="--x:56.3%; --y:4.5%; --w:17.0%; --h:5.2%;"></span>
+    </div>
+
+    <div class="pt-tour-copy" aria-live="polite">
+      <div class="pt-tour-step-buttons" role="tablist" aria-label="Portal tour steps">
+        <button type="button" class="is-active" data-tour-pick="0" aria-label="Show step 1">1</button>
+        <button type="button" data-tour-pick="1" aria-label="Show step 2">2</button>
+        <button type="button" data-tour-pick="2" aria-label="Show step 3">3</button>
+        <button type="button" data-tour-pick="3" aria-label="Show step 4">4</button>
+        <button type="button" data-tour-pick="4" aria-label="Show step 5">5</button>
+        <button type="button" data-tour-pick="5" aria-label="Show step 6">6</button>
+        <button type="button" data-tour-pick="6" aria-label="Show step 7">7</button>
+      </div>
+
+      <div class="pt-tour-panel is-active" data-tour-panel="0">
+        <div class="pt-tour-kicker">Step 1 of 7</div>
+        <h2>Use the left menu to move around.</h2>
+        <p>Dashboard is your home base. Hours, Announcements, Schedule, Time off, Policies, Supply, Profile, and Ops tools all live in this left menu.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="1">
+        <div class="pt-tour-kicker">Step 2 of 7</div>
+        <h2>Start with today's shift.</h2>
+        <p>This top card shows whether you work today, whether Clockify says you are clocked in, how many hours you have today, and break status.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="2">
+        <div class="pt-tour-kicker">Step 3 of 7</div>
+        <h2>Check what needs attention.</h2>
+        <p>The “What do I need to do today?” card tells you if there are announcements, unsigned policies, clock status issues, or anything else to handle.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="3">
+        <div class="pt-tour-kicker">Step 4 of 7</div>
+        <h2>Use Hours for time and pay.</h2>
+        <p>Hours this week and Estimated pay use Clockify hours and your pay rate, not the schedule. If pay looks wrong, open Hours and tap Ask for help.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="4">
+        <div class="pt-tour-kicker">Step 5 of 7</div>
+        <h2>Read updates and upcoming shifts.</h2>
+        <p>Announcements show team updates. Upcoming shows the next shifts posted for you. Use Open schedule when you want the full calendar.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="5">
+        <div class="pt-tour-kicker">Step 6 of 7</div>
+        <h2>Finish your profile checklist.</h2>
+        <p>Add your phone number, emergency contact, sign policies, and connect Clockify so managers can reach you and your hours/pay can calculate correctly.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="6">
+        <div class="pt-tour-kicker">Step 7 of 7</div>
+        <h2>Ask for help from any page.</h2>
+        <p>Use Ask for help whenever something is confusing, wrong, or missing. It helps your manager know which page you were on and what you were trying to do.</p>
+      </div>
+
+      <div class="pt-tour-controls">
+        <button type="button" class="pt-btn ghost" data-tour-prev disabled>Back</button>
+        <button type="button" class="pt-btn" data-tour-next>Next</button>
+      </div>
+
+      {% if tutorial_links|default(false) %}
+        <div class="pt-tour-actions">
+          <a href="/team/" class="pt-tour-open">Dashboard</a>
+          <a href="/team/hours" class="pt-tour-open">Hours</a>
+          <a href="{{ schedule_href|default('/team/schedule') }}" class="pt-tour-open">Schedule</a>
+          <a href="/team/help" class="pt-tour-open">Help</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll("[data-portal-tour]").forEach(function (tour) {
+    var active = 0;
+    var buttons = Array.prototype.slice.call(tour.querySelectorAll("[data-tour-pick]"));
+    var panels = Array.prototype.slice.call(tour.querySelectorAll("[data-tour-panel]"));
+    var hotspots = Array.prototype.slice.call(tour.querySelectorAll("[data-tour-hotspot]"));
+    var prev = tour.querySelector("[data-tour-prev]");
+    var next = tour.querySelector("[data-tour-next]");
+
+    function show(index) {
+      active = Math.max(0, Math.min(index, panels.length - 1));
+      buttons.forEach(function (button, i) {
+        button.classList.toggle("is-active", i === active);
+      });
+      panels.forEach(function (panel, i) {
+        panel.classList.toggle("is-active", i === active);
+      });
+      hotspots.forEach(function (spot, i) {
+        spot.classList.toggle("is-active", i === active);
+      });
+      if (prev) prev.disabled = active === 0;
+      if (next) next.textContent = active === panels.length - 1 ? "Replay" : "Next";
+    }
+
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        show(parseInt(button.getAttribute("data-tour-pick") || "0", 10));
+      });
+    });
+    if (prev) prev.addEventListener("click", function () { show(active - 1); });
+    if (next) {
+      next.addEventListener("click", function () {
+        show(active === panels.length - 1 ? 0 : active + 1);
+      });
+    }
+    show(0);
+  });
+})();
+</script>

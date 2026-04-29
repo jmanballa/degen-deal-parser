@@ -36,6 +36,7 @@ from ..auth import (
     consume_password_reset_token,
     generate_password_reset_token,
     has_permission,
+    _find_token_row,
     _token_hmac_key,
     validate_password_strength,
 )
@@ -54,6 +55,7 @@ from ..db import get_session
 from ..models import (
     AuditLog,
     EmployeeProfile,
+    InviteToken,
     SHIFT_KIND_ALL,
     SHIFT_KIND_BLANK,
     SHIFT_KIND_OFF,
@@ -424,8 +426,15 @@ def team_invite_accept_page(
     error: Optional[str] = Query(default=None),
     problems: Optional[str] = Query(default=None),
     username: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
 ):
     _portal_or_404()
+    invite_role = "employee"
+    token_row = _find_token_row(session, InviteToken, token)
+    if token_row is not None and token_row.role:
+        invite_role = token_row.role.strip().lower() or "employee"
+    show_employee_tutorial = invite_role == "employee"
+    setup_step_total = 7 if show_employee_tutorial else 6
     return templates.TemplateResponse(
         request,
         "team/invite_accept.html",
@@ -433,6 +442,10 @@ def team_invite_accept_page(
             "request": request,
             "title": "Accept Invite",
             "token": token,
+            "invite_role": invite_role,
+            "show_employee_tutorial": show_employee_tutorial,
+            "setup_step_total": setup_step_total,
+            "progress_dot_count": setup_step_total + 1,
             "error": error,
             "problems": (problems or "").split("|") if problems else [],
             "username": username or "",
@@ -1404,6 +1417,29 @@ def team_help(
             "active": "",
             "current_user": user,
             "csrf_token": issue_token(request),
+            **_nav_context(session, user),
+        },
+    )
+
+
+@router.get("/team/help/tutorial", response_class=HTMLResponse)
+def team_help_tutorial(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _require_employee(request, session, resource_key="page.dashboard")
+    if denial:
+        return denial
+    return templates.TemplateResponse(
+        request,
+        "team/help_tutorial.html",
+        {
+            "request": request,
+            "title": "Portal Tour",
+            "active": "",
+            "current_user": user,
+            "csrf_token": issue_token(request),
+            "tutorial_links": True,
             **_nav_context(session, user),
         },
     )
