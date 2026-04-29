@@ -1,0 +1,133 @@
+<div class="pt-tour-guide" data-portal-tour aria-label="Manager portal step by step tour">
+  <div class="pt-tour-stage">
+    <div class="pt-tour-shot-wrap">
+      <img
+        class="pt-tour-shot"
+        src="/static/tutorial/manager-dashboard-tour.png"
+        alt="Manager dashboard with highlighted areas"
+      >
+      <span class="pt-tour-hotspot is-active" data-tour-hotspot="0" style="--x:1.0%; --y:6.5%; --w:12.0%; --h:39.5%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="1" style="--x:15.2%; --y:11.4%; --w:58.0%; --h:11.7%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="2" style="--x:15.2%; --y:24.6%; --w:58.0%; --h:37.1%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="3" style="--x:1.0%; --y:46.7%; --w:12.0%; --h:15.6%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="4" style="--x:15.2%; --y:64.6%; --w:58.0%; --h:9.9%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="5" style="--x:15.2%; --y:76.8%; --w:58.0%; --h:22.0%;"></span>
+      <span class="pt-tour-hotspot" data-tour-hotspot="6" style="--x:56.2%; --y:4.6%; --w:17.0%; --h:4.8%;"></span>
+    </div>
+
+    <div class="pt-tour-copy" aria-live="polite">
+      <div class="pt-tour-fast-path" aria-label="Fast path to schedule someone">
+        <div class="pt-tour-fast-kicker">Fast path to schedule someone</div>
+        <ol>
+          <li><strong>Open Admin > Schedule.</strong></li>
+          <li><strong>Tap Edit schedule.</strong></li>
+          <li><strong>Add the person, click the day, set the time, then save.</strong></li>
+        </ol>
+      </div>
+
+      <div class="pt-tour-step-buttons" role="tablist" aria-label="Manager portal tour steps">
+        <button type="button" class="is-active" data-tour-pick="0" aria-label="Show step 1">1</button>
+        <button type="button" data-tour-pick="1" aria-label="Show step 2">2</button>
+        <button type="button" data-tour-pick="2" aria-label="Show step 3">3</button>
+        <button type="button" data-tour-pick="3" aria-label="Show step 4">4</button>
+        <button type="button" data-tour-pick="4" aria-label="Show step 5">5</button>
+        <button type="button" data-tour-pick="5" aria-label="Show step 6">6</button>
+        <button type="button" data-tour-pick="6" aria-label="Show step 7">7</button>
+      </div>
+
+      <div class="pt-tour-panel is-active" data-tour-panel="0">
+        <div class="pt-tour-kicker">Step 1 of 7</div>
+        <h2>Use the left menu when you are lost.</h2>
+        <p>If your job is scheduling, go to Admin > Schedule. Dashboard, Hours, Announcements, Notifications, Schedule, Time off, Policies, Supply, Profile, and Ops tools stay in this left menu.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="1">
+        <div class="pt-tour-kicker">Step 2 of 7</div>
+        <h2>Check today's status first.</h2>
+        <p>The top card shows your shift, clock status, hours today, and break status. Managers still use the shop iPad for clocking in and out.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="2">
+        <div class="pt-tour-kicker">Step 3 of 7</div>
+        <h2>Clear anything marked important.</h2>
+        <p>The attention card and profile checklist show anything blocking your own portal setup, policies, Clockify connection, or unread team updates.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="3">
+        <div class="pt-tour-kicker">Step 4 of 7</div>
+        <h2>Build shifts from Admin.</h2>
+        <p>Team schedule, Supply queue, Time off queue, and Announcements admin are the manager tools for running the day. For scheduling: open Team schedule, tap Edit schedule, add employees to the roster, click a day cell, choose the shift, and save.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="4">
+        <div class="pt-tour-kicker">Step 5 of 7</div>
+        <h2>If a person is missing, fix Employees.</h2>
+        <p>Go to Admin > Employees, search their name, turn on On schedule, set Type to Storefront or Stream, then come back to Team schedule.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="5">
+        <div class="pt-tour-kicker">Step 6 of 7</div>
+        <h2>Post updates where the team sees them.</h2>
+        <p>Announcements admin is for schedule changes, policy reminders, and team notes. The dashboard shows the latest posts so people do not have to hunt for them.</p>
+      </div>
+      <div class="pt-tour-panel" data-tour-panel="6">
+        <div class="pt-tour-kicker">Step 7 of 7</div>
+        <h2>Ask for help from any page.</h2>
+        <p>Use Ask for help whenever a schedule, queue, announcement, or employee workflow looks off. It sends the page context so the issue is easier to fix.</p>
+      </div>
+
+      <div class="pt-tour-controls">
+        <button type="button" class="pt-btn ghost" data-tour-prev disabled>Back</button>
+        <button type="button" class="pt-btn" data-tour-next>Next</button>
+      </div>
+
+      {% if tutorial_links|default(false) %}
+        <div class="pt-tour-actions">
+          <a href="/team/" class="pt-tour-open">Dashboard</a>
+          <a href="{{ schedule_href|default('/team/schedule') }}" class="pt-tour-open">Schedule</a>
+          <a href="/team/admin/schedule" class="pt-tour-open">Schedule people</a>
+          <a href="/team/admin/employees" class="pt-tour-open">Employees</a>
+          <a href="/team/admin/supply" class="pt-tour-open">Supply queue</a>
+          <a href="/team/admin/tutorial" class="pt-tour-open">Admin guide</a>
+          <a href="/team/help" class="pt-tour-open">Help</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll("[data-portal-tour]").forEach(function (tour) {
+    var active = 0;
+    var buttons = Array.prototype.slice.call(tour.querySelectorAll("[data-tour-pick]"));
+    var panels = Array.prototype.slice.call(tour.querySelectorAll("[data-tour-panel]"));
+    var hotspots = Array.prototype.slice.call(tour.querySelectorAll("[data-tour-hotspot]"));
+    var prev = tour.querySelector("[data-tour-prev]");
+    var next = tour.querySelector("[data-tour-next]");
+
+    function show(index) {
+      active = Math.max(0, Math.min(index, panels.length - 1));
+      buttons.forEach(function (button, i) {
+        button.classList.toggle("is-active", i === active);
+      });
+      panels.forEach(function (panel, i) {
+        panel.classList.toggle("is-active", i === active);
+      });
+      hotspots.forEach(function (spot, i) {
+        spot.classList.toggle("is-active", i === active);
+      });
+      if (prev) prev.disabled = active === 0;
+      if (next) next.textContent = active === panels.length - 1 ? "Replay" : "Next";
+    }
+
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        show(parseInt(button.getAttribute("data-tour-pick") || "0", 10));
+      });
+    });
+    if (prev) prev.addEventListener("click", function () { show(active - 1); });
+    if (next) {
+      next.addEventListener("click", function () {
+        show(active === panels.length - 1 ? 0 : active + 1);
+      });
+    }
+    show(0);
+  });
+})();
+</script>

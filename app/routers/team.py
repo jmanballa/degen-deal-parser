@@ -434,7 +434,9 @@ def team_invite_accept_page(
     if token_row is not None and token_row.role:
         invite_role = token_row.role.strip().lower() or "employee"
     show_employee_tutorial = invite_role == "employee"
-    setup_step_total = 7 if show_employee_tutorial else 6
+    show_manager_tutorial = invite_role == "manager"
+    show_portal_tutorial = show_employee_tutorial or show_manager_tutorial
+    setup_step_total = 7 if show_portal_tutorial else 6
     return templates.TemplateResponse(
         request,
         "team/invite_accept.html",
@@ -444,6 +446,8 @@ def team_invite_accept_page(
             "token": token,
             "invite_role": invite_role,
             "show_employee_tutorial": show_employee_tutorial,
+            "show_manager_tutorial": show_manager_tutorial,
+            "show_portal_tutorial": show_portal_tutorial,
             "setup_step_total": setup_step_total,
             "progress_dot_count": setup_step_total + 1,
             "error": error,
@@ -1440,6 +1444,7 @@ def team_help_tutorial(
             "current_user": user,
             "csrf_token": issue_token(request),
             "tutorial_links": True,
+            "show_manager_tutorial": user.role == "manager",
             **_nav_context(session, user),
         },
     )

@@ -322,7 +322,7 @@ class InviteAcceptTests(unittest.TestCase, _PortalHarness):
         self.assertIn("Use Hours for time and pay.", r.text)
         self.assertIn("Skip tutorial", r.text)
 
-    def test_manager_invite_accept_page_does_not_show_employee_tour(self):
+    def test_manager_invite_accept_page_includes_manager_portal_tour(self):
         from app.auth import generate_invite_token, hash_password
         from app.models import User
 
@@ -347,9 +347,18 @@ class InviteAcceptTests(unittest.TestCase, _PortalHarness):
         r = self.client.get(f"/team/invite/accept/{raw}")
 
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.text.count('class="onb-progress-dot'), 7)
-        self.assertNotIn("Know where everything lives.", r.text)
-        self.assertNotIn("Skip tutorial", r.text)
+        self.assertEqual(r.text.count('class="onb-progress-dot'), 8)
+        self.assertIn("Set up your manager account.", r.text)
+        self.assertIn("Learn the manager basics.", r.text)
+        self.assertIn("If you only remember one thing", r.text)
+        self.assertIn("Manager portal tour", r.text)
+        self.assertIn("manager-dashboard-tour.png", r.text)
+        self.assertIn("Fast path to schedule someone", r.text)
+        self.assertIn("Open Admin > Schedule", r.text)
+        self.assertIn("Build shifts from Admin.", r.text)
+        self.assertIn("Team schedule, Supply queue, Time off queue", r.text)
+        self.assertIn("Skip tutorial", r.text)
+        self.assertNotIn("employee-dashboard-tour.png", r.text)
 
     def test_invite_accept_creates_user_and_profile(self):
         from app.auth import generate_invite_token, hash_password
@@ -487,6 +496,19 @@ class SupplyAndPoliciesTests(unittest.TestCase, _PortalHarness):
         self._login_as("admin", user_id=user_id, username=username)
         return user_id
 
+    def _seed_manager(self, user_id: int = 38, username: str = "portal_manager") -> int:
+        from app.auth import hash_password
+        from app.models import User
+
+        ph, salt = hash_password("xx")
+        self.session.add(User(
+            id=user_id, username=username, password_hash=ph, password_salt=salt,
+            display_name=username, role="manager", is_active=True,
+        ))
+        self.session.commit()
+        self._login_as("manager", user_id=user_id, username=username)
+        return user_id
+
     def test_supply_post_without_csrf_is_403(self):
         self._seed_employee()
         r = self.client.post(
@@ -607,6 +629,105 @@ class SupplyAndPoliciesTests(unittest.TestCase, _PortalHarness):
         self.assertIn("Read updates and upcoming shifts.", page.text)
         self.assertIn("Ask for help", page.text)
         self.assertIn("/team/hours", page.text)
+
+    def test_help_tutorial_page_includes_manager_portal_map_for_manager(self):
+        self._seed_manager(user_id=47, username="manager_help_tour")
+
+        page = self.client.get("/team/help/tutorial")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Manager portal tour", page.text)
+        self.assertIn("manager-dashboard-tour.png", page.text)
+        self.assertIn("Fast path to schedule someone", page.text)
+        self.assertIn("Build shifts from Admin.", page.text)
+        self.assertIn("Team schedule, Supply queue, Time off queue", page.text)
+        self.assertIn("/team/admin/schedule", page.text)
+        self.assertIn("/team/admin/employees", page.text)
+        self.assertNotIn("employee-dashboard-tour.png", page.text)
+
+    def test_manager_help_links_to_team_admin_guide(self):
+        self._seed_manager(user_id=48, username="manager_help_admin_guide")
+
+        page = self.client.get("/team/help")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Team Admin guide", page.text)
+        self.assertIn("/team/admin/tutorial", page.text)
+        self.assertIn("How to schedule people", page.text)
+
+    def test_team_admin_tutorial_explains_schedule_and_admin_pages(self):
+        self._seed_manager(user_id=49, username="manager_admin_guide")
+
+        page = self.client.get("/team/admin/tutorial")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("How to schedule people", page.text)
+        self.assertIn("What each Team Admin page does", page.text)
+        self.assertIn("Pick the week first.", page.text)
+        self.assertIn("Example: schedule Tour Employee", page.text)
+        self.assertIn("manager-schedule-tour-employees.png", page.text)
+        self.assertIn("manager-schedule-tour-edit.png", page.text)
+        self.assertIn("manager-schedule-tour-scheduled.png", page.text)
+        self.assertIn("Click an empty day cell", page.text)
+        self.assertIn("Click to enlarge", page.text)
+        self.assertIn("ta-shot-lightbox", page.text)
+        self.assertIn("Open original", page.text)
+        self.assertIn("Schedule", page.text)
+        self.assertIn("Supply queue", page.text)
+        self.assertIn("Time off", page.text)
+        self.assertIn("Hidden by role or permission", page.text)
+
+    def test_team_admin_schedule_page_includes_scheduling_tutorial(self):
+        self._seed_manager(user_id=50, username="manager_schedule_guide")
+
+        page = self.client.get("/team/admin/schedule")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("How to schedule people", page.text)
+        self.assertIn("Edit schedule makes cells clickable", page.text)
+        self.assertIn("/team/admin/tutorial#schedule-guide", page.text)
+        self.assertIn("/team/admin/tutorial#schedule-example", page.text)
+
+    def test_manager_can_toggle_employee_on_schedule_from_employee_list(self):
+        from app.auth import hash_password
+        from app.models import AuditLog, User
+
+        self._seed_manager(user_id=51, username="manager_roster_toggle")
+        ph, salt = hash_password("xx")
+        self.session.add(User(
+            id=52,
+            username="bob_davidson",
+            password_hash=ph,
+            password_salt=salt,
+            display_name="Bob Davidson",
+            role="employee",
+            is_active=True,
+            is_schedulable=False,
+        ))
+        self.session.commit()
+
+        csrf = self._csrf()
+        r = self.client.post(
+            "/team/admin/employees/52/schedulable-toggle",
+            data={
+                "is_schedulable": "1",
+                "return_q": "Bob",
+                "csrf_token": csrf,
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(r.status_code, 303)
+        self.assertEqual(r.headers["location"], "/team/admin/employees?q=Bob")
+        refreshed = self.session.get(User, 52)
+        self.assertTrue(refreshed.is_schedulable)
+        audit = self.session.exec(
+            select(AuditLog).where(
+                AuditLog.action == "admin.employee.schedulable_toggle",
+                AuditLog.target_user_id == 52,
+            )
+        ).one()
+        self.assertEqual(audit.resource_key, "admin.employee_roster.edit")
 
     def test_profile_post_updates_preferred_name_not_role(self):
         uid = self._seed_employee(user_id=43, username="emp_pr")

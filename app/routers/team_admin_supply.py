@@ -18,6 +18,12 @@ from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import AuditLog, SupplyRequest, User, utcnow
 from ..shared import templates
+from ..supply_deals import (
+    get_cached_supply_deals,
+    refresh_supply_deal_cache,
+    supply_deal_catalog,
+    supply_item_by_key,
+)
 from .team_admin import _permission_gate
 
 router = APIRouter()
@@ -83,10 +89,34 @@ def admin_supply_list(
             "filter_status": filter_status,
             "statuses": VALID_STATUSES,
             "counts": counts,
+            "deal_catalog": supply_deal_catalog(),
             "flash": flash,
             "csrf_token": issue_token(request),
         },
     )
+
+
+@router.get("/team/admin/supply/deals")
+async def admin_supply_deals(
+    request: Request,
+    item: str = Query(...),
+    refresh: bool = Query(default=False),
+    session: Session = Depends(get_session),
+):
+    denial, _current = _permission_gate(request, session, "admin.supply.view")
+    if denial:
+        return denial
+    supply_item = supply_item_by_key(item)
+    if supply_item is None:
+        raise HTTPException(status_code=404, detail="Unknown supply item")
+    if refresh:
+        return await refresh_supply_deal_cache(supply_item)
+    cached = get_cached_supply_deals(supply_item)
+    if cached is not None:
+        cached["refreshing"] = True
+        cached["cache_status"] = "Showing saved results while checking for better deals"
+        return cached
+    return await refresh_supply_deal_cache(supply_item)
 
 
 def _transition(

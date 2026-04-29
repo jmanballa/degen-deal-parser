@@ -221,6 +221,115 @@ def _first_allowed_admin_href(request: Request) -> str:
     return visible[0] if visible else "/team/"
 
 
+def _admin_page_guide_rows(request: Request) -> list[dict[str, str | bool]]:
+    visible_hrefs = {
+        item["href"]
+        for section in getattr(request.state, "team_admin_nav_sections", [])
+        for item in section.get("items", [])
+    }
+    rows: list[dict[str, str | bool]] = [
+        {
+            "label": "Overview",
+            "href": "/team/admin",
+            "job": "Start here when you are not sure what needs attention.",
+            "details": "Shows request queues, setup health, active staff, Clockify setup, upcoming shifts, and shortcuts into common workflows.",
+        },
+        {
+            "label": "Employees",
+            "href": "/team/admin/employees",
+            "job": "Find or update a staff profile.",
+            "details": "Use it for roles, contact/profile cleanup, schedule eligibility, staff type, invite status, and employee detail pages.",
+        },
+        {
+            "label": "Reset requests",
+            "href": "/team/admin/password-reset-requests",
+            "job": "Help employees get back into the portal.",
+            "details": "Review password reset requests and issue reset links without hunting through employee profiles.",
+        },
+        {
+            "label": "Compensation",
+            "href": "/team/admin/employees/pay-rates",
+            "job": "Manage hourly and salary data.",
+            "details": "Financial access only. This is where pay rates and compensation history live.",
+        },
+        {
+            "label": "Clockify",
+            "href": "/team/admin/clockify",
+            "job": "Connect portal employees to Clockify users.",
+            "details": "Estimated pay, labor stats, and shift tracking need these mappings to be correct.",
+        },
+        {
+            "label": "Shift Tracker",
+            "href": "/team/admin/shift-tracker",
+            "job": "See who is clocked in, on break, or missing a clock event.",
+            "details": "Uses actual Clockify data. Manual refresh reconciles today's timers when the cache needs a nudge.",
+        },
+        {
+            "label": "Labor Stats",
+            "href": "/team/admin/labor-stats",
+            "job": "Review hours, labor windows, and pay estimates.",
+            "details": "Uses clocked hours and salary/hourly setup. Financial amounts are hidden unless the role is allowed to see them.",
+        },
+        {
+            "label": "Payroll Export",
+            "href": "/team/admin/payroll",
+            "job": "Prepare payroll output.",
+            "details": "Admin/financial workflow for exporting pay-period data after Clockify and compensation are clean.",
+        },
+        {
+            "label": "Exceptions",
+            "href": "/team/admin/exceptions",
+            "job": "Catch problems before payroll.",
+            "details": "Review clock/timecard issues, missing mappings, and other data that may need manager cleanup.",
+        },
+        {
+            "label": "Schedule",
+            "href": "/team/admin/schedule",
+            "job": "Build and publish the weekly team schedule.",
+            "details": "Pick a week, edit cells, add roster people, copy/generate from last week, and save storefront or stream shifts.",
+        },
+        {
+            "label": "Announcements",
+            "href": "/team/admin/announcements",
+            "job": "Post updates employees will see in the portal.",
+            "details": "Create pinned or expiring announcements for schedule changes, shop notes, and team reminders.",
+        },
+        {
+            "label": "Policies",
+            "href": "/team/admin/policies",
+            "job": "Publish documents employees need to read or sign.",
+            "details": "Add policy content, require acknowledgement, and keep employee policy visibility inside the portal.",
+        },
+        {
+            "label": "Invites",
+            "href": "/team/admin/invites",
+            "job": "Send signup links and track unfinished onboarding.",
+            "details": "Use this when creating accounts or resending invite links by SMS.",
+        },
+        {
+            "label": "Supply queue",
+            "href": "/team/admin/supply",
+            "job": "Handle employee supply requests.",
+            "details": "Review requested items, mark work in progress, complete requests, or close requests that are not needed.",
+        },
+        {
+            "label": "Time off",
+            "href": "/team/admin/timeoff",
+            "job": "Approve or deny time-off requests.",
+            "details": "Use before editing the schedule so REQUEST days and staffing gaps do not sneak up on you.",
+        },
+        {
+            "label": "Permissions",
+            "href": "/team/admin/permissions",
+            "job": "Control what roles can see and do.",
+            "details": "Admin-only. This is where financial visibility and manager scope are controlled.",
+        },
+    ]
+    for row in rows:
+        row["visible"] = row["href"] in visible_hrefs
+    return rows
+
+
 def _pending_password_reset_request_rows(
     session: Session,
     *,
@@ -392,6 +501,27 @@ def team_admin_home(
             "upcoming_shift_count": upcoming_shift_count,
             "needs_attention_count": needs_attention_count,
             "csrf_token": issue_token(request),
+        },
+    )
+
+
+@router.get("/team/admin/tutorial", response_class=HTMLResponse)
+def team_admin_tutorial(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    denial, user = _team_admin_surface_gate(request, session)
+    if denial:
+        return denial
+    return templates.TemplateResponse(
+        request,
+        "team/admin/tutorial.html",
+        {
+            "request": request,
+            "title": "Admin Guide",
+            "active": "tutorial",
+            "current_user": user,
+            "admin_page_guide": _admin_page_guide_rows(request),
         },
     )
 

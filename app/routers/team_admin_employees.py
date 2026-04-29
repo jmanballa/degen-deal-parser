@@ -761,7 +761,7 @@ async def admin_employee_schedulable_toggle(
     absent field means "unchecked". This is the same pattern the rest
     of the portal uses for toggles.
     """
-    denial, current = _admin_gate(request, session, "admin.employees.edit")
+    denial, current = _permission_gate(request, session, "admin.employee_roster.edit")
     if denial:
         return denial
     employee = session.get(User, user_id)
@@ -779,7 +779,7 @@ async def admin_employee_schedulable_toggle(
                 actor_user_id=current.id,
                 target_user_id=user_id,
                 action="admin.employee.schedulable_toggle",
-                resource_key="admin.employees.edit",
+                resource_key="admin.employee_roster.edit",
                 details_json=json.dumps({"is_schedulable": new_value}),
                 ip_address=(request.client.host if request.client else None),
             ),

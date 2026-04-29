@@ -1,0 +1,504 @@
+{% extends "team/admin/base.html" %}
+{% set active = 'tutorial' %}
+
+{% block extra_head %}
+<style>
+  .ta-guide-hero {
+    padding: 20px 22px;
+    border: 1px solid rgba(255, 107, 74, .26);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(255, 107, 74, .14), var(--lx-s1));
+    margin-bottom: 16px;
+  }
+  .ta-guide-kicker {
+    margin: 0 0 6px;
+    color: #ffb199;
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+  }
+  .ta-guide-hero h2 {
+    margin: 0;
+    font-size: clamp(24px, 3vw, 34px);
+    line-height: 1.1;
+  }
+  .ta-guide-hero p {
+    max-width: 800px;
+    margin: 10px 0 0;
+    color: var(--lx-muted);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .ta-guide-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .ta-btn.primary {
+    background: #ff6b4a;
+    border-color: #ff6b4a;
+    color: #080808;
+    font-weight: 850;
+  }
+  .ta-guide-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .ta-guide-steps {
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 9px;
+    counter-reset: step;
+  }
+  .ta-guide-steps li {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 11px 12px;
+    border: 1px solid var(--lx-br);
+    border-radius: 10px;
+    background: var(--lx-s2);
+    counter-increment: step;
+  }
+  .ta-guide-steps li::before {
+    content: counter(step);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: #ff6b4a;
+    color: #080808;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .ta-guide-steps strong {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 14px;
+  }
+  .ta-guide-steps span,
+  .ta-guide-note {
+    color: var(--lx-muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .ta-status-grid,
+  .ta-page-map {
+    display: grid;
+    gap: 10px;
+  }
+  .ta-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 14px;
+  }
+  .ta-status-card,
+  .ta-page-card {
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid var(--lx-br);
+    border-radius: 10px;
+    background: var(--lx-s2);
+  }
+  .ta-status-card strong,
+  .ta-page-card strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
+  }
+  .ta-status-card span,
+  .ta-page-card span {
+    display: block;
+    color: var(--lx-muted);
+    font-size: 12px;
+    line-height: 1.42;
+  }
+  .ta-page-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ta-page-card {
+    display: block;
+  }
+  .ta-page-card.is-hidden {
+    opacity: .62;
+  }
+  .ta-page-access {
+    margin-top: 9px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #86efac;
+  }
+  .ta-page-card.is-hidden .ta-page-access {
+    color: #fcd34d;
+  }
+  .ta-flow {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0 0;
+  }
+  .ta-flow-row {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 12px;
+    padding: 11px 12px;
+    border: 1px solid var(--lx-br);
+    border-radius: 10px;
+    background: var(--lx-s2);
+  }
+  .ta-flow-row strong { font-size: 13px; }
+  .ta-flow-row span {
+    color: var(--lx-muted);
+    font-size: 12px;
+    line-height: 1.42;
+  }
+  .ta-example-shot-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .ta-example-shot {
+    min-width: 0;
+    border: 1px solid var(--lx-br);
+    border-radius: 12px;
+    background: var(--lx-s2);
+    overflow: hidden;
+  }
+  .ta-example-shot-button {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: zoom-in;
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+  }
+  .ta-example-shot-button:focus-visible {
+    outline: 3px solid #60a5fa;
+    outline-offset: -3px;
+  }
+  .ta-example-shot-button img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    border-bottom: 1px solid var(--lx-br);
+    background: var(--lx-bg);
+  }
+  .ta-shot-zoom {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(8, 8, 8, .82);
+    border: 1px solid rgba(255, 255, 255, .18);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 850;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, .35);
+  }
+  .ta-example-shot-body {
+    padding: 12px;
+  }
+  .ta-example-shot-body strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+  .ta-example-shot-body span {
+    display: block;
+    color: var(--lx-muted);
+    font-size: 12px;
+    line-height: 1.42;
+  }
+  .ta-shot-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 18px;
+    background: rgba(0, 0, 0, .88);
+  }
+  .ta-shot-lightbox:target {
+    display: grid;
+  }
+  .ta-shot-lightbox-bar {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .ta-shot-lightbox-img {
+    position: relative;
+    z-index: 2;
+    align-self: center;
+    justify-self: center;
+    max-width: min(96vw, 1800px);
+    max-height: 82vh;
+    width: auto;
+    height: auto;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 12px;
+    background: #050505;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .65);
+  }
+  .ta-shot-lightbox-caption {
+    position: relative;
+    z-index: 2;
+    justify-self: center;
+    color: #dbeafe;
+    font-size: 13px;
+  }
+  .ta-shot-lightbox-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  @media (max-width: 980px) {
+    .ta-guide-grid,
+    .ta-page-map,
+    .ta-example-shot-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 620px) {
+    .ta-status-grid { grid-template-columns: 1fr; }
+    .ta-flow-row { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="ta-guide-hero">
+  <p class="ta-guide-kicker">Manager admin guide</p>
+  <h2>Build the schedule, clear the queues, and know what every admin page is for.</h2>
+  <p>
+    Use this when a manager is new, when schedule editing feels weird, or when you need the fastest
+    path to the right page without knowing the internal portal names.
+  </p>
+  <div class="ta-guide-actions">
+    <a class="ta-btn primary" href="/team/admin/schedule">Open schedule</a>
+    <a class="ta-btn" href="/team/admin/supply">Supply queue</a>
+    <a class="ta-btn" href="/team/admin/timeoff">Time off</a>
+    <a class="ta-btn" href="/team/admin/announcements">Announcements</a>
+  </div>
+</section>
+
+<section class="ta-guide-grid" id="schedule-guide">
+  <div class="ta-card">
+    <h2>How to schedule people</h2>
+    <p class="ta-guide-note">
+      The schedule page opens read-only on purpose. Editing is a deliberate mode so managers do not
+      accidentally change a week while checking staffing.
+    </p>
+    <ol class="ta-guide-steps">
+      <li>
+        <div>
+          <strong>Pick the week first.</strong>
+          <span>Use Prev, Next, or Jump to this week. The week always runs Monday through Sunday.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Tap Edit schedule.</strong>
+          <span>Edit mode turns cells into buttons and shows roster, save, discard, and generate controls.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Add the right people to the roster.</strong>
+          <span>Use the roster picker above Storefront or Stream. If someone is missing, open Employees and turn on On schedule, then set their Type.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Click a person/day cell.</strong>
+          <span>The edit sheet opens. Choose Shift, OFF, SHOW, REQUEST, Stream, or IF NEEDED.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Set times and a short note.</strong>
+          <span>Use 15-minute time steps. Notes are good for opener, front counter, studio, runner, or who they are with.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Use repeat or previous week when it saves time.</strong>
+          <span>Repeat clones one shift forward. Copy previous week adds last week's roster. Generate from last week clones shifts while preserving existing cells.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Save the schedule.</strong>
+          <span>Unsaved cells get a dot. Storefront saves with Save storefront schedule. Stream schedule changes sync with Stream Manager.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="ta-card">
+    <h2>Schedule statuses</h2>
+    <div class="ta-status-grid">
+      <div class="ta-status-card">
+        <strong>Shift</strong>
+        <span>A normal working shift. This is what most employees should have.</span>
+      </div>
+      <div class="ta-status-card">
+        <strong>OFF</strong>
+        <span>A deliberate off day so managers know the blank is not an accident.</span>
+      </div>
+      <div class="ta-status-card">
+        <strong>SHOW</strong>
+        <span>A special event or show day. Useful when the location or normal routine changes.</span>
+      </div>
+      <div class="ta-status-card">
+        <strong>REQUEST</strong>
+        <span>Time-off or request marker. Check Time off before overriding this.</span>
+      </div>
+      <div class="ta-status-card">
+        <strong>Stream</strong>
+        <span>A live stream shift. These sync with the Stream Manager and stream account setup.</span>
+      </div>
+      <div class="ta-status-card">
+        <strong>IF NEEDED</strong>
+        <span>A soft backup shift. Use it when someone might be called in but is not fully scheduled yet.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ta-card" id="schedule-example">
+  <h2>Example: schedule Tour Employee</h2>
+  <p class="ta-guide-note">
+    This is the concrete version: put a test employee on the roster, open the week, then add a
+    shift so employees can see it from their Schedule page.
+  </p>
+  <div class="ta-example-shot-grid">
+    <div class="ta-example-shot">
+      <a class="ta-example-shot-button" href="#schedule-shot-employees" aria-label="Enlarge employee scheduling screenshot">
+        <img src="/static/tutorial/manager-schedule-tour-employees.png" alt="Employees page with Tour Employee marked on schedule">
+        <span class="ta-shot-zoom">Click to enlarge</span>
+      </a>
+      <div class="ta-example-shot-body">
+        <strong>1. Make the employee schedulable.</strong>
+        <span>Team Admin > Employees, search the person, turn on On schedule, and set Type to the right roster.</span>
+      </div>
+    </div>
+    <div class="ta-example-shot">
+      <a class="ta-example-shot-button" href="#schedule-shot-edit" aria-label="Enlarge schedule edit mode screenshot">
+        <img src="/static/tutorial/manager-schedule-tour-edit.png" alt="Schedule edit mode with the Tour Employee row ready">
+        <span class="ta-shot-zoom">Click to enlarge</span>
+      </a>
+      <div class="ta-example-shot-body">
+        <strong>2. Open the week in edit mode.</strong>
+        <span>Go to Schedule, pick the Monday-starting week, tap Edit schedule, and make sure the employee is on the roster.</span>
+      </div>
+    </div>
+    <div class="ta-example-shot">
+      <a class="ta-example-shot-button" href="#schedule-shot-scheduled" aria-label="Enlarge scheduled shift screenshot">
+        <img src="/static/tutorial/manager-schedule-tour-scheduled.png" alt="Schedule page with Tour Employee assigned to a shift">
+        <span class="ta-shot-zoom">Click to enlarge</span>
+      </a>
+      <div class="ta-example-shot-body">
+        <strong>3. Click an empty day cell and add the shift.</strong>
+        <span>Choose Shift, enter start/end time and a short note, then save the storefront schedule.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="ta-shot-lightbox" id="schedule-shot-employees" role="dialog" aria-modal="true" aria-label="Employee scheduling screenshot preview">
+  <a class="ta-shot-lightbox-backdrop" href="#schedule-example" aria-label="Close image preview"></a>
+  <div class="ta-shot-lightbox-bar">
+    <a class="ta-btn" href="/static/tutorial/manager-schedule-tour-employees.png" target="_blank" rel="noopener">Open original</a>
+    <a class="ta-btn" href="#schedule-example">Close</a>
+  </div>
+  <img class="ta-shot-lightbox-img" src="/static/tutorial/manager-schedule-tour-employees.png" alt="Employees page with Tour Employee marked on schedule">
+  <div class="ta-shot-lightbox-caption">Tap outside the image or press Close to return to the tutorial.</div>
+</div>
+
+<div class="ta-shot-lightbox" id="schedule-shot-edit" role="dialog" aria-modal="true" aria-label="Schedule edit mode screenshot preview">
+  <a class="ta-shot-lightbox-backdrop" href="#schedule-example" aria-label="Close image preview"></a>
+  <div class="ta-shot-lightbox-bar">
+    <a class="ta-btn" href="/static/tutorial/manager-schedule-tour-edit.png" target="_blank" rel="noopener">Open original</a>
+    <a class="ta-btn" href="#schedule-example">Close</a>
+  </div>
+  <img class="ta-shot-lightbox-img" src="/static/tutorial/manager-schedule-tour-edit.png" alt="Schedule edit mode with the Tour Employee row ready">
+  <div class="ta-shot-lightbox-caption">Tap outside the image or press Close to return to the tutorial.</div>
+</div>
+
+<div class="ta-shot-lightbox" id="schedule-shot-scheduled" role="dialog" aria-modal="true" aria-label="Scheduled shift screenshot preview">
+  <a class="ta-shot-lightbox-backdrop" href="#schedule-example" aria-label="Close image preview"></a>
+  <div class="ta-shot-lightbox-bar">
+    <a class="ta-btn" href="/static/tutorial/manager-schedule-tour-scheduled.png" target="_blank" rel="noopener">Open original</a>
+    <a class="ta-btn" href="#schedule-example">Close</a>
+  </div>
+  <img class="ta-shot-lightbox-img" src="/static/tutorial/manager-schedule-tour-scheduled.png" alt="Schedule page with Tour Employee assigned to a shift">
+  <div class="ta-shot-lightbox-caption">Tap outside the image or press Close to return to the tutorial.</div>
+</div>
+
+<section class="ta-card">
+  <h2>Best daily manager flow</h2>
+  <div class="ta-flow">
+    <div class="ta-flow-row">
+      <strong>1. Overview</strong>
+      <span>Start with Needs attention so supply, time off, password reset, and timecard problems do not pile up.</span>
+    </div>
+    <div class="ta-flow-row">
+      <strong>2. Time off</strong>
+      <span>Approve or deny requests before editing the schedule. This keeps REQUEST days meaningful.</span>
+    </div>
+    <div class="ta-flow-row">
+      <strong>3. Schedule</strong>
+      <span>Build the week, save it, then have employees check their Schedule page.</span>
+    </div>
+    <div class="ta-flow-row">
+      <strong>4. Shift Tracker</strong>
+      <span>During the day, watch clock status, breaks, and current hours from Clockify.</span>
+    </div>
+    <div class="ta-flow-row">
+      <strong>5. Announcements</strong>
+      <span>Post a team update when schedule changes, policies, or shop-floor changes affect everyone.</span>
+    </div>
+  </div>
+</section>
+
+<section class="ta-card">
+  <h2>What each Team Admin page does</h2>
+  <p class="ta-guide-note" style="margin:0 0 14px;">
+    Cards marked available are visible for your current role. Hidden cards explain what exists without exposing the page.
+  </p>
+  <div class="ta-page-map">
+    {% for page in admin_page_guide %}
+      <a class="ta-page-card {% if not page.visible %}is-hidden{% endif %}" href="{% if page.visible %}{{ page.href }}{% else %}#{% endif %}">
+        <strong>{{ page.label }}</strong>
+        <span>{{ page.job }}</span>
+        <span style="margin-top:6px;">{{ page.details }}</span>
+        <div class="ta-page-access">{% if page.visible %}Available to you{% else %}Hidden by role or permission{% endif %}</div>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

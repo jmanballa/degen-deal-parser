@@ -1,8 +1,359 @@
 {% extends "team/admin/base.html" %}
 {% from "_macros.html" import status_label %}
 {% set active = 'supply' %}
+{% block extra_head %}
+<style>
+    .supply-finder {
+        display: grid;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .supply-finder-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+    .supply-finder-title {
+        margin: 0 0 5px;
+        font-size: 15px;
+        font-weight: 700;
+    }
+    .supply-finder-sub {
+        margin: 0;
+        color: var(--lx-muted);
+        font-size: 12px;
+        line-height: 1.5;
+        max-width: 720px;
+    }
+    .supply-custom-search {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        min-width: min(100%, 440px);
+    }
+    .supply-input {
+        width: 100%;
+        min-width: 0;
+        padding: 9px 10px;
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        background: var(--lx-s2);
+        color: var(--lx-text);
+        font: inherit;
+        font-size: 13px;
+    }
+    .supply-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 10px;
+    }
+    .supply-deal-card {
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        background: var(--lx-s2);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+    }
+    .supply-deal-card.active {
+        border-color: rgba(255, 138, 61, 0.7);
+        box-shadow: 0 0 0 1px rgba(255, 138, 61, 0.22);
+    }
+    .supply-deal-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .supply-deal-name {
+        font-weight: 700;
+        font-size: 13px;
+    }
+    .supply-deal-unit {
+        color: var(--lx-muted);
+        font-size: 11px;
+        white-space: nowrap;
+    }
+    .supply-deal-hint {
+        color: var(--lx-muted);
+        font-size: 12px;
+        line-height: 1.35;
+        min-height: 32px;
+    }
+    .supply-link-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .supply-market-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 9px;
+        border-radius: 8px;
+        border: 1px solid var(--lx-br);
+        background: var(--lx-s1);
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .supply-market-link:hover {
+        border-color: rgba(255, 138, 61, 0.55);
+        color: #ff8a3d;
+    }
+    .supply-find-btn {
+        width: 100%;
+    }
+    .supply-live-results {
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        background: var(--lx-s2);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+    }
+    .supply-live-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .supply-live-title {
+        font-size: 14px;
+        font-weight: 700;
+    }
+    .supply-listings {
+        display: grid;
+        gap: 8px;
+    }
+    .supply-filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        background: var(--lx-s1);
+    }
+    .supply-filter-label {
+        display: grid;
+        gap: 4px;
+        color: var(--lx-muted);
+        font-size: 11px;
+    }
+    .supply-filter-check {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--lx-text);
+        font-size: 12px;
+        padding-top: 18px;
+    }
+    .supply-select {
+        width: 100%;
+        min-width: 0;
+        padding: 8px 9px;
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        background: var(--lx-s2);
+        color: var(--lx-text);
+        font: inherit;
+        font-size: 12px;
+    }
+    .supply-listing {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 10px;
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        background: var(--lx-s1);
+    }
+    .supply-listing-title {
+        color: var(--lx-text);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.35;
+    }
+    .supply-listing-meta {
+        color: var(--lx-muted);
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 3px;
+    }
+    .supply-listing-source {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--lx-muted);
+        font-size: 11px;
+        font-weight: 700;
+        margin-right: 6px;
+    }
+    .supply-risk-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 7px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        margin-right: 6px;
+    }
+    .supply-risk-badge.low {
+        color: #86efac;
+        background: rgba(34, 197, 94, 0.12);
+        border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+    .supply-risk-badge.medium {
+        color: #fcd34d;
+        background: rgba(234, 179, 8, 0.12);
+        border: 1px solid rgba(234, 179, 8, 0.25);
+    }
+    .supply-risk-badge.high {
+        color: #fca5a5;
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .supply-listing-price {
+        text-align: right;
+        min-width: 116px;
+    }
+    .supply-unit-price {
+        color: #86efac;
+        font-size: 15px;
+        font-weight: 800;
+    }
+    .supply-total-price {
+        color: var(--lx-muted);
+        font-size: 12px;
+        margin-top: 3px;
+    }
+    .supply-calculator {
+        display: grid;
+        grid-template-columns: 1.2fr repeat(3, minmax(84px, 0.55fr)) auto;
+        gap: 8px;
+        align-items: end;
+        margin-top: 4px;
+    }
+    .supply-calc-label {
+        display: grid;
+        gap: 4px;
+        color: var(--lx-muted);
+        font-size: 11px;
+    }
+    .supply-results {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+    }
+    .supply-result-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 10px;
+        border: 1px solid var(--lx-br);
+        border-radius: 8px;
+        background: var(--lx-s2);
+        font-size: 13px;
+    }
+    .supply-result-unit {
+        color: #86efac;
+        font-weight: 700;
+    }
+    .supply-muted {
+        color: var(--lx-muted);
+        font-size: 12px;
+    }
+    @media (max-width: 760px) {
+        .supply-calculator {
+            grid-template-columns: 1fr 1fr;
+        }
+        .supply-calculator .ta-btn {
+            grid-column: 1 / -1;
+        }
+        .supply-listing {
+            grid-template-columns: 1fr;
+        }
+        .supply-listing-price {
+            text-align: left;
+        }
+    }
+</style>
+{% endblock %}
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+
+<div class="ta-card supply-finder">
+    <div class="supply-finder-head">
+        <div>
+            <h2>Supply deal finder</h2>
+            <p class="supply-finder-title">Open exact searches, then compare delivered cost per unit before ordering.</p>
+            <p class="supply-finder-sub">
+                These links target the supplies Degen keeps buying and sort where the marketplace supports it.
+                Use the calculator for candidate listings so shipping and pack size do not hide the real best deal.
+            </p>
+        </div>
+        <div class="supply-custom-search">
+            <input class="supply-input" id="supply-custom-query" type="search"
+                   placeholder="Custom supply search, e.g. 9x6x4 boxes">
+            <button class="ta-btn" id="supply-custom-open" type="button">Search all</button>
+        </div>
+    </div>
+
+    <div class="supply-grid">
+        {% for item in deal_catalog %}
+        <div class="supply-deal-card" data-supply-card="{{ item.key }}">
+            <div class="supply-deal-top">
+                <div class="supply-deal-name">{{ item.label }}</div>
+                <div class="supply-deal-unit">per {{ item.unit_label }}</div>
+            </div>
+            <div class="supply-deal-hint">{{ item.buy_hint }}</div>
+            <button class="ta-btn supply-find-btn" type="button"
+                    data-supply-key="{{ item.key }}" data-supply-label="{{ item.label }}">
+                Find best deals
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="supply-live-results" id="supply-live-results">
+        <div class="supply-live-head">
+            <div>
+                <div class="supply-live-title">Pick a supply item to look up live deals.</div>
+                <div class="supply-muted">Listings are ranked by delivered price per unit when pack size is detectable.</div>
+            </div>
+        </div>
+    </div>
+
+    <form class="supply-calculator" id="supply-calculator">
+        <label class="supply-calc-label">
+            Listing name
+            <input class="supply-input" name="name" placeholder="eBay 50 pack">
+        </label>
+        <label class="supply-calc-label">
+            Item price
+            <input class="supply-input" name="price" inputmode="decimal" placeholder="24.99">
+        </label>
+        <label class="supply-calc-label">
+            Shipping/tax
+            <input class="supply-input" name="shipping" inputmode="decimal" placeholder="0">
+        </label>
+        <label class="supply-calc-label">
+            Units
+            <input class="supply-input" name="units" inputmode="numeric" placeholder="50">
+        </label>
+        <button class="ta-btn" type="submit">Add compare</button>
+    </form>
+    <div class="supply-results" id="supply-results" aria-live="polite">
+        <div class="supply-muted">Add a few candidate listings and the cheapest delivered unit cost floats to the top.</div>
+    </div>
+</div>
 
 <div style="margin-bottom:16px;">
     <a class="ta-btn {% if not filter_status %}active{% endif %}" href="/team/admin/supply">All</a>
@@ -67,4 +418,321 @@
         </tbody>
     </table>
 </div>
+<script>
+(() => {
+    const marketplaces = [
+        {
+            name: "eBay",
+            url: (q) => `https://www.ebay.com/sch/i.html?_nkw=${q}&LH_BIN=1&_sop=15`,
+        },
+        {
+            name: "Amazon",
+            url: (q) => `https://www.amazon.com/s?k=${q}&s=price-asc-rank`,
+        },
+        {
+            name: "Temu",
+            url: (q) => `https://www.temu.com/search_result.html?search_key=${q}`,
+        },
+        {
+            name: "Walmart",
+            url: (q) => `https://www.walmart.com/search?q=${q}&sort=price_low`,
+        },
+        {
+            name: "Staples",
+            url: (q) => `https://www.staples.com/${q}/directory_${q}`,
+        },
+        {
+            name: "The Boxery",
+            url: (q) => `https://www.theboxery.com/SearchResults.asp?Search=${q}`,
+        },
+        {
+            name: "ValueMailers",
+            url: (q) => `https://www.valuemailers.com/search?q=${q}`,
+        },
+        {
+            name: "Paper Mart",
+            url: (q) => `https://www.papermart.com/search?q=${q}`,
+        },
+        {
+            name: "Uline",
+            url: (q) => `https://www.uline.com/Search?keywords=${q}`,
+        },
+        {
+            name: "SupplyLand",
+            url: (q) => `https://www.supplyland.com/search?query=${q}`,
+        },
+    ];
+    const customInput = document.getElementById("supply-custom-query");
+    const customOpen = document.getElementById("supply-custom-open");
+    const liveResults = document.getElementById("supply-live-results");
+    const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+    let activeLookupData = null;
+
+    function setActiveCard(key) {
+        document.querySelectorAll("[data-supply-card]").forEach((card) => {
+            card.classList.toggle("active", card.dataset.supplyCard === key);
+        });
+    }
+
+    function formatMoney(value) {
+        return typeof value === "number" ? formatter.format(value) : "n/a";
+    }
+
+    function formatRating(row) {
+        if (!row.rating && !row.rating_count) return "No review data";
+        const rating = row.rating ? `${row.rating.toFixed(1)} stars` : "Rating n/a";
+        const count = row.rating_count ? `${row.rating_count.toLocaleString()} reviews` : "review count n/a";
+        return `${rating} · ${count}`;
+    }
+
+    function formatShipping(row) {
+        const price = row.shipping_label || (typeof row.shipping === "number" ? formatMoney(row.shipping) : "see listing");
+        const speed = row.shipping_speed || "speed not listed";
+        return `Shipping: ${price} · ${speed}`;
+    }
+
+    function reliabilityText(row) {
+        const parts = [];
+        if (Array.isArray(row.reliability_reasons) && row.reliability_reasons.length) {
+            parts.push(row.reliability_reasons.join(", "));
+        }
+        if (Array.isArray(row.risk_warnings) && row.risk_warnings.length) {
+            parts.push(`Watch: ${row.risk_warnings.join(", ")}`);
+        }
+        if (row.is_saved_deal) {
+            parts.push("Saved deal; click through to confirm current price before ordering");
+        }
+        return parts.join(" · ") || "Reliability details unavailable";
+    }
+
+    function formatMarketProof(row) {
+        const extra = [];
+        if (typeof row.seller_positive === "number") extra.push(`${row.seller_positive.toFixed(1)}% seller positive`);
+        if (row.sold_count) extra.push(`${Number(row.sold_count).toLocaleString()}+ sold`);
+        return extra.join(" · ");
+    }
+
+    function marketplaceLinkHtml(links) {
+        return (links || []).map((link) => (
+            `<a class="supply-market-link" href="${link.url}" target="_blank" rel="noopener">${link.name}</a>`
+        )).join("");
+    }
+
+    function listingPassesFilters(row, filters) {
+        if (filters.source && row.source !== filters.source) return false;
+        if (filters.reliability && (row.risk_level || "medium") !== filters.reliability) return false;
+        if (!filters.reliability && (row.risk_level || "medium") === "high") return false;
+        if (filters.minUnits && (!row.units || Number(row.units) < filters.minUnits)) return false;
+        if (filters.minReviews && Number(row.rating_count || 0) < filters.minReviews && Number(row.sold_count || 0) < filters.minReviews) return false;
+        if (filters.maxUnitPrice && (row.unit_price === null || row.unit_price === undefined || Number(row.unit_price) > filters.maxUnitPrice)) return false;
+        if (filters.hideUnknownShipping && !row.shipping_speed) return false;
+        return true;
+    }
+
+    function currentFilters() {
+        return {
+            source: document.getElementById("supply-filter-source")?.value || "",
+            reliability: document.getElementById("supply-filter-reliability")?.value || "",
+            minUnits: Number(document.getElementById("supply-filter-min-units")?.value || 0),
+            minReviews: Number(document.getElementById("supply-filter-min-reviews")?.value || 0),
+            maxUnitPrice: Number(document.getElementById("supply-filter-max-unit")?.value || 0),
+            hideUnknownShipping: Boolean(document.getElementById("supply-filter-known-shipping")?.checked),
+        };
+    }
+
+    function renderLookup(data) {
+        if (!liveResults) return;
+        activeLookupData = data;
+        const filters = currentFilters();
+        const listings = (data.listings || []).filter((row) => listingPassesFilters(row, filters));
+        const allListings = data.listings || [];
+        const sources = [...new Set(allListings.map((row) => row.source).filter(Boolean))].sort();
+        const sourceNotes = Object.entries(data.sources || {})
+            .map(([source, status]) => `${source}: ${status}`)
+            .join(" · ");
+        const cacheNote = data.cache_status
+            ? `${data.cache_status}${data.cached_at ? ` Â· saved ${new Date(data.cached_at).toLocaleString()}` : ""}`
+            : "";
+        const sourceOptions = sources.map((source) => (
+            `<option value="${escapeHtml(source)}"${filters.source === source ? " selected" : ""}>${escapeHtml(source)}</option>`
+        )).join("");
+        const listingHtml = listings.length ? listings.map((row, index) => {
+            const units = row.units ? `${row.units.toLocaleString()} ${row.unit_label || "units"}` : "pack size unknown";
+            const unitPrice = row.unit_price !== null && row.unit_price !== undefined
+                ? `${formatMoney(row.unit_price)} / ${row.unit_label || "unit"}`
+                : "unit price n/a";
+            return `
+                <a class="supply-listing" href="${row.url}" target="_blank" rel="noopener">
+                    <div>
+                        <div class="supply-listing-title">
+                            <span class="supply-listing-source">${row.source}</span>
+                            <span class="supply-risk-badge ${row.risk_level || "medium"}">${escapeHtml(row.reliability_badge || "Check details")}</span>
+                            ${row.cached_listing ? '<span class="supply-risk-badge medium">Saved</span>' : ""}
+                            ${escapeHtml(row.title)}
+                        </div>
+                        <div class="supply-listing-meta">${formatRating(row)} · ${units}</div>
+                        ${formatMarketProof(row) ? `<div class="supply-listing-meta">${escapeHtml(formatMarketProof(row))}</div>` : ""}
+                        <div class="supply-listing-meta">${escapeHtml(formatShipping(row))}</div>
+                        <div class="supply-listing-meta">${escapeHtml(reliabilityText(row))}</div>
+                    </div>
+                    <div class="supply-listing-price">
+                        <div class="supply-unit-price">${unitPrice}</div>
+                        <div class="supply-total-price">${formatMoney(row.delivered_price)} delivered</div>
+                    </div>
+                </a>
+            `;
+        }).join("") : '<div class="supply-muted">No live listings parsed yet. Use the marketplace links below for direct search.</div>';
+        liveResults.innerHTML = `
+            <div class="supply-live-head">
+                <div>
+                    <div class="supply-live-title">Best deals for ${escapeHtml(data.item.label)}</div>
+                    ${cacheNote ? `<div class="supply-muted">${escapeHtml(cacheNote)}</div>` : ""}
+                    <div class="supply-muted">${escapeHtml(sourceNotes)}</div>
+                    <div class="supply-muted">${listings.length} of ${allListings.length} listings shown</div>
+                </div>
+                <div class="supply-link-row">${marketplaceLinkHtml(data.links)}</div>
+            </div>
+            <div class="supply-filters">
+                <label class="supply-filter-label">
+                    Site
+                    <select class="supply-select" id="supply-filter-source">
+                        <option value="">All parsed sites</option>
+                        ${sourceOptions}
+                    </select>
+                </label>
+                <label class="supply-filter-label">
+                    Reliability
+                    <select class="supply-select" id="supply-filter-reliability">
+                        <option value="">Recommended</option>
+                        <option value="low"${filters.reliability === "low" ? " selected" : ""}>Reliable only</option>
+                        <option value="medium"${filters.reliability === "medium" ? " selected" : ""}>Check details</option>
+                        <option value="high"${filters.reliability === "high" ? " selected" : ""}>Risky</option>
+                    </select>
+                </label>
+                <label class="supply-filter-label">
+                    Min qty
+                    <input class="supply-input" id="supply-filter-min-units" type="number" min="0" step="1" value="${filters.minUnits || ""}" placeholder="e.g. 50">
+                </label>
+                <label class="supply-filter-label">
+                    Min reviews/sold
+                    <input class="supply-input" id="supply-filter-min-reviews" type="number" min="0" step="1" value="${filters.minReviews || ""}" placeholder="e.g. 100">
+                </label>
+                <label class="supply-filter-label">
+                    Max unit price
+                    <input class="supply-input" id="supply-filter-max-unit" type="number" min="0" step="0.01" value="${filters.maxUnitPrice || ""}" placeholder="e.g. 0.50">
+                </label>
+                <label class="supply-filter-check">
+                    <input id="supply-filter-known-shipping" type="checkbox"${filters.hideUnknownShipping ? " checked" : ""}>
+                    Shipping info only
+                </label>
+            </div>
+            <div class="supply-listings">${listingHtml}</div>
+        `;
+        ["supply-filter-source", "supply-filter-reliability", "supply-filter-min-units", "supply-filter-min-reviews", "supply-filter-max-unit", "supply-filter-known-shipping"].forEach((id) => {
+            document.getElementById(id)?.addEventListener("input", () => renderLookup(activeLookupData));
+            document.getElementById(id)?.addEventListener("change", () => renderLookup(activeLookupData));
+        });
+    }
+
+    async function lookupDeals(key, label, options = {}) {
+        const refresh = Boolean(options.refresh);
+        setActiveCard(key);
+        if (liveResults && !refresh) {
+            liveResults.innerHTML = `
+                <div class="supply-live-head">
+                    <div>
+                        <div class="supply-live-title">Loading ${escapeHtml(label)}...</div>
+                        <div class="supply-muted">Showing saved deals first when available.</div>
+                    </div>
+                </div>
+            `;
+        }
+        try {
+            const url = `/team/admin/supply/deals?item=${encodeURIComponent(key)}${refresh ? "&refresh=true" : ""}`;
+            const response = await fetch(url, {
+                headers: { "Accept": "application/json" },
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            renderLookup(data);
+            if (!refresh && data.refreshing) {
+                lookupDeals(key, label, { refresh: true });
+            }
+        } catch (error) {
+            if (refresh) return;
+            if (liveResults) {
+                liveResults.innerHTML = `
+                    <div class="supply-live-title">Could not load live listings for ${escapeHtml(label)}.</div>
+                    <div class="supply-muted">${escapeHtml(error.message || "Unknown lookup error")}</div>
+                `;
+            }
+        }
+    }
+
+    document.querySelectorAll("[data-supply-key]").forEach((button) => {
+        button.addEventListener("click", () => lookupDeals(button.dataset.supplyKey, button.dataset.supplyLabel));
+    });
+
+    customOpen?.addEventListener("click", () => {
+        const query = (customInput?.value || "").trim();
+        if (!query) {
+            customInput?.focus();
+            return;
+        }
+        const encoded = encodeURIComponent(query).replaceAll("%20", "+");
+        marketplaces.forEach((market) => window.open(market.url(encoded), "_blank", "noopener"));
+    });
+
+    const form = document.getElementById("supply-calculator");
+    const results = document.getElementById("supply-results");
+    const comparisons = [];
+    const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+    function escapeHtml(value) {
+        const node = document.createElement("span");
+        node.textContent = value;
+        return node.innerHTML;
+    }
+
+    function parseAmount(value) {
+        const parsed = Number(String(value || "").replace(/[^0-9.]/g, ""));
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function renderComparisons() {
+        if (!results) return;
+        if (!comparisons.length) {
+            results.innerHTML = '<div class="supply-muted">Add a few candidate listings and the cheapest delivered unit cost floats to the top.</div>';
+            return;
+        }
+        const rows = [...comparisons].sort((a, b) => a.unitCost - b.unitCost);
+        results.innerHTML = rows.map((row, index) => `
+            <div class="supply-result-row">
+                <div>
+                    <strong>${index === 0 ? "Best: " : ""}${escapeHtml(row.name)}</strong>
+                    <div class="supply-muted">${money.format(row.total)} delivered / ${row.units} units</div>
+                </div>
+                <div class="supply-result-unit">${money.format(row.unitCost)} ea</div>
+            </div>
+        `).join("");
+    }
+
+    form?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        const name = String(data.get("name") || "").trim() || `Listing ${comparisons.length + 1}`;
+        const price = parseAmount(data.get("price"));
+        const shipping = parseAmount(data.get("shipping"));
+        const units = Math.max(1, Math.floor(parseAmount(data.get("units"))));
+        if (price <= 0) {
+            form.querySelector('[name="price"]')?.focus();
+            return;
+        }
+        const total = price + shipping;
+        comparisons.push({ name, total, units, unitCost: total / units });
+        form.reset();
+        renderComparisons();
+    });
+})();
+</script>
 {% endblock %}

@@ -654,6 +654,37 @@
         color: var(--lx-muted);
         margin-bottom: 14px;
     }
+    .sch-guide-card {
+        margin-bottom: 14px;
+        padding: 0;
+        border: 1px solid rgba(255, 107, 74, 0.22);
+        border-radius: 10px;
+        background: rgba(255, 107, 74, 0.07);
+    }
+    .sch-guide-card summary {
+        cursor: pointer;
+        padding: 12px 14px;
+        color: var(--lx-text);
+        font-size: 13px;
+        font-weight: 800;
+        list-style-position: inside;
+    }
+    .sch-guide-body {
+        padding: 0 14px 14px;
+        color: var(--lx-muted);
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .sch-guide-body ol {
+        margin: 8px 0 0 18px;
+        padding: 0;
+        display: grid;
+        gap: 6px;
+    }
+    .sch-guide-body a {
+        color: #fdba74;
+        font-weight: 700;
+    }
 
     /* ------- Modal: recurrence link + sub-modal + stream fields ------- */
     /* 7shifts-style recurrence link: replaces the old "Repeat weekly [N]"
@@ -1431,6 +1462,28 @@
 
 {% block content %}
 {% if flash %}<div class="ta-flash success">{{ flash }}</div>{% endif %}
+
+<details class="sch-guide-card">
+    <summary>How to schedule people</summary>
+    <div class="sch-guide-body">
+        <p style="margin:0;">
+            Fast path: pick the week, tap <strong>Edit schedule</strong>, add the employee to the roster if needed,
+            click their day cell, choose the shift type, set times/notes, then save the storefront schedule.
+        </p>
+        <ol>
+            <li><strong>Pick the week:</strong> Prev, Next, or Jump to this week. Weeks start Monday.</li>
+            <li><strong>Turn on editing:</strong> Edit schedule makes cells clickable and shows roster controls.</li>
+            <li><strong>Add roster people:</strong> use the roster picker. If someone is missing, mark them On schedule on Employees.</li>
+            <li><strong>Click a cell:</strong> choose Shift, OFF, SHOW, REQUEST, Stream, or IF NEEDED in the edit sheet.</li>
+            <li><strong>Set time and repeat:</strong> enter start/end, add a note, or use repeat/generate from last week when it saves time.</li>
+            <li><strong>Save:</strong> unsaved changes get a dot. Storefront and Stream grids save separately.</li>
+        </ol>
+        <p style="margin:10px 0 0;">
+            Need the full page-by-page breakdown? <a href="/team/admin/tutorial#schedule-guide">Open the Team Admin guide</a>.
+            Want screenshots? <a href="/team/admin/tutorial#schedule-example">See the Tour Employee example</a>.
+        </p>
+    </div>
+</details>
 
 <div class="sch-toolbar">
     <div class="sch-week-btns">

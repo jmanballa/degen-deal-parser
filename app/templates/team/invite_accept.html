@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link rel="stylesheet" href="/static/linear.css?v=2026042020">
     <link rel="stylesheet" href="/static/safe-area.css?v=2026042026">
-    <link rel="stylesheet" href="/static/portal.css?v=2026042607">
+    <link rel="stylesheet" href="/static/portal.css?v=2026042801">
 </head>
 <body class="onb-body">
 
@@ -55,6 +55,28 @@
 
         <!-- Step 1: Welcome -->
         <section class="onb-step active" data-step="0">
+            {% if show_manager_tutorial %}
+            <div class="onb-eyebrow">Manager setup</div>
+            <h1 class="onb-title">Set up your manager account.</h1>
+            <p class="onb-lede">
+                We will grab the basics, then show you exactly where to schedule people,
+                handle requests, post announcements, and ask for help. Takes about two minutes.
+            </p>
+            <div class="onb-role-brief" aria-label="Manager setup preview">
+                <div>
+                    <strong>Schedule people</strong>
+                    <span>Admin, then Schedule, then Edit schedule.</span>
+                </div>
+                <div>
+                    <strong>Handle requests</strong>
+                    <span>Time off, supply queue, and announcements live in Admin.</span>
+                </div>
+                <div>
+                    <strong>Get unstuck</strong>
+                    <span>The Help page keeps the manager tour and scheduling guide.</span>
+                </div>
+            </div>
+            {% else %}
             <div class="onb-eyebrow">Welcome, trainer</div>
             <h1 class="onb-title">Let's get you set up.</h1>
             <p class="onb-lede">
@@ -62,6 +84,7 @@
                 nothing sensitive leaves your device in the clear, and everything gets
                 encrypted before it's stored. Takes about two minutes.
             </p>
+            {% endif %}
             <div class="onb-actions">
                 <div class="spacer"></div>
                 <button type="button" class="onb-btn" data-next>Start →</button>
@@ -265,22 +288,35 @@
             <div class="onb-actions">
                 <button type="button" class="onb-btn ghost" data-back>Back</button>
                 <div class="spacer"></div>
-                <button type="button" class="onb-btn" data-next>{% if show_employee_tutorial %}Next: portal tour ->{% else %}Review account ->{% endif %}</button>
+                <button type="button" class="onb-btn" data-next>{% if show_portal_tutorial %}Next: portal tour ->{% else %}Review account ->{% endif %}</button>
             </div>
         </section>
 
-        {% if show_employee_tutorial %}
-        <!-- Step 7: employee portal tour -->
+        {% if show_portal_tutorial %}
+        <!-- Step 7: portal tour -->
         <section class="onb-step onb-step-wide" data-step="6">
-            <div class="onb-eyebrow">Step 6 of {{ setup_step_total|default(7) }} - Employee portal tour</div>
-            <h1 class="onb-title">Know where everything lives.</h1>
-            <p class="onb-lede">
-                Quick map for shifts, hours, estimated pay, announcements, policies,
-                supplies, and getting help. You can skip this and reopen it from Help later.
-            </p>
+            {% if show_manager_tutorial %}
+              <div class="onb-eyebrow">Step 6 of {{ setup_step_total|default(7) }} - Manager portal tour</div>
+              <h1 class="onb-title">Learn the manager basics.</h1>
+              <p class="onb-lede">
+                  If you only remember one thing: open Admin, then Schedule, then Edit schedule.
+                  This tour points at the pages you will use most.
+              </p>
+            {% else %}
+              <div class="onb-eyebrow">Step 6 of {{ setup_step_total|default(7) }} - Employee portal tour</div>
+              <h1 class="onb-title">Know where everything lives.</h1>
+              <p class="onb-lede">
+                  Quick map for shifts, hours, estimated pay, announcements, policies,
+                  supplies, and getting help. You can skip this and reopen it from Help later.
+              </p>
+            {% endif %}
 
             {% set tutorial_links = false %}
-            {% include "team/_employee_portal_tutorial.html" %}
+            {% if show_manager_tutorial %}
+              {% include "team/_manager_portal_tutorial.html" %}
+            {% else %}
+              {% include "team/_employee_portal_tutorial.html" %}
+            {% endif %}
 
             <div class="onb-actions">
                 <button type="button" class="onb-btn ghost" data-back>Back</button>
@@ -297,7 +333,7 @@
             <h1 class="onb-title">Ready to roll?</h1>
             <p class="onb-lede">
                 Quick check. Everything sensitive is encrypted at rest.
-                {% if show_employee_tutorial %}The portal tour is always available from Help.{% endif %}
+                {% if show_portal_tutorial %}The portal tour is always available from Help.{% endif %}
             </p>
 
             <div class="onb-review" id="review-card">

@@ -24,9 +24,15 @@
       <span>Request cards, sleeves, labels, or anything missing.</span>
     </a>
     <a class="pt-help-tile" href="/team/help/tutorial">
-      <strong>Employee portal tour</strong>
-      <span>Quick guide for shifts, hours, pay, announcements, policies, profile, and help.</span>
+      <strong>{% if current_user and current_user.role == "manager" %}Manager{% else %}Employee{% endif %} portal tour</strong>
+      <span>Quick guide for shifts, hours, schedules, announcements, policies, profile, and help.</span>
     </a>
+    {% if current_user and current_user.role in ("admin", "manager", "reviewer") %}
+    <a class="pt-help-tile" href="/team/admin/tutorial">
+      <strong>Team Admin guide</strong>
+      <span>How to schedule people, clear manager queues, and know what each admin page does.</span>
+    </a>
+    {% endif %}
   </div>
 </div>
 

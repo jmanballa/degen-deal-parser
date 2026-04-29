@@ -14,6 +14,7 @@ data/attachments/
 data/hit_images/
 data/scraper/
 data/v2_scan_history.jsonl
+data/supply_deal_cache.json
 data/v2_eval/
 data/v2_pending_scans/
 data/v2_training_scans/
