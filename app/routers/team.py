@@ -788,9 +788,18 @@ def team_dashboard(
     widgets = perms.allowed_widgets_for(session, user)
     settings = get_settings()
     clockify_ready = clockify_is_configured(settings)
-    supply_queue_count = 0
-    if has_permission(session, user, "admin.supply.view"):
-        supply_queue_count = int(
+    show_supply_queue_count = has_permission(session, user, "admin.supply.view")
+    dashboard_context: dict[str, Any] = {
+        "request": request,
+        "title": "Dashboard",
+        "active": "dashboard",
+        "current_user": user,
+        "widgets": widgets,
+        "clockify_ready": clockify_ready,
+        "show_supply_queue_count": show_supply_queue_count,
+    }
+    if show_supply_queue_count:
+        dashboard_context["supply_queue_count"] = int(
             session.exec(
                 select(func.count())
                 .select_from(SupplyRequest)
@@ -812,17 +821,8 @@ def team_dashboard(
         clockify_ready=clockify_ready,
     )
     nav_ctx = _nav_context(session, user)
-    return templates.TemplateResponse(
-        request,
-        "team/dashboard.html",
+    dashboard_context.update(
         {
-            "request": request,
-            "title": "Dashboard",
-            "active": "dashboard",
-            "current_user": user,
-            "widgets": widgets,
-            "clockify_ready": clockify_ready,
-            "supply_queue_count": supply_queue_count,
             "dashboard_pay": pay_summary,
             "today_shifts": today_shifts,
             "next_shift": next_shift,
@@ -841,7 +841,12 @@ def team_dashboard(
             "now_hour": _portal_now(settings=settings).hour,
             "csrf_token": issue_token(request),
             **nav_ctx,
-        },
+        }
+    )
+    return templates.TemplateResponse(
+        request,
+        "team/dashboard.html",
+        dashboard_context,
     )
 
 

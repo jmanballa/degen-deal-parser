@@ -241,6 +241,14 @@ class RateLimiterTests(unittest.TestCase):
         importlib.reload(rate_limit)
         self.assertFalse(rate_limit.check(key, max_requests=1, window_seconds=60))
 
+    def test_limit_survives_new_limiter_table_state(self):
+        from app import rate_limit
+
+        key = "login:new-limiter"
+        self.assertTrue(rate_limit.check(key, max_requests=1, window_seconds=60))
+        rate_limit._TABLE_READY = False
+        self.assertFalse(rate_limit.check(key, max_requests=1, window_seconds=60))
+
 
 class SeedDefaultsTests(unittest.TestCase):
     def test_seed_is_idempotent(self):

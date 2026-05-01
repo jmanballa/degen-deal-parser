@@ -229,7 +229,8 @@ class EmployeeTokenRevocationTests(unittest.TestCase):
         response = asyncio.run(
             admin_employee_terminate_post(request, self.admin.id, session=self.session)
         )
-        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cannot terminate", response.body.decode("utf-8"))
         self.session.expire_all()
         self.assertTrue(self.session.get(type(self.admin), self.admin.id).is_active)
 
@@ -295,7 +296,8 @@ class EmployeeTokenRevocationTests(unittest.TestCase):
                 session=self.session,
             )
         )
-        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("cannot purge", response.body.decode("utf-8"))
         self.session.expire_all()
         self.assertEqual(self.session.get(type(self.admin), self.admin.id).username, "admin-token")
 

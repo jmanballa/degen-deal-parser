@@ -112,6 +112,14 @@
     <div class="pt-widget-value">{{ pay.estimated_pay_label|default('$0.00') }}</div>
     <div class="pt-widget-sub">{{ pay.pay_basis|default('Clockify hours plus pay rate') }}</div>
   </a>
+
+  {% if show_supply_queue_count|default(false) %}
+  <a class="pt-widget" href="/team/admin/supply" style="display:block;">
+    <div class="pt-widget-label">Supply queue</div>
+    <div class="pt-widget-value">{{ supply_queue_count }}</div>
+    <div class="pt-widget-sub">Pending requests</div>
+  </a>
+  {% endif %}
 </section>
 
 <section class="pt-dashboard-lower">

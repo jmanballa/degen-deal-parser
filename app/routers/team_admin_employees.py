@@ -553,10 +553,10 @@ def _employee_detail_redirect(user_id: int, flash: str) -> RedirectResponse:
     )
 
 
-def _admin_self_action_redirect(user_id: int, action: str) -> RedirectResponse:
-    return _employee_detail_redirect(
-        user_id,
+def _admin_self_action_rejected(action: str) -> HTMLResponse:
+    return HTMLResponse(
         f"You cannot {action} your own admin account.",
+        status_code=400,
     )
 
 
@@ -2209,7 +2209,7 @@ def admin_employee_terminate_page(
     if denial:
         return denial
     if current.id == user_id:
-        return _admin_self_action_redirect(user_id, "terminate")
+        return _admin_self_action_rejected("terminate")
     employee = session.get(User, user_id)
     if employee is None:
         return HTMLResponse("Employee not found", status_code=404)
@@ -2239,7 +2239,7 @@ async def admin_employee_terminate_post(
     if denial:
         return denial
     if current.id == user_id:
-        return _admin_self_action_redirect(user_id, "terminate")
+        return _admin_self_action_rejected("terminate")
     employee = session.get(User, user_id)
     if employee is None:
         return HTMLResponse("Employee not found", status_code=404)
@@ -2512,7 +2512,7 @@ def admin_employee_purge_page(
     if denial:
         return denial
     if current.id == user_id:
-        return _admin_self_action_redirect(user_id, "purge")
+        return _admin_self_action_rejected("purge")
     employee = session.get(User, user_id)
     if employee is None:
         return HTMLResponse("Employee not found", status_code=404)
@@ -2544,7 +2544,7 @@ async def admin_employee_purge_post(
     if denial:
         return denial
     if current.id == user_id:
-        return _admin_self_action_redirect(user_id, "purge")
+        return _admin_self_action_rejected("purge")
     employee = session.get(User, user_id)
     if employee is None:
         return HTMLResponse("Employee not found", status_code=404)
