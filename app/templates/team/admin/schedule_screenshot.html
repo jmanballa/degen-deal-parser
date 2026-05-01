@@ -1,0 +1,379 @@
+<!doctype html>
+{#
+    Phone-screenshot-friendly schedule view.
+
+    Standalone page: no portal nav, no sidebar, no edit affordances. The
+    layout is a narrow stack of per-day cards so a portrait phone
+    screenshot shows the full week without horizontal scroll. Two
+    sections — Storefront and Stream — match the editor's data shape so
+    nothing is hidden vs. /team/admin/schedule.
+#}
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>{{ title }}</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0f172a;
+            --card: #111827;
+            --soft: #1f2937;
+            --border: #1e293b;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --accent: #fdba74;
+            --work: #86efac;
+            --off: #a8a29e;
+            --show: #60a5fa;
+            --request: #f87171;
+            --stream: #bbf7d0;
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                         Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .ss-page {
+            max-width: 420px;
+            margin: 0 auto;
+            padding: 16px 14px 28px;
+        }
+        .ss-head {
+            text-align: center;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        .ss-head h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+        .ss-head .ss-week {
+            margin-top: 4px;
+            font-size: 13px;
+            color: var(--muted);
+            font-weight: 500;
+        }
+        .ss-head .ss-cur {
+            color: var(--work);
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .ss-section-title {
+            margin: 18px 0 8px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+        .ss-day {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            padding: 10px 12px;
+        }
+        .ss-day.is-today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+        .ss-day.is-closed { opacity: 0.85; }
+        .ss-day-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            border-bottom: 1px dashed var(--border);
+            padding-bottom: 6px;
+            margin-bottom: 6px;
+        }
+        .ss-day-name {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .ss-day-name .ss-today-tag { color: var(--accent); margin-left: 6px; font-size: 11px; font-weight: 600; }
+        .ss-day-date {
+            font-size: 11.5px;
+            color: var(--muted);
+        }
+        .ss-day-loc {
+            font-size: 11px;
+            color: #fca5a5;
+            margin-bottom: 6px;
+        }
+        .ss-day-closed {
+            font-size: 11.5px;
+            color: var(--muted);
+            font-style: italic;
+            margin-bottom: 4px;
+        }
+        .ss-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 4px 0;
+            font-size: 13px;
+            line-height: 1.3;
+        }
+        .ss-row + .ss-row { border-top: 1px solid var(--border); }
+        .ss-pip {
+            flex: 0 0 auto;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-top: 6px;
+            background: var(--work);
+        }
+        .ss-pip.k-off       { background: var(--off); }
+        .ss-pip.k-show      { background: var(--show); }
+        .ss-pip.k-request   { background: var(--request); }
+        .ss-pip.k-stream,
+        .ss-pip.k-if_needed { background: var(--stream); }
+        .ss-pip.k-all_day   { background: var(--work); }
+        .ss-row-body { flex: 1 1 auto; min-width: 0; }
+        .ss-row-name {
+            font-weight: 600;
+            color: var(--text);
+        }
+        .ss-row-time {
+            font-weight: 500;
+            color: var(--text);
+            margin-left: 4px;
+        }
+        .ss-row-tag {
+            display: inline-block;
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 999px;
+            margin-left: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+            background: var(--soft);
+            color: var(--muted);
+            vertical-align: middle;
+        }
+        .ss-row-tag.k-off { background: rgba(168,162,158,0.18); color: #d6d3d1; }
+        .ss-row-tag.k-show { background: rgba(96,165,250,0.18); color: #93c5fd; }
+        .ss-row-tag.k-request { background: rgba(248,113,113,0.18); color: #fca5a5; }
+        .ss-row-tag.k-stream,
+        .ss-row-tag.k-if_needed { background: rgba(187,247,208,0.18); color: #bbf7d0; }
+        .ss-row-note {
+            display: block;
+            font-size: 11.5px;
+            color: var(--muted);
+            margin-top: 2px;
+            font-style: italic;
+        }
+        .ss-row-acct {
+            display: inline-block;
+            font-size: 10.5px;
+            color: var(--muted);
+            margin-left: 6px;
+        }
+        .ss-row-acct .ss-acct-sw {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+            vertical-align: middle;
+            margin-right: 3px;
+            border: 1px solid var(--border);
+        }
+        .ss-empty {
+            font-size: 12px;
+            color: var(--muted);
+            font-style: italic;
+        }
+        .ss-foot {
+            margin-top: 18px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--muted);
+            text-align: center;
+        }
+        .ss-foot a { color: var(--accent); text-decoration: none; }
+        .ss-noprint { margin: 14px 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+        .ss-btn {
+            font-size: 12px;
+            padding: 6px 10px;
+            background: var(--soft);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            text-decoration: none;
+        }
+        .ss-btn.is-current { color: var(--accent); }
+        @media print {
+            .ss-noprint { display: none; }
+            body { background: #fff; color: #000; }
+            .ss-day { background: #fff; border-color: #ccc; }
+            .ss-row + .ss-row { border-top-color: #eee; }
+        }
+    </style>
+</head>
+<body>
+<main class="ss-page" id="ss-screenshot-root">
+    <header class="ss-head">
+        <h1>Schedule</h1>
+        <div class="ss-week">
+            Week of {{ week_start.strftime('%b') }} {{ week_start.day }}, {{ week_start.year }}
+            {% if is_current_week %}<span class="ss-cur">· this week</span>{% endif %}
+        </div>
+    </header>
+
+    <nav class="ss-noprint" aria-label="Week navigation">
+        <a class="ss-btn" href="/team/admin/schedule/screenshot?week={{ prev_week }}">← Prev</a>
+        {% if not is_current_week %}
+        <a class="ss-btn is-current" href="/team/admin/schedule/screenshot?week={{ this_week }}">This week</a>
+        {% endif %}
+        <a class="ss-btn" href="/team/admin/schedule/screenshot?week={{ next_week }}">Next →</a>
+    </nav>
+
+    {# ---------- Storefront ---------- #}
+    <h2 class="ss-section-title">Storefront</h2>
+    {% set sf = storefront %}
+    {% if sf.users %}
+        {% for d in sf.week_days %}
+        {% set iso = d.isoformat() %}
+        {% set is_today = (d == today) %}
+        {% set closure = sf.closure_map.get(iso) %}
+        {% set note = sf.day_note_map.get(iso) %}
+        {% set day_rows = [] %}
+        {% for u in sf.users %}
+            {% set entries = sf.entry_map.get((u.id, iso)) or [] %}
+            {% if entries %}
+                {% for e in entries %}
+                    {% set parts = (e.label or '').split(' · ') %}
+                    {% set _ = day_rows.append({
+                        'name': u.display_name or u.username,
+                        'kind': e.kind or 'work',
+                        'time': parts[0],
+                        'note': (parts[1:]|join(' · ')) if parts|length > 1 else '',
+                    }) %}
+                {% endfor %}
+            {% endif %}
+        {% endfor %}
+        <section class="ss-day {% if is_today %}is-today{% endif %} {% if closure %}is-closed{% endif %}">
+            <div class="ss-day-head">
+                <div class="ss-day-name">
+                    {{ d.strftime('%A') }}
+                    {% if is_today %}<span class="ss-today-tag">today</span>{% endif %}
+                </div>
+                <div class="ss-day-date">{{ d.strftime('%b') }} {{ d.day }}</div>
+            </div>
+            {% if note and note.location_label %}
+            <div class="ss-day-loc">📍 {{ note.location_label }}</div>
+            {% endif %}
+            {% if closure %}
+            <div class="ss-day-closed">Store closed{% if closure.label %} — {{ closure.label }}{% endif %}.</div>
+            {% endif %}
+            {% if day_rows %}
+                {% for r in day_rows %}
+                <div class="ss-row">
+                    <span class="ss-pip k-{{ r.kind }}"></span>
+                    <div class="ss-row-body">
+                        <span class="ss-row-name">{{ r.name }}</span>
+                        {% if r.kind == 'off' %}
+                            <span class="ss-row-tag k-off">Off</span>
+                        {% elif r.kind == 'show' %}
+                            <span class="ss-row-tag k-show">Show</span>
+                            {% if r.time %}<span class="ss-row-time">· {{ r.time }}</span>{% endif %}
+                        {% elif r.kind == 'request' %}
+                            <span class="ss-row-tag k-request">Time-off req</span>
+                            {% if r.time %}<span class="ss-row-time">· {{ r.time }}</span>{% endif %}
+                        {% elif r.kind == 'if_needed' %}
+                            <span class="ss-row-tag k-if_needed">If needed</span>
+                            {% if r.time %}<span class="ss-row-time">· {{ r.time }}</span>{% endif %}
+                        {% elif r.kind == 'stream' %}
+                            <span class="ss-row-tag k-stream">Stream</span>
+                            {% if r.time %}<span class="ss-row-time">· {{ r.time }}</span>{% endif %}
+                        {% else %}
+                            {% if r.time %}<span class="ss-row-time">{{ r.time }}</span>{% endif %}
+                        {% endif %}
+                        {% if r.note %}<span class="ss-row-note">{{ r.note }}</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% elif not closure %}
+                <div class="ss-empty">No shifts.</div>
+            {% endif %}
+        </section>
+        {% endfor %}
+    {% else %}
+    <p class="ss-empty">No one on the storefront roster this week.</p>
+    {% endif %}
+
+    {# ---------- Stream ---------- #}
+    <h2 class="ss-section-title">Stream</h2>
+    {% if stream.users %}
+        {% for d in stream.week_days %}
+        {% set iso = d.isoformat() %}
+        {% set is_today = (d == today) %}
+        {% set day_rows = [] %}
+        {% for u in stream.users %}
+            {% set hints = (stream.stream_hint_map.get((u.id, iso)) if stream.stream_hint_map else None) or [] %}
+            {% if hints %}
+                {% for h in hints %}
+                    {% set _ = day_rows.append({
+                        'name': u.display_name or u.username,
+                        'time': h.label,
+                        'account_name': h.account_name,
+                        'color': h.color,
+                        'note': h.title or '',
+                    }) %}
+                {% endfor %}
+            {% endif %}
+        {% endfor %}
+        {% if day_rows %}
+        <section class="ss-day {% if is_today %}is-today{% endif %}">
+            <div class="ss-day-head">
+                <div class="ss-day-name">
+                    {{ d.strftime('%A') }}
+                    {% if is_today %}<span class="ss-today-tag">today</span>{% endif %}
+                </div>
+                <div class="ss-day-date">{{ d.strftime('%b') }} {{ d.day }}</div>
+            </div>
+            {% for r in day_rows %}
+            <div class="ss-row">
+                <span class="ss-pip k-stream" style="background: {{ r.color }};"></span>
+                <div class="ss-row-body">
+                    <span class="ss-row-name">{{ r.name }}</span>
+                    <span class="ss-row-time">· {{ r.time }}</span>
+                    <span class="ss-row-acct">
+                        <span class="ss-acct-sw" style="background: {{ r.color }};"></span>{{ r.account_name }}
+                    </span>
+                    {% if r.note %}<span class="ss-row-note">{{ r.note }}</span>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+        {% endfor %}
+        {% set stream_total = namespace(n=0) %}
+        {% for d in stream.week_days %}
+            {% for u in stream.users %}
+                {% set hints = (stream.stream_hint_map.get((u.id, d.isoformat())) if stream.stream_hint_map else None) or [] %}
+                {% if hints %}{% set stream_total.n = stream_total.n + (hints|length) %}{% endif %}
+            {% endfor %}
+        {% endfor %}
+        {% if stream_total.n == 0 %}
+        <p class="ss-empty">No streams scheduled this week.</p>
+        {% endif %}
+    {% else %}
+    <p class="ss-empty">No streamers on the roster this week.</p>
+    {% endif %}
+
+    <footer class="ss-foot ss-noprint">
+        <a href="/team/admin/schedule?week={{ week_start.isoformat() }}">← Back to editor</a>
+    </footer>
+</main>
+</body>
+</html>

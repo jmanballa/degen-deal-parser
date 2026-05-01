@@ -968,6 +968,59 @@ def admin_schedule_view(
     )
 
 
+@router.get(
+    "/team/admin/schedule/screenshot",
+    response_class=HTMLResponse,
+)
+def admin_schedule_screenshot(
+    request: Request,
+    week: Optional[str] = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    """Phone-screenshot-friendly read-only schedule view.
+
+    Same week selection contract as /team/admin/schedule (?week=YYYY-MM-DD,
+    snapped to Monday). Renders a narrow, chrome-light page Jeffrey can
+    grab a clean phone screenshot of and drop into Discord/SMS without
+    any nav/sidebar/edit affordances bleeding into the image.
+    """
+    denial, user = _permission_gate(request, session, "admin.schedule.view")
+    if denial:
+        return denial
+    week_start = _parse_week_start(week)
+    storefront_ctx = _grid_context(
+        session,
+        week_start,
+        staff_kind=STAFF_KIND_STOREFRONT,
+        include_financials=False,
+    )
+    stream_ctx = _grid_context(
+        session,
+        week_start,
+        staff_kind=STAFF_KIND_STREAM,
+        include_financials=False,
+    )
+    return templates.TemplateResponse(
+        request,
+        "team/admin/schedule_screenshot.html",
+        {
+            "request": request,
+            "title": "Schedule (screenshot)",
+            "current_user": user,
+            "storefront": storefront_ctx,
+            "stream": stream_ctx,
+            "week_start": storefront_ctx["week_start"],
+            "week_days": storefront_ctx["week_days"],
+            "day_note_map": storefront_ctx["day_note_map"],
+            "prev_week": storefront_ctx["prev_week"],
+            "next_week": storefront_ctx["next_week"],
+            "this_week": storefront_ctx["this_week"],
+            "is_current_week": storefront_ctx["is_current_week"],
+            "today": clockify_today(),
+        },
+    )
+
+
 @router.post(
     "/team/admin/schedule",
     dependencies=[Depends(require_csrf)],

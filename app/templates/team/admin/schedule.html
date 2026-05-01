@@ -1513,6 +1513,14 @@
         {% else %}
         <span style="font-size:12px; color:var(--lx-muted);">View only — no edit permission.</span>
         {% endif %}
+        <a class="sch-edit-btn"
+           id="sch-screenshot-link"
+           href="/team/admin/schedule/screenshot?week={{ week_start_iso }}"
+           target="_blank"
+           rel="noopener"
+           title="Open a phone-screenshot-friendly view of this week.">
+            📱 Screenshot view
+        </a>
     </div>
 </div>
 
