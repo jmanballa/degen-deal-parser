@@ -362,6 +362,139 @@ class ScheduleMobileTests(unittest.TestCase):
         finally:
             ctx.close()
 
+    def test_touch_drag_then_click_does_not_open_editor_on_mobile_viewport(self):
+        """A scroll/drag gesture ending on a shift must not become a tap."""
+        ctx, page = self._open_page(
+            viewport={"width": 390, "height": 844},
+            has_touch=True,
+            is_mobile=True,
+        )
+        try:
+            supports_synthetic_drag = page.evaluate(
+                """() => {
+                    let pointerOk = false;
+                    let touchOk = false;
+                    try {
+                        if (window.PointerEvent) {
+                            new PointerEvent('pointerdown', {pointerType: 'touch'});
+                            pointerOk = true;
+                        }
+                    } catch (_) {}
+                    try {
+                        if (window.TouchEvent && typeof Touch === 'function') {
+                            const target = document.body;
+                            const touch = new Touch({
+                                identifier: 1,
+                                target,
+                                clientX: 1,
+                                clientY: 1,
+                            });
+                            new TouchEvent('touchstart', {touches: [touch]});
+                            touchOk = true;
+                        }
+                    } catch (_) {}
+                    return pointerOk || touchOk;
+                }"""
+            )
+            if not supports_synthetic_drag:
+                self.skipTest("browser cannot synthesize touch/pointer drag")
+
+            page.evaluate(
+                """sel => {
+                    const el = document.querySelector(sel);
+                    if (!el) throw new Error('cell not found: ' + sel);
+                    el.scrollIntoView({block: 'center'});
+                    const start = {x: 120, y: 120};
+                    const end = {x: 124, y: 148};
+
+                    let pointerEvents = null;
+                    try {
+                        if (window.PointerEvent) {
+                            pointerEvents = [
+                                new PointerEvent('pointerdown', {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    pointerId: 7,
+                                    pointerType: 'touch',
+                                    clientX: start.x,
+                                    clientY: start.y,
+                                }),
+                                new PointerEvent('pointermove', {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    pointerId: 7,
+                                    pointerType: 'touch',
+                                    clientX: end.x,
+                                    clientY: end.y,
+                                }),
+                                new PointerEvent('pointerup', {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    pointerId: 7,
+                                    pointerType: 'touch',
+                                    clientX: end.x,
+                                    clientY: end.y,
+                                }),
+                            ];
+                        }
+                    } catch (_) {
+                        pointerEvents = null;
+                    }
+                    if (pointerEvents) pointerEvents.forEach(ev => el.dispatchEvent(ev));
+
+                    try {
+                        if (!(window.TouchEvent && typeof Touch === 'function')) {
+                            throw new Error('Touch constructor unavailable');
+                        }
+                        const t0 = new Touch({
+                            identifier: 9,
+                            target: el,
+                            clientX: start.x,
+                            clientY: start.y,
+                        });
+                        const t1 = new Touch({
+                            identifier: 9,
+                            target: el,
+                            clientX: end.x,
+                            clientY: end.y,
+                        });
+                        el.dispatchEvent(new TouchEvent('touchstart', {
+                            bubbles: true,
+                            cancelable: true,
+                            touches: [t0],
+                            changedTouches: [t0],
+                        }));
+                        el.dispatchEvent(new TouchEvent('touchmove', {
+                            bubbles: true,
+                            cancelable: true,
+                            touches: [t1],
+                            changedTouches: [t1],
+                        }));
+                        el.dispatchEvent(new TouchEvent('touchend', {
+                            bubbles: true,
+                            cancelable: true,
+                            changedTouches: [t1],
+                        }));
+                    } catch (_) {}
+
+                    el.dispatchEvent(new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: end.x,
+                        clientY: end.y,
+                    }));
+                }""",
+                self._cell_selector(),
+            )
+            page.wait_for_timeout(150)
+            self.assertEqual(
+                page.locator("#sch-modal.is-open").count(),
+                0,
+                "scroll gestures must not open the shift editor",
+            )
+        finally:
+            ctx.close()
+
     def test_mobile_sticky_left_column_and_edit_actions(self):
         """Layout sanity: at 390px the name column is sticky-left so it
         doesn't disappear behind horizontal scroll, and the inline Save /

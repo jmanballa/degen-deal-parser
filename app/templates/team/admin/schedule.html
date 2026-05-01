@@ -2643,6 +2643,119 @@
         try { console.log.apply(console, ['[sch]'].concat([].slice.call(arguments))); } catch (_) {}
     }
 
+    var TAP_MOVE_THRESHOLD_PX = 10;
+    var TAP_MOVE_THRESHOLD_SQ = TAP_MOVE_THRESHOLD_PX * TAP_MOVE_THRESHOLD_PX;
+    var TAP_MAX_DURATION_MS = 900;
+    var TAP_SUPPRESS_AFTER_SCROLL_MS = 450;
+    var scheduleTapSuppressUntil = 0;
+
+    function isTouchDevice() {
+        return (('ontouchstart' in window) || navigator.maxTouchPoints > 0);
+    }
+
+    function isTouchLikeActivation(ev) {
+        if (!ev) return false;
+        if (ev.pointerType) return ev.pointerType !== 'mouse';
+        if (ev.type && ev.type.indexOf('touch') === 0) return true;
+        return ev.type === 'click' && isTouchDevice();
+    }
+
+    function pointFromEvent(ev) {
+        var src = null;
+        if (ev && ev.touches && ev.touches.length) src = ev.touches[0];
+        else if (ev && ev.changedTouches && ev.changedTouches.length) src = ev.changedTouches[0];
+        else src = ev;
+        if (!src || typeof src.clientX !== 'number' || typeof src.clientY !== 'number') return null;
+        return { x: src.clientX, y: src.clientY };
+    }
+
+    function suppressScheduleTapsFor(ms) {
+        scheduleTapSuppressUntil = Math.max(scheduleTapSuppressUntil, Date.now() + ms);
+    }
+
+    function installTapGuard(el) {
+        if (!el || el.dataset.schTapGuard === '1') return;
+        el.dataset.schTapGuard = '1';
+        var tapState = null;
+
+        function begin(ev) {
+            if (!isTouchLikeActivation(ev)) return;
+            var pt = pointFromEvent(ev);
+            if (!pt) return;
+            tapState = {
+                x: pt.x,
+                y: pt.y,
+                t: Date.now(),
+                moved: false,
+                pointerId: ev.pointerId
+            };
+        }
+
+        function update(ev) {
+            if (!tapState || !isTouchLikeActivation(ev)) return;
+            if (tapState.pointerId != null && ev.pointerId != null && ev.pointerId !== tapState.pointerId) return;
+            var pt = pointFromEvent(ev);
+            if (!pt) return;
+            var dx = pt.x - tapState.x;
+            var dy = pt.y - tapState.y;
+            if ((dx * dx + dy * dy) > TAP_MOVE_THRESHOLD_SQ) {
+                tapState.moved = true;
+                suppressScheduleTapsFor(TAP_SUPPRESS_AFTER_SCROLL_MS);
+            }
+        }
+
+        function finish(ev) {
+            if (!isTouchLikeActivation(ev)) return false;
+            if (tapState) update(ev);
+            var now = Date.now();
+            var suppress = now < scheduleTapSuppressUntil;
+            if (tapState) {
+                suppress = suppress || tapState.moved || (now - tapState.t > TAP_MAX_DURATION_MS);
+            }
+            if (suppress) suppressScheduleTapsFor(TAP_SUPPRESS_AFTER_SCROLL_MS);
+            tapState = null;
+            return suppress;
+        }
+
+        function cancel() {
+            tapState = null;
+            suppressScheduleTapsFor(TAP_SUPPRESS_AFTER_SCROLL_MS);
+        }
+
+        el.__schFinishTapGuard = finish;
+        el.__schShouldSuppressTap = function(ev) {
+            if (!isTouchLikeActivation(ev)) return false;
+            if (tapState) update(ev);
+            var now = Date.now();
+            if (now < scheduleTapSuppressUntil) return true;
+            if (!tapState) return false;
+            return tapState.moved || (now - tapState.t > TAP_MAX_DURATION_MS);
+        };
+
+        if (window.PointerEvent) {
+            el.addEventListener('pointerdown', begin, { passive: true });
+            el.addEventListener('pointermove', update, { passive: true });
+            el.addEventListener('pointercancel', cancel, { passive: true });
+        }
+        el.addEventListener('touchstart', begin, { passive: true });
+        el.addEventListener('touchmove', update, { passive: true });
+        el.addEventListener('touchend', function(ev) { finish(ev); }, { passive: true });
+        el.addEventListener('touchcancel', cancel, { passive: true });
+    }
+
+    function suppressActivation(ev) {
+        if (!ev) return;
+        if (ev.preventDefault) ev.preventDefault();
+        if (ev.stopPropagation) ev.stopPropagation();
+        if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.sch-wrap'), function(wrap) {
+        wrap.addEventListener('scroll', function() {
+            suppressScheduleTapsFor(TAP_SUPPRESS_AFTER_SCROLL_MS);
+        }, { passive: true });
+    });
+
     function hasDirty() {
         return !!document.querySelector('.sch-cell.is-dirty');
     }
@@ -2662,8 +2775,13 @@
         if (el.classList && el.classList.contains('is-ro')) return;
         if (el.dataset.schBound === '1') return;
         el.dataset.schBound = '1';
+        installTapGuard(el);
         var lastFired = 0;
         function fire(ev) {
+            if (el.__schShouldSuppressTap && el.__schShouldSuppressTap(ev)) {
+                suppressActivation(ev);
+                return;
+            }
             var now = Date.now();
             if (now - lastFired < 350) return;
             lastFired = now;
@@ -2682,6 +2800,10 @@
         if (window.PointerEvent) {
             el.addEventListener('pointerup', function(ev) {
                 if (ev.pointerType === 'mouse') return;
+                if (el.__schFinishTapGuard && el.__schFinishTapGuard(ev)) {
+                    suppressActivation(ev);
+                    return;
+                }
                 fire(ev);
             });
         }
@@ -2696,8 +2818,13 @@
     function bindCell(cell) {
         if (!cell || cell.dataset.schBoundCell === '1') return;
         cell.dataset.schBoundCell = '1';
+        installTapGuard(cell);
         var lastFired = 0;
         function fire(ev) {
+            if (cell.__schShouldSuppressTap && cell.__schShouldSuppressTap(ev)) {
+                suppressActivation(ev);
+                return;
+            }
             // If the tap already hit a pill or the "+ Add another"
             // button, that element's own listener will handle it.
             var hitBlock = ev.target.closest('.sch-block, .sch-add-shift-btn');
@@ -2717,6 +2844,10 @@
         if (window.PointerEvent) {
             cell.addEventListener('pointerup', function(ev) {
                 if (ev.pointerType === 'mouse') return;
+                if (cell.__schFinishTapGuard && cell.__schFinishTapGuard(ev)) {
+                    suppressActivation(ev);
+                    return;
+                }
                 fire(ev);
             });
         }
