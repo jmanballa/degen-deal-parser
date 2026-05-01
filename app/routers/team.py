@@ -73,7 +73,7 @@ from ..models import (
 )
 from ..pii import PIIDecryptError, decrypt_pii, encrypt_pii
 from ..rate_limit import rate_limited_or_429
-from ..shared import templates
+from ..shared import app_home_for_role, templates
 from ..sms import mask_sms_phone, normalize_sms_phone, send_sms, sms_phone_fingerprint
 from ..team_notifications import EMPLOYEE_NOTIFICATION_ACTION
 
@@ -440,6 +440,34 @@ def team_invite_accept_page(
     token_row = _find_token_row(session, InviteToken, token)
     if token_row is not None and token_row.role:
         invite_role = token_row.role.strip().lower() or "employee"
+    else:
+        claimed_token_row = _find_token_row(
+            session,
+            InviteToken,
+            token,
+            include_used=True,
+            include_expired=True,
+        )
+        if claimed_token_row is not None and claimed_token_row.used_at is not None:
+            claimed_user_id = (
+                claimed_token_row.used_by_user_id or claimed_token_row.target_user_id
+            )
+            claimed_user = session.get(User, claimed_user_id) if claimed_user_id else None
+            if (
+                claimed_user is not None
+                and claimed_user.is_active
+                and claimed_user.password_hash
+            ):
+                current_user: Optional[User] = getattr(
+                    request.state, "current_user", None
+                )
+                if current_user is None:
+                    return RedirectResponse("/team/login", status_code=303)
+                if current_user.id == claimed_user.id:
+                    return RedirectResponse("/team/", status_code=303)
+                return RedirectResponse(
+                    app_home_for_role(current_user.role), status_code=303
+                )
     show_employee_tutorial = invite_role == "employee"
     show_manager_tutorial = invite_role == "manager"
     show_portal_tutorial = show_employee_tutorial or show_manager_tutorial

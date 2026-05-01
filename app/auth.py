@@ -449,17 +449,25 @@ def _token_lookup_hmac(raw_token: str) -> bytes:
     return hmac.new(_token_hmac_key(), raw_token.encode("utf-8"), hashlib.sha256).digest()
 
 
-def _find_token_row(session: Session, model, raw_token: str):
+def _find_token_row(
+    session: Session,
+    model,
+    raw_token: str,
+    *,
+    include_used: bool = False,
+    include_expired: bool = False,
+):
     # O(1) HMAC indexed lookup, then single bcrypt verify on the matched row.
     # NULL-HMAC legacy rows are unreachable here and expire naturally.
     now = utcnow()
     lookup = _token_lookup_hmac(raw_token)
+    predicates = [model.token_lookup_hmac == lookup]
+    if not include_used:
+        predicates.append(model.used_at.is_(None))
+    if not include_expired:
+        predicates.append(model.expires_at > now)
     row = session.exec(
-        select(model).where(
-            model.token_lookup_hmac == lookup,
-            model.used_at.is_(None),
-            model.expires_at > now,
-        )
+        select(model).where(*predicates)
     ).first()
     if row is None:
         return None

@@ -276,6 +276,133 @@ class PasswordResetTests(unittest.TestCase, _PortalHarness):
         self.assertTrue(r.headers["location"].startswith("/team/login"))
 
 
+class ClaimedInviteRedirectTests(unittest.TestCase):
+    def setUp(self):
+        from app import config as cfg, rate_limit
+        from app.db import seed_employee_portal_defaults
+
+        rate_limit.reset()
+        cfg.get_settings.cache_clear()
+        self.engine = _fresh_engine()
+        self.session = Session(self.engine)
+        seed_employee_portal_defaults(self.session)
+
+    def tearDown(self):
+        self.session.close()
+
+    def _create_admin(self, username: str = "invite_admin"):
+        from app.auth import hash_password
+        from app.models import User
+
+        ph, salt = hash_password("AdminPass1!")
+        admin = User(
+            username=username,
+            password_hash=ph,
+            password_salt=salt,
+            display_name="Invite Admin",
+            role="admin",
+            is_active=True,
+        )
+        self.session.add(admin)
+        self.session.commit()
+        self.session.refresh(admin)
+        return admin
+
+    def _request(self, user=None):
+        from starlette.requests import Request
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/team/invite/accept/test-token",
+                "query_string": b"",
+                "headers": [],
+                "session": {},
+            }
+        )
+        request.state.current_user = user
+        return request
+
+    def _accept_page(self, token: str, *, user=None):
+        from app.routers.team import team_invite_accept_page
+
+        return team_invite_accept_page(
+            self._request(user),
+            token,
+            error=None,
+            problems=None,
+            username=None,
+            session=self.session,
+        )
+
+    def test_unclaimed_invite_still_renders_registration_form(self):
+        from app.auth import generate_invite_token
+
+        admin = self._create_admin("unclaimed_invite_admin")
+        raw = generate_invite_token(
+            self.session,
+            role="employee",
+            created_by_user_id=admin.id,
+        )
+
+        r = self._accept_page(raw)
+
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["token"], raw)
+        self.assertEqual(r.context["invite_role"], "employee")
+
+    def test_claimed_invite_redirects_unauthenticated_user_to_login(self):
+        from datetime import timedelta
+
+        from app.auth import consume_invite_token, generate_invite_token
+        from app.models import InviteToken, utcnow
+
+        admin = self._create_admin("claimed_invite_admin")
+        raw = generate_invite_token(
+            self.session,
+            role="employee",
+            created_by_user_id=admin.id,
+        )
+        consume_invite_token(
+            self.session,
+            raw,
+            new_username="claimed_login",
+            new_password="StrongPass9#xy",
+        )
+        row = self.session.exec(select(InviteToken)).first()
+        row.expires_at = utcnow() - timedelta(days=1)
+        self.session.add(row)
+        self.session.commit()
+
+        r = self._accept_page(raw)
+
+        self.assertEqual(r.status_code, 303)
+        self.assertEqual(r.headers["location"], "/team/login")
+        self.assertNotIn(raw, r.headers["location"])
+
+    def test_claimed_invite_redirects_authenticated_employee_to_dashboard(self):
+        from app.auth import consume_invite_token, generate_invite_token
+
+        admin = self._create_admin("claimed_invite_auth_admin")
+        raw = generate_invite_token(
+            self.session,
+            role="employee",
+            created_by_user_id=admin.id,
+        )
+        claimed = consume_invite_token(
+            self.session,
+            raw,
+            new_username="claimed_employee",
+            new_password="StrongPass9#xy",
+        )
+
+        r = self._accept_page(raw, user=claimed)
+
+        self.assertEqual(r.status_code, 303)
+        self.assertEqual(r.headers["location"], "/team/")
+
+
 class InviteAcceptTests(unittest.TestCase, _PortalHarness):
     def setUp(self):
         self._setup_portal()
