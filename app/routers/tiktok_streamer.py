@@ -1603,6 +1603,7 @@ def tiktok_streamer_poll(
 
     return {
         "orders": cards,
+        "current_order_ids": [str(o.order_number or o.id) for o in scoped_orders[:500]],
         "latest_updated_at": latest_updated_at_text,
         "total_count": total_count,
         "session_gmv": gmv_data["session_gmv"],

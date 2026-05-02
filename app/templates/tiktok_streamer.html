@@ -2513,6 +2513,25 @@
             list.innerHTML = '';
         }
 
+        function reconcileVisibleOrderIds(currentOrderIds) {
+            if (!Array.isArray(currentOrderIds)) return false;
+            var scopedIds = new Set(currentOrderIds.map(function(id) { return String(id); }));
+            var beforeLen = _orders.length;
+            if (scopedIds.size === 0) {
+                if (beforeLen > 0) {
+                    clearVisibleOrders();
+                    return true;
+                }
+                return false;
+            }
+            _orders = _orders.filter(function(o) { return scopedIds.has(String(o.tiktok_order_id)); });
+            if (_orders.length === beforeLen) return false;
+            _knownIds = new Set(_orders.map(function(o) { return o.tiktok_order_id; }));
+            window.__streamerOrders = _orders;
+            renderAll();
+            return true;
+        }
+
         function orderGroupInfo(order) {
             var stream = findStreamForOrder(order);
             if (stream) return { key: stream.id, stream: stream };
@@ -3195,10 +3214,17 @@
 
                 if (!hasPreciseCreatorOrders()) return;
 
+                var currentOrders = data.orders || [];
+                var reconciledVisibleOrders = reconcileVisibleOrderIds(data.current_order_ids);
+                if (reconciledVisibleOrders && _orders.length === 0 && currentOrders.length === 0) {
+                    renderAll();
+                    return;
+                }
+
                 var newOrders = [];
                 var refundUpdates = [];
 
-                (data.orders || []).forEach(function(o) {
+                currentOrders.forEach(function(o) {
                     if (!_knownIds.has(o.tiktok_order_id)) {
                         newOrders.push(o);
                     } else if (isRefundOrder(o)) {
