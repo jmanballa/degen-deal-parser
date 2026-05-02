@@ -681,6 +681,18 @@
         .tb-arrow.visible { opacity: 1; pointer-events: auto; }
         .tb-arrow-left { left: -6px; }
         .tb-arrow-right { right: -6px; }
+        @media (hover: none), (pointer: coarse), (max-width: 768px) {
+            .ts-arrow,
+            .tb-arrow {
+                display: none !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            }
+            .top-sellers-strip,
+            .top-buyers-strip {
+                padding-right: 0;
+            }
+        }
         .tb-card {
             flex: 0 0 120px; scroll-snap-align: start;
             background: var(--bg-card); border: 1px solid var(--border);
