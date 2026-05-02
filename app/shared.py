@@ -560,11 +560,11 @@ def _poll_tiktok_live_analytics(stop_event: threading.Event) -> None:
                 _live_analytics_cache["ok"] = False
 
         if _poll_access_token and _poll_shop_cipher:
-            _poll_live_session_list(runtime_name, _poll_access_token, _poll_shop_cipher)
+            _poll_live_session_list(runtime_name, _poll_access_token, _poll_shop_cipher, shop_id=shop_id)
 
         stop_event.wait(_LIVE_ANALYTICS_POLL_SECONDS)
 
-def _poll_live_session_list(runtime_name: str, access_token: str, shop_cipher: str) -> None:
+def _poll_live_session_list(runtime_name: str, access_token: str, shop_cipher: str, shop_id: str = "") -> None:
     """Fetch the live session list and auto-update stream range if source is 'auto'."""
     global _stream_range_source
     if _fetch_live_session_list is None:
@@ -584,6 +584,13 @@ def _poll_live_session_list(runtime_name: str, access_token: str, shop_cipher: s
                 start_date=start_str,
                 end_date=end_str,
             )
+        for session_data in sessions:
+            if not isinstance(session_data, dict):
+                continue
+            if shop_id and not session_data.get("shop_id"):
+                session_data["shop_id"] = shop_id
+            if shop_cipher and not session_data.get("shop_cipher"):
+                session_data["shop_cipher"] = shop_cipher
         with _live_sessions_list_lock:
             _live_sessions_list_cache.clear()
             _live_sessions_list_cache.extend(sessions)

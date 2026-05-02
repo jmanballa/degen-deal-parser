@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 
 from ..csrf import CSRFProtectedRoute
@@ -36,6 +36,7 @@ from ..shared import (  # noqa: F401 - explicit imports for underscore-prefixed 
     _stream_range_source,
 )
 from ..db import get_session
+from ..models import TikTokAuth, TikTokOrder
 from ..reporting import TIKTOK_PAID_STATUSES
 
 router = APIRouter(route_class=CSRFProtectedRoute)
@@ -259,6 +260,153 @@ def _stream_context_cache_key(stream_context: Optional[dict[str, Any]]) -> tuple
     )
 
 
+def _clean_account_identifier(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _clean_creator_match_text(value: Any) -> str:
+    return "".join(ch for ch in str(value or "").strip().lstrip("@").lower() if ch.isalnum())
+
+
+def _new_account_scope(selected_creator: str = "") -> dict[str, Any]:
+    return {
+        "shop_ids": set(),
+        "shop_ciphers": set(),
+        "seller_ids": set(),
+        "include_unattributed": selected_creator == DEFAULT_STREAM_CREATOR,
+        "source": "",
+    }
+
+
+def _add_account_scope_value(scope: dict[str, Any], key: str, value: Any) -> None:
+    cleaned = _clean_account_identifier(value)
+    if not cleaned:
+        return
+    if key == "shop_ids" and cleaned.startswith("pending:"):
+        return
+    scope.setdefault(key, set()).add(cleaned)
+
+
+def _account_scope_has_identity(scope: Optional[dict[str, Any]]) -> bool:
+    scope = scope or {}
+    return bool(scope.get("shop_ids") or scope.get("shop_ciphers") or scope.get("seller_ids"))
+
+
+def _account_scope_from_live_session(
+    live_session: Optional[dict[str, Any]],
+    selected_creator: str = "",
+) -> dict[str, Any]:
+    scope = _new_account_scope(selected_creator)
+    if not live_session:
+        return scope
+    for key in ("shop_id", "shopId", "tiktok_shop_id", "tiktokShopId"):
+        _add_account_scope_value(scope, "shop_ids", live_session.get(key))
+    for key in ("shop_cipher", "shopCipher"):
+        _add_account_scope_value(scope, "shop_ciphers", live_session.get(key))
+    for key in ("seller_id", "sellerId"):
+        _add_account_scope_value(scope, "seller_ids", live_session.get(key))
+    if _account_scope_has_identity(scope):
+        scope["source"] = "live_session"
+    return scope
+
+
+def _auth_row_matches_creator(auth_row: TikTokAuth, selected_creator: str) -> bool:
+    creator_key = _clean_creator_match_text(selected_creator)
+    if not creator_key:
+        return False
+    for value in (
+        auth_row.shop_name,
+        auth_row.seller_name,
+        auth_row.open_id,
+        auth_row.tiktok_shop_id,
+        auth_row.shop_cipher,
+        auth_row.raw_payload,
+    ):
+        text_key = _clean_creator_match_text(value)
+        if creator_key and creator_key in text_key:
+            return True
+    return False
+
+
+def _add_auth_row_to_account_scope(scope: dict[str, Any], auth_row: TikTokAuth) -> None:
+    _add_account_scope_value(scope, "shop_ids", auth_row.tiktok_shop_id)
+    _add_account_scope_value(scope, "shop_ciphers", auth_row.shop_cipher)
+    _add_account_scope_value(scope, "seller_ids", auth_row.seller_id)
+
+
+def _stream_account_scope_for_context(
+    session: Optional[Session],
+    stream_context: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    stream_context = stream_context or {}
+    selected_creator = stream_context.get("selected_creator") or DEFAULT_STREAM_CREATOR
+    scope = _account_scope_from_live_session(stream_context.get("live_session"), selected_creator)
+    if _account_scope_has_identity(scope) or session is None:
+        return scope
+
+    configured_shop_id = (settings.tiktok_shop_id or "").strip()
+    configured_shop_cipher = (settings.tiktok_shop_cipher or "").strip()
+    if selected_creator == DEFAULT_STREAM_CREATOR:
+        _add_account_scope_value(scope, "shop_ids", configured_shop_id)
+        _add_account_scope_value(scope, "shop_ciphers", configured_shop_cipher)
+
+    auth_rows = list(
+        session.exec(select(TikTokAuth).order_by(TikTokAuth.updated_at.desc(), TikTokAuth.id.desc())).all()
+    )
+    if selected_creator == DEFAULT_STREAM_CREATOR:
+        if not _account_scope_has_identity(scope) and len(auth_rows) == 1:
+            _add_auth_row_to_account_scope(scope, auth_rows[0])
+            scope["source"] = "single_auth"
+        elif _account_scope_has_identity(scope):
+            scope["source"] = "configured_main"
+        return scope
+
+    matched = [row for row in auth_rows if _auth_row_matches_creator(row, selected_creator)]
+    if not matched:
+        non_main_rows = [
+            row
+            for row in auth_rows
+            if not (
+                (configured_shop_id and row.tiktok_shop_id == configured_shop_id)
+                or (configured_shop_cipher and row.shop_cipher == configured_shop_cipher)
+            )
+        ]
+        if len(non_main_rows) == 1:
+            matched = non_main_rows
+    for row in matched:
+        _add_auth_row_to_account_scope(scope, row)
+    if matched and _account_scope_has_identity(scope):
+        scope["source"] = "auth_row"
+    return scope
+
+
+def _apply_tiktok_account_scope(stmt, account_scope: Optional[dict[str, Any]]):
+    if not _account_scope_has_identity(account_scope):
+        return stmt
+    account_scope = account_scope or {}
+    predicates = []
+    shop_ids = sorted(account_scope.get("shop_ids") or [])
+    shop_ciphers = sorted(account_scope.get("shop_ciphers") or [])
+    seller_ids = sorted(account_scope.get("seller_ids") or [])
+    if shop_ids:
+        predicates.append(TikTokOrder.shop_id.in_(shop_ids))
+    if shop_ciphers:
+        predicates.append(TikTokOrder.shop_cipher.in_(shop_ciphers))
+    if seller_ids:
+        predicates.append(TikTokOrder.seller_id.in_(seller_ids))
+    if account_scope.get("include_unattributed"):
+        predicates.append(
+            and_(
+                TikTokOrder.shop_id == None,
+                TikTokOrder.shop_cipher == None,
+                TikTokOrder.seller_id == None,
+            )
+        )
+    if not predicates:
+        return stmt
+    return stmt.where(or_(*predicates))
+
+
 def _creator_order_rows_are_precise(stream_context: Optional[dict[str, Any]]) -> bool:
     stream_context = stream_context or {}
     if not stream_context.get("creator_filter_enabled"):
@@ -422,6 +570,14 @@ def _orders_for_session_window(db_session: Session, session_data: Optional[dict]
     query = select(TikTokOrder).where(TikTokOrder.created_at >= start_dt)
     if end_dt is not None:
         query = query.where(TikTokOrder.created_at <= end_dt)
+    account_scope = _stream_account_scope_for_context(
+        db_session,
+        {
+            "selected_creator": _session_username(session_data),
+            "live_session": session_data or {},
+        },
+    )
+    query = _apply_tiktok_account_scope(query, account_scope)
     rows = db_session.exec(query.order_by(TikTokOrder.created_at.desc())).all()
     return [order for order in rows if _is_enriched_order(order)]
 
@@ -654,7 +810,12 @@ def _live_product_top_sellers(product_scope: Optional[dict[str, Any]]) -> list[d
     return sorted(sellers, key=lambda row: row["revenue"], reverse=True)[:8]
 
 
-def _apply_stream_order_scope(stmt, stream_context: Optional[dict[str, Any]], fallback_start: Optional[datetime] = None):
+def _apply_stream_order_scope(
+    stmt,
+    stream_context: Optional[dict[str, Any]],
+    fallback_start: Optional[datetime] = None,
+    account_scope: Optional[dict[str, Any]] = None,
+):
     stream_context = stream_context or {}
     start = stream_context.get("start") or fallback_start
     end = stream_context.get("end")
@@ -664,7 +825,7 @@ def _apply_stream_order_scope(stmt, stream_context: Optional[dict[str, Any]], fa
         stmt = stmt.where(TikTokOrder.created_at >= start)
     if end is not None:
         stmt = stmt.where(TikTokOrder.created_at <= end)
-    return stmt
+    return _apply_tiktok_account_scope(stmt, account_scope)
 
 
 def _scoped_tiktok_order_count(
@@ -672,10 +833,12 @@ def _scoped_tiktok_order_count(
     stream_context: Optional[dict[str, Any]],
     fallback_start: Optional[datetime],
 ) -> int:
+    account_scope = _stream_account_scope_for_context(session, stream_context)
     count_query = _apply_stream_order_scope(
         select(func.count()).select_from(TikTokOrder),
         stream_context,
         fallback_start=fallback_start,
+        account_scope=account_scope,
     )
     return int(session.exec(count_query).one())
 
@@ -688,10 +851,12 @@ def _load_scoped_stream_orders(
     since_updated_at: Optional[datetime] = None,
     order_by_updated: bool = False,
 ) -> tuple[list[TikTokOrder], dict[str, Any]]:
+    account_scope = _stream_account_scope_for_context(session, stream_context)
     query = _apply_stream_order_scope(
         select(TikTokOrder),
         stream_context,
         fallback_start=fallback_start,
+        account_scope=account_scope,
     )
     if since_updated_at is not None:
         query = query.where(TikTokOrder.updated_at > since_updated_at)
@@ -941,13 +1106,19 @@ def _streamer_session_gmv(session: Session, stream_context: Optional[dict[str, A
 
 def _streamer_session_gmv_uncached(session: Session, stream_context: Optional[dict[str, Any]] = None) -> dict:
     """Calculate today's GMV and top sellers for the streamer dashboard (Pacific time)."""
+    stream_context = stream_context or {}
+    account_scope = (
+        _stream_account_scope_for_context(session, stream_context)
+        if stream_context.get("creator_filter_enabled")
+        else {}
+    )
     now_pacific = datetime.now(PACIFIC_TZ)
     today_start_pacific = now_pacific.replace(hour=0, minute=0, second=0, microsecond=0)
     today_start_utc = today_start_pacific.astimezone(timezone.utc)
 
-    today_orders = session.exec(
-        select(TikTokOrder).where(TikTokOrder.created_at >= today_start_utc)
-    ).all()
+    today_query = select(TikTokOrder).where(TikTokOrder.created_at >= today_start_utc)
+    today_query = _apply_tiktok_account_scope(today_query, account_scope)
+    today_orders = session.exec(today_query).all()
 
     gmv = 0.0
     paid_count = 0
@@ -1064,7 +1235,6 @@ def _streamer_session_gmv_uncached(session: Session, stream_context: Optional[di
         "top_buyers": top_buyers,
     }
 
-    stream_context = stream_context or {}
     if stream_context.get("creator_filter_enabled"):
         sr_start = stream_context.get("start")
         sr_end = stream_context.get("end")
@@ -1084,6 +1254,7 @@ def _streamer_session_gmv_uncached(session: Session, stream_context: Optional[di
         q = select(TikTokOrder).where(TikTokOrder.created_at >= sr_start)
         if sr_end is not None:
             q = q.where(TikTokOrder.created_at <= sr_end)
+        q = _apply_tiktok_account_scope(q, account_scope)
         stream_orders_rows = session.exec(q).all()
         product_scope = None
         if _should_use_live_product_scope(stream_context):
@@ -1189,6 +1360,11 @@ def _streamer_session_gmv_uncached(session: Session, stream_context: Optional[di
 def _compute_order_velocity(session: Session, stream_context: Optional[dict[str, Any]] = None) -> list[dict]:
     """Compute per-minute order counts for the current stream window."""
     stream_context = stream_context or {}
+    account_scope = (
+        _stream_account_scope_for_context(session, stream_context)
+        if stream_context.get("creator_filter_enabled")
+        else {}
+    )
     start = stream_context.get("start") if stream_context.get("creator_filter_enabled") else stream_context.get("start") or _stream_range.get("start")
     if not start:
         return []
@@ -1196,17 +1372,21 @@ def _compute_order_velocity(session: Session, stream_context: Optional[dict[str,
         end_dt = stream_context.get("end") or datetime.now(timezone.utc)
     else:
         end_dt = stream_context.get("end") or _stream_range.get("end") or datetime.now(timezone.utc)
-    orders = session.exec(
+    order_times_query = (
         select(TikTokOrder.created_at)
         .where(TikTokOrder.created_at >= start, TikTokOrder.created_at <= end_dt)
         .order_by(TikTokOrder.created_at)
-    ).all()
+    )
+    order_times_query = _apply_tiktok_account_scope(order_times_query, account_scope)
+    orders = session.exec(order_times_query).all()
     if _should_use_live_product_scope(stream_context):
-        scoped_orders = session.exec(
+        scoped_orders_query = (
             select(TikTokOrder)
             .where(TikTokOrder.created_at >= start, TikTokOrder.created_at <= end_dt)
             .order_by(TikTokOrder.created_at)
-        ).all()
+        )
+        scoped_orders_query = _apply_tiktok_account_scope(scoped_orders_query, account_scope)
+        scoped_orders = session.exec(scoped_orders_query).all()
         scoped_orders, _scope = _filter_orders_to_live_products(
             scoped_orders,
             stream_context,

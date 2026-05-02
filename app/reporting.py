@@ -129,6 +129,7 @@ def _build_tiktok_orders_base_query(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
     shop_id: Optional[str] = None,
+    shop_cipher: Optional[str] = None,
     seller_id: Optional[str] = None,
     source: Optional[str] = None,
     financial_status: Optional[str] = None,
@@ -144,6 +145,8 @@ def _build_tiktok_orders_base_query(
         stmt = stmt.where(TikTokOrder.created_at <= end)
     if shop_id:
         stmt = stmt.where(TikTokOrder.shop_id == shop_id)
+    if shop_cipher:
+        stmt = stmt.where(TikTokOrder.shop_cipher == shop_cipher)
     if seller_id:
         stmt = stmt.where(TikTokOrder.seller_id == seller_id)
     if source:
@@ -201,6 +204,7 @@ def count_tiktok_order_rows(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
     shop_id: Optional[str] = None,
+    shop_cipher: Optional[str] = None,
     seller_id: Optional[str] = None,
     source: Optional[str] = None,
     financial_status: Optional[str] = None,
@@ -213,6 +217,7 @@ def count_tiktok_order_rows(
         start=start,
         end=end,
         shop_id=shop_id,
+        shop_cipher=shop_cipher,
         seller_id=seller_id,
         source=source,
         financial_status=financial_status,
@@ -231,6 +236,7 @@ def get_tiktok_order_rows(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
     shop_id: Optional[str] = None,
+    shop_cipher: Optional[str] = None,
     seller_id: Optional[str] = None,
     source: Optional[str] = None,
     financial_status: Optional[str] = None,
@@ -247,6 +253,7 @@ def get_tiktok_order_rows(
         start=start,
         end=end,
         shop_id=shop_id,
+        shop_cipher=shop_cipher,
         seller_id=seller_id,
         source=source,
         financial_status=financial_status,
@@ -589,6 +596,7 @@ def build_tiktok_orders_page_data(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
     shop_id: Optional[str] = None,
+    shop_cipher: Optional[str] = None,
     seller_id: Optional[str] = None,
     source: Optional[str] = None,
     financial_status: Optional[str] = None,
@@ -606,6 +614,7 @@ def build_tiktok_orders_page_data(
         start=start,
         end=end,
         shop_id=shop_id,
+        shop_cipher=shop_cipher,
         seller_id=seller_id,
         source=source,
         financial_status=financial_status,
@@ -623,6 +632,7 @@ def build_tiktok_orders_page_data(
         start=start,
         end=end,
         shop_id=shop_id,
+        shop_cipher=shop_cipher,
         seller_id=seller_id,
         source=source,
         financial_status=financial_status,
@@ -636,6 +646,7 @@ def build_tiktok_orders_page_data(
         start=start,
         end=end,
         shop_id=shop_id,
+        shop_cipher=shop_cipher,
         seller_id=seller_id,
         source=source,
         financial_status=financial_status,

@@ -38,7 +38,7 @@ from ..tiktok_ingest import (
     upsert_tiktok_order_from_payload,
 )
 
-from .tiktok_streamer import _compute_buyer_lifetime_totals
+from .tiktok_streamer import _account_scope_from_live_session, _compute_buyer_lifetime_totals
 from ..tiktok_alerts import alert_ghost_cancellation, alert_reverse_order
 
 settings = get_settings()
@@ -101,11 +101,20 @@ def _get_tiktok_filter_options(session: Session) -> dict[str, list[str]]:
         "currency_options": _distinct(TikTokOrder.currency),
     }
 
+
+def _first_scope_value(scope: dict, key: str) -> Optional[str]:
+    values = sorted(str(v).strip() for v in (scope.get(key) or []) if str(v).strip())
+    return values[0] if len(values) == 1 else None
+
+
 def _collect_tiktok_orders_page_data(
     session: Session,
     *,
     start: Optional[str] = None,
     end: Optional[str] = None,
+    shop_id: Optional[str] = None,
+    shop_cipher: Optional[str] = None,
+    seller_id: Optional[str] = None,
     financial_status: Optional[str] = None,
     fulfillment_status: Optional[str] = None,
     order_status: Optional[str] = None,
@@ -126,6 +135,9 @@ def _collect_tiktok_orders_page_data(
         session,
         start=start_dt,
         end=end_dt,
+        shop_id=shop_id,
+        shop_cipher=shop_cipher,
+        seller_id=seller_id,
         financial_status=financial_status,
         fulfillment_status=fulfillment_status,
         order_status=order_status,
@@ -550,6 +562,9 @@ def tiktok_orders_page(
 
     effective_start = start
     effective_end = end
+    stream_shop_id = None
+    stream_shop_cipher = None
+    stream_seller_id = None
     if stream:
         stream_sessions = _get_live_sessions_list()
         match = next((s for s in stream_sessions if s.get("id") == stream), None)
@@ -560,11 +575,21 @@ def tiktok_orders_page(
                 effective_start = datetime.fromtimestamp(s_ts, tz=PACIFIC_TZ).isoformat()
             if e_ts > 0:
                 effective_end = datetime.fromtimestamp(e_ts, tz=PACIFIC_TZ).isoformat()
+            selected_creator = str(match.get("username") or "").strip().lstrip("@").lower()
+            account_scope = _account_scope_from_live_session(match, selected_creator)
+            stream_shop_id = _first_scope_value(account_scope, "shop_ids")
+            if not stream_shop_id:
+                stream_shop_cipher = _first_scope_value(account_scope, "shop_ciphers")
+            if not stream_shop_id and not stream_shop_cipher:
+                stream_seller_id = _first_scope_value(account_scope, "seller_ids")
 
     page_data = _collect_tiktok_orders_page_data(
         session,
         start=effective_start,
         end=effective_end,
+        shop_id=stream_shop_id,
+        shop_cipher=stream_shop_cipher,
+        seller_id=stream_seller_id,
         financial_status=financial_status,
         fulfillment_status=fulfillment_status,
         order_status=order_status,

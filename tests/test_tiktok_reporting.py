@@ -7,7 +7,7 @@ import time
 import unittest
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -1893,6 +1893,131 @@ class TikTokRegressionTests(unittest.TestCase):
         self.assertEqual(payload["selected_stream_id"], "boss-live")
         self.assertEqual(payload["creator_order_attribution"], "time_window")
         self.assertEqual(legacy_payload["selected_creator"], "degenboss0")
+
+    def test_tiktok_streamer_poll_scopes_overlapping_accounts_by_shop_identity(self) -> None:
+        import app.routers.tiktok_streamer as streamer_module
+        from starlette.requests import Request as _Request
+
+        now_ts = int(time.time())
+        main_start = now_ts - 3600
+        boss_start = now_ts - 1800
+        order_time = datetime.fromtimestamp(now_ts - 300, tz=timezone.utc)
+        with Session(self.engine) as session:
+            session.add(
+                TikTokOrder(
+                    tiktok_order_id="main-account-order",
+                    shop_id="main-shop",
+                    shop_cipher="main-cipher",
+                    order_number="#1001",
+                    created_at=order_time,
+                    updated_at=order_time,
+                    customer_name="Main Buyer",
+                    financial_status="paid",
+                    subtotal_price=80.0,
+                    total_price=88.0,
+                    line_items_json=json.dumps([
+                        {"product_id": "p-main", "product_name": "Main Pack", "quantity": 1, "sale_price": 80.0}
+                    ]),
+                )
+            )
+            session.add(
+                TikTokOrder(
+                    tiktok_order_id="boss-account-order",
+                    shop_id="boss-shop",
+                    shop_cipher="boss-cipher",
+                    order_number="#2001",
+                    created_at=order_time + timedelta(seconds=1),
+                    updated_at=order_time + timedelta(seconds=1),
+                    customer_name="Boss Buyer",
+                    financial_status="paid",
+                    subtotal_price=35.0,
+                    total_price=38.5,
+                    line_items_json=json.dumps([
+                        {"product_id": "p-boss", "product_name": "Boss Pack", "quantity": 1, "sale_price": 35.0}
+                    ]),
+                )
+            )
+            session.commit()
+
+            stream_sessions = [
+                {
+                    "id": "main-live",
+                    "title": "Main live",
+                    "username": "degencollectibles",
+                    "shop_id": "main-shop",
+                    "shop_cipher": "main-cipher",
+                    "start_time": main_start,
+                    "end_time": 0,
+                    "gmv": 0.0,
+                    "sku_orders": 0,
+                    "items_sold": 0,
+                },
+                {
+                    "id": "boss-live",
+                    "title": "Boss live",
+                    "username": "degenboss0",
+                    "shop_id": "boss-shop",
+                    "shop_cipher": "boss-cipher",
+                    "start_time": boss_start,
+                    "end_time": 0,
+                    "gmv": 0.0,
+                    "sku_orders": 0,
+                    "items_sold": 0,
+                },
+            ]
+            req = _Request({
+                "type": "http",
+                "method": "GET",
+                "path": "/tiktok/streamer/poll",
+                "headers": [],
+                "scheme": "http",
+                "server": ("testserver", 80),
+            })
+            streamer_module._gmv_cache.clear()
+            empty_live_products = {
+                "available": False,
+                "products": [],
+                "product_ids": set(),
+                "exclude_product_ids": set(),
+                "source": "",
+            }
+            with patch("app.routers.tiktok_streamer.require_role_response", return_value=None), patch.object(
+                streamer_module,
+                "_get_live_sessions_list",
+                return_value=stream_sessions,
+            ), patch.object(
+                streamer_module,
+                "_fetch_live_product_scope",
+                return_value=empty_live_products,
+            ):
+                main_payload = streamer_module.tiktok_streamer_poll(
+                    request=req,
+                    creator="degencollectibles",
+                    stream=None,
+                    since=None,
+                    session=session,
+                )
+                boss_payload = streamer_module.tiktok_streamer_poll(
+                    request=req,
+                    creator="degenboss0",
+                    stream=None,
+                    since=None,
+                    session=session,
+                )
+
+        self.assertEqual([row["tiktok_order_id"] for row in main_payload["orders"]], ["main-account-order"])
+        self.assertEqual(main_payload["total_count"], 1)
+        self.assertEqual(main_payload["stream_gmv"], 80.0)
+        self.assertEqual(main_payload["stream_top_buyers"][0]["name"], "Main Buyer")
+        self.assertEqual([row["name"] for row in main_payload["top_buyers"]], ["Main Buyer"])
+        self.assertEqual(sum(point["count"] for point in main_payload["order_velocity"]), 1)
+
+        self.assertEqual([row["tiktok_order_id"] for row in boss_payload["orders"]], ["boss-account-order"])
+        self.assertEqual(boss_payload["total_count"], 1)
+        self.assertEqual(boss_payload["stream_gmv"], 35.0)
+        self.assertEqual(boss_payload["stream_top_buyers"][0]["name"], "Boss Buyer")
+        self.assertEqual([row["name"] for row in boss_payload["top_buyers"]], ["Boss Buyer"])
+        self.assertEqual(sum(point["count"] for point in boss_payload["order_velocity"]), 1)
 
     def test_tiktok_streamer_poll_uses_local_secondary_metrics_when_tiktok_session_zero(self) -> None:
         import app.routers.tiktok_streamer as streamer_module
