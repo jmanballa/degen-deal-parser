@@ -48,6 +48,8 @@ DEFAULT_STREAM_CREATOR = "degencollectibles"
 CREATOR_ORDER_ATTRIBUTION_TIME_WINDOW = "time_window"
 CREATOR_ORDER_ATTRIBUTION_LIVE_PRODUCTS = "live_products"
 CREATOR_ORDER_ATTRIBUTION_NO_SESSION = "no_session"
+STREAM_METRIC_SOURCE_TIKTOK_LIVE_SESSION = "tiktok_live_session"
+STREAM_METRIC_SOURCE_LOCAL_ORDER_ESTIMATE = "local_order_estimate"
 _LIVE_PRODUCTS_CACHE_TTL_SECONDS = 10.0
 _live_products_cache: dict[str, Any] = {}
 _live_products_cache_lock = threading.Lock()
@@ -730,18 +732,30 @@ def _apply_tiktok_session_metrics(gmv_data: dict[str, Any], stream_context: Opti
     live_session = (stream_context or {}).get("live_session") or {}
     if not live_session.get("ok"):
         return result
-    try:
-        result["stream_gmv"] = round(float(live_session.get("gmv") or 0), 2)
-    except (TypeError, ValueError):
-        pass
-    for target_key, session_key in (("stream_orders", "sku_orders"), ("stream_items", "items_sold")):
-        try:
-            value = int(live_session.get(session_key) or 0)
-        except (TypeError, ValueError):
-            value = 0
+    tiktok_gmv = round(_session_metric_float(live_session, "gmv"), 2)
+    tiktok_orders = _session_metric_int(live_session, "sku_orders")
+    tiktok_items = _session_metric_int(live_session, "items_sold")
+    has_tiktok_totals = tiktok_gmv > 0 or tiktok_orders > 0 or tiktok_items > 0
+    has_local_totals = (
+        _safe_metric_float(result.get("stream_gmv")) > 0
+        or _safe_metric_int(result.get("stream_orders")) > 0
+        or _safe_metric_int(result.get("stream_items")) > 0
+    )
+    if not has_tiktok_totals and has_local_totals:
+        result["stream_metric_source"] = STREAM_METRIC_SOURCE_LOCAL_ORDER_ESTIMATE
+        result["stream_metric_label"] = "local order estimate"
+        result["stream_metric_note"] = "TikTok attribution delayed"
+        return result
+
+    result["stream_gmv"] = tiktok_gmv
+    for target_key, session_key, value in (
+        ("stream_orders", "sku_orders", tiktok_orders),
+        ("stream_items", "items_sold", tiktok_items),
+    ):
         if session_key in live_session:
             result[target_key] = value
-    result["stream_metric_source"] = "tiktok_live_session"
+    result["stream_metric_source"] = STREAM_METRIC_SOURCE_TIKTOK_LIVE_SESSION
+    result["stream_metric_label"] = "TikTok live attribution"
     return result
 
 def _is_enriched_order(o: TikTokOrder) -> bool:
@@ -1298,6 +1312,8 @@ def tiktok_streamer_page(
         "creator_order_attribution": stream_context.get("creator_order_attribution"),
         "creator_order_attribution_message": _creator_order_attribution_message(stream_context),
         "stream_metric_source": gmv_data.get("stream_metric_source"),
+        "stream_metric_label": gmv_data.get("stream_metric_label"),
+        "stream_metric_note": gmv_data.get("stream_metric_note"),
         "live_room_id": live_room_id,
         "is_live": stream_context.get("is_live"),
     }
@@ -1419,6 +1435,8 @@ def tiktok_streamer_poll(
         "tiktok_gmv": live_session.get("gmv") if live_session.get("ok") else None,
         "stream_range_source": stream_context.get("source"),
         "stream_metric_source": gmv_data.get("stream_metric_source"),
+        "stream_metric_label": gmv_data.get("stream_metric_label"),
+        "stream_metric_note": gmv_data.get("stream_metric_note"),
         "stream_sessions": stream_context.get("sessions") or [],
         "is_live": stream_context.get("is_live"),
         "live_room_id": live_room_id,

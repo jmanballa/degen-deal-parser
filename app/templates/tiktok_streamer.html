@@ -1685,6 +1685,9 @@
                                     <span><strong id="stream-items-sold">0</strong> items</span>
                                     <span><strong id="stream-orders">0</strong> orders</span>
                                 </div>
+                                <div class="gmv-live-sub" id="stream-metric-note-row" style="display:none;">
+                                    <span id="stream-metric-note" style="color:var(--text-muted);font-size:10px;"></span>
+                                </div>
                                 <div class="gmv-live-sub" id="tiktok-gmv-row" style="display:none;">
                                     <span style="color:var(--text-muted);font-size:10px;">TikTok live: <strong id="tiktok-gmv-value" style="color:var(--green);">--</strong></span>
                                 </div>
@@ -1962,6 +1965,8 @@
         var streamGmvValue = document.getElementById('stream-gmv-value');
         var streamItemsSold = document.getElementById('stream-items-sold');
         var streamOrdersEl = document.getElementById('stream-orders');
+        var streamMetricNoteRow = document.getElementById('stream-metric-note-row');
+        var streamMetricNote = document.getElementById('stream-metric-note');
         var muteToggle = document.getElementById('mute-toggle');
         var muteIcon = document.getElementById('mute-icon');
         var creatorSelect = document.getElementById('creator-select');
@@ -2963,7 +2968,10 @@
                 streamGmvValue.textContent = formatGmv(data.stream_gmv);
                 streamItemsSold.textContent = data.stream_items || 0;
                 streamOrdersEl.textContent = data.stream_orders || 0;
-                if (data.stream_metric_source === 'tiktok_live_session') {
+                if (data.stream_metric_label) {
+                    var metricCreatorLabel = data.selected_creator ? ' @' + data.selected_creator : '';
+                    streamGmvLabel.textContent = 'Selected Stream GMV (' + data.stream_metric_label + ')' + metricCreatorLabel;
+                } else if (data.stream_metric_source === 'tiktok_live_session') {
                     var creatorLabel = data.selected_creator ? ' @' + data.selected_creator : '';
                     streamGmvLabel.textContent = 'Selected Stream GMV' + creatorLabel;
                 } else if (data.stream_range_source === 'auto') {
@@ -2972,6 +2980,13 @@
                     streamGmvLabel.textContent = 'Selected Stream GMV (schedule)';
                 } else {
                     streamGmvLabel.textContent = 'Selected Stream GMV';
+                }
+                if (data.stream_metric_note) {
+                    streamMetricNoteRow.style.display = '';
+                    streamMetricNote.textContent = data.stream_metric_note;
+                } else {
+                    streamMetricNoteRow.style.display = 'none';
+                    streamMetricNote.textContent = '';
                 }
             } else {
                 streamGmvWrap.style.display = 'none';
@@ -3031,6 +3046,8 @@
                 tiktok_gmv: data.tiktok_gmv,
                 stream_range_source: data.stream_range_source,
                 stream_metric_source: data.stream_metric_source,
+                stream_metric_label: data.stream_metric_label,
+                stream_metric_note: data.stream_metric_note,
                 selected_creator: data.selected_creator || _selectedCreator
             });
             if (data.is_live != null) updateLiveBadge(data.is_live);
