@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/linear.css?v=1776749171">
+    <link rel="stylesheet" href="/static/safe-area.css?v=1776747800">
+    <style>
+        .pack-layout { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 14px; align-items: start; }
+        .pack-sticky { position: sticky; top: 14px; }
+        .pack-scan-form { display: grid; gap: 10px; }
+        .pack-order-select { min-height: 44px; }
+        .pack-scan-result { min-height: 52px; border: 1px solid var(--lx-br); border-radius: 8px; padding: 10px; background: var(--lx-s2); color: var(--lx-muted); font-size: 13px; }
+        .pack-scan-result.is-ok { border-color: rgba(34,197,94,.38); color: #86efac; }
+        .pack-scan-result.is-warn { border-color: rgba(245,158,11,.45); color: #fcd34d; }
+        .pack-scan-result.is-bad { border-color: rgba(239,68,68,.45); color: #fca5a5; }
+        .pack-summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .pack-metric { border: 1px solid var(--lx-br); border-radius: 8px; background: var(--lx-s1); padding: 10px 12px; }
+        .pack-metric-value { color: var(--lx-text); font-size: 22px; font-weight: 700; line-height: 1; }
+        .pack-metric-label { color: var(--lx-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; margin-top: 6px; }
+        .pack-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 14px; }
+        .pack-list { display: grid; gap: 10px; }
+        .pack-order { border: 1px solid var(--lx-br); border-radius: 8px; background: var(--lx-s1); padding: 12px; }
+        .pack-order.is-active { border-color: rgba(59,130,246,.65); box-shadow: 0 0 0 1px rgba(59,130,246,.2); }
+        .pack-order-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+        .pack-order-title { margin: 0; font-size: 15px; color: var(--lx-text); }
+        .pack-order-meta { margin-top: 4px; color: var(--lx-muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .pack-status { display: inline-flex; align-items: center; border-radius: 5px; padding: 3px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+        .pack-status.ready_to_scan { color: #93c5fd; background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.28); }
+        .pack-status.in_progress { color: #fcd34d; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.28); }
+        .pack-status.verified { color: #86efac; background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.28); }
+        .pack-status.exception, .pack-status.needs_item_link { color: #fca5a5; background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.28); }
+        .pack-items { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+        .pack-items li { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--lx-br); padding-top: 6px; color: var(--lx-text); font-size: 13px; }
+        .pack-items .muted { color: var(--lx-muted); font-size: 12px; }
+        .pack-barcode-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .pack-barcode { border: 1px solid var(--lx-br); border-radius: 5px; padding: 3px 7px; color: var(--lx-muted); font-family: "Consolas","Courier New",monospace; font-size: 12px; }
+        .pack-recent { margin-top: 10px; color: var(--lx-muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .pack-recent span { border: 1px solid var(--lx-br); border-radius: 5px; padding: 3px 7px; }
+        @media (max-width: 980px) {
+            .pack-layout { grid-template-columns: 1fr; }
+            .pack-sticky { position: static; }
+            .pack-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .pack-filters { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 620px) {
+            .pack-filters { grid-template-columns: 1fr; }
+            .pack-order-head { display: grid; }
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    {% include "_linear_sidebar.html" %}
+    <div class="lx-page-head">
+        <div class="lx-head-row">
+            <div>
+                <p class="lx-eyebrow">Fulfillment</p>
+                <h1 class="lx-h1">{{ title }}</h1>
+                <p class="lx-subtitle">Paid, open orders with barcode-confirmed pack checks for inventory-linked line items.</p>
+            </div>
+            <div class="lx-head-actions">
+                <span class="lx-pill">{{ summary.total }} queued</span>
+                <span class="lx-pill">{{ summary.verified }} verified</span>
+                <span class="lx-pill">{{ summary.exception + summary.needs_item_link }} blocked</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="pack-summary-grid">
+        <div class="pack-metric"><div class="pack-metric-value">{{ summary.ready_to_scan }}</div><div class="pack-metric-label">Ready</div></div>
+        <div class="pack-metric"><div class="pack-metric-value">{{ summary.in_progress }}</div><div class="pack-metric-label">In Progress</div></div>
+        <div class="pack-metric"><div class="pack-metric-value">{{ summary.verified }}</div><div class="pack-metric-label">Verified</div></div>
+        <div class="pack-metric"><div class="pack-metric-value">{{ summary.exception }}</div><div class="pack-metric-label">Exceptions</div></div>
+        <div class="pack-metric"><div class="pack-metric-value">{{ summary.needs_item_link }}</div><div class="pack-metric-label">Needs Link</div></div>
+    </div>
+
+    <div class="pack-layout">
+        <div class="lx-card pack-sticky">
+            <h2 class="lx-card-title">Scan</h2>
+            <form class="pack-scan-form" id="pack-scan-form">
+                <label class="lx-label">Order
+                    <select class="lx-select pack-order-select" name="order_key" id="pack-order-select" required>
+                        <option value="">Select an order</option>
+                        {% for order in orders %}
+                        <option value="{{ order.source }}|{{ order.order_id }}">{{ order.source|upper }} {{ order.order_number }} · {{ order.customer_name }} · {{ order.progress_label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="lx-label">Barcode
+                    <input class="lx-input" name="barcode" id="pack-barcode-input" autocomplete="off" inputmode="text" placeholder="DGN-000001" required>
+                </label>
+                <button class="lx-btn lx-btn-primary" type="submit">Confirm Scan</button>
+            </form>
+            <div class="pack-scan-result" id="pack-scan-result">Select an order, scan the item barcode, then press Enter.</div>
+        </div>
+
+        <main>
+            <form method="get" action="/pack-station" class="pack-filters">
+                <label class="lx-label">Source
+                    <select class="lx-select" name="source">
+                        <option value="all" {% if selected_source == "all" %}selected{% endif %}>All</option>
+                        <option value="tiktok" {% if selected_source == "tiktok" %}selected{% endif %}>TikTok</option>
+                        <option value="shopify" {% if selected_source == "shopify" %}selected{% endif %}>Shopify</option>
+                    </select>
+                </label>
+                <label class="lx-label">Search
+                    <input class="lx-input" name="search" value="{{ selected_search }}" placeholder="Order, customer, item, barcode">
+                </label>
+                <label class="lx-label">Days
+                    <input class="lx-input" type="number" name="days" min="1" max="120" value="{{ selected_days }}">
+                </label>
+                <label class="lx-label">Limit
+                    <input class="lx-input" type="number" name="limit" min="1" max="200" value="{{ selected_limit }}">
+                </label>
+                <button class="lx-btn" type="submit">Apply</button>
+            </form>
+
+            <div class="pack-list" id="pack-list">
+                {% for order in orders %}
+                <article class="pack-order" data-order-key="{{ order.source }}|{{ order.order_id }}">
+                    <div class="pack-order-head">
+                        <div>
+                            <h2 class="pack-order-title">{{ order.source|upper }} {{ order.order_number }} · {{ order.customer_name }}</h2>
+                            <div class="pack-order-meta">
+                                <span>${{ "%.2f"|format(order.total) }}</span>
+                                <span>{{ order.created_at | pacific_datetime }}</span>
+                                <span>{{ order.financial_status or order.order_status or "paid" }}</span>
+                                <span>{{ order.progress_label }} scans</span>
+                            </div>
+                        </div>
+                        <span class="pack-status {{ order.pack_status }}">{{ order.pack_status.replace("_", " ") }}</span>
+                    </div>
+                    <ul class="pack-items">
+                        {% for item in order.line_items %}
+                        <li>
+                            <span>{{ item.quantity }}x {{ item.title }}</span>
+                            <span class="muted">{{ item.sku or "no barcode sku" }}</span>
+                        </li>
+                        {% endfor %}
+                        {% if not order.line_items %}
+                        <li><span>No line items stored</span><span class="muted">needs source sync</span></li>
+                        {% endif %}
+                    </ul>
+                    <div class="pack-barcode-grid">
+                        {% for item in order.expected_items %}
+                        <span class="pack-barcode">{{ item.barcode }} × {{ item.quantity }}</span>
+                        {% endfor %}
+                        {% if not order.expected_items %}
+                        <span class="pack-barcode">No DGN SKU detected</span>
+                        {% endif %}
+                    </div>
+                    {% if order.recent_scans %}
+                    <div class="pack-recent">
+                        {% for scan in order.recent_scans %}
+                        <span>{{ scan.barcode }} · {{ scan.status }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </article>
+                {% else %}
+                <div class="lx-empty">No open paid orders matched the current filters.</div>
+                {% endfor %}
+            </div>
+        </main>
+    </div>
+</div>
+{% include "_csrf_bootstrap.html" %}
+<script>
+(function () {
+    var form = document.getElementById('pack-scan-form');
+    var select = document.getElementById('pack-order-select');
+    var input = document.getElementById('pack-barcode-input');
+    var result = document.getElementById('pack-scan-result');
+    function setResult(kind, text) {
+        result.className = 'pack-scan-result ' + (kind ? 'is-' + kind : '');
+        result.textContent = text;
+    }
+    function selectOrderCard(key) {
+        document.querySelectorAll('.pack-order.is-active').forEach(function (el) { el.classList.remove('is-active'); });
+        if (!key) return;
+        var card = document.querySelector('.pack-order[data-order-key="' + CSS.escape(key) + '"]');
+        if (card) card.classList.add('is-active');
+    }
+    if (select) {
+        select.addEventListener('change', function () {
+            selectOrderCard(select.value);
+            if (input) input.focus();
+        });
+    }
+    if (!form) return;
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var key = select.value || '';
+        var parts = key.split('|');
+        var barcode = (input.value || '').trim();
+        if (parts.length !== 2 || !barcode) {
+            setResult('warn', 'Select an order and scan a barcode.');
+            return;
+        }
+        setResult('', 'Checking ' + barcode.toUpperCase() + '...');
+        fetch('/pack-station/api/scan', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({source: parts[0], order_id: parts[1], barcode: barcode})
+        }).then(function (response) {
+            return response.json().then(function (body) {
+                if (!response.ok) throw new Error(body.detail || 'Scan failed');
+                return body;
+            });
+        }).then(function (body) {
+            var status = body.event.status;
+            var kind = status === 'matched' ? 'ok' : (status === 'duplicate' || status === 'unlinked_order' ? 'warn' : 'bad');
+            setResult(kind, body.event.barcode + ' · ' + status.replace(/_/g, ' '));
+            input.value = '';
+            input.focus();
+        }).catch(function (err) {
+            setResult('bad', err.message || 'Scan failed');
+        });
+    });
+})();
+</script>
+</body>
+</html>

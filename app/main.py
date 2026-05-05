@@ -511,6 +511,9 @@ app.include_router(tiktok_streamer_router)
 from .routers.tiktok_orders import router as tiktok_orders_router  # noqa: E402
 app.include_router(tiktok_orders_router)
 
+from .routers.pack_station import router as pack_station_router  # noqa: E402
+app.include_router(pack_station_router)
+
 from .routers.reports import router as reports_router  # noqa: E402
 app.include_router(reports_router)
 
