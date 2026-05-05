@@ -418,6 +418,24 @@ class TikTokOrder(SQLModel, table=True):
     received_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+class PackScanEvent(SQLModel, table=True):
+    __tablename__ = "pack_scan_events"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    order_source: str = Field(index=True)  # "tiktok" | "shopify"
+    order_id: str = Field(index=True)      # platform order id, not local row id
+    order_number: Optional[str] = Field(default=None, index=True)
+    barcode: str = Field(index=True)
+    inventory_item_id: Optional[int] = Field(default=None, foreign_key="inventory_items.id", index=True)
+    expected: bool = Field(default=False, index=True)
+    status: str = Field(index=True)        # matched | duplicate | unexpected | unknown_barcode | unlinked_order
+    item_snapshot_json: str = Field(default="{}")
+    scanned_by_user_id: Optional[int] = Field(default=None, index=True)
+    scanned_by_label: Optional[str] = Field(default=None, index=True)
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
 class TikTokProduct(SQLModel, table=True):
     __tablename__ = "tiktok_products"
 
