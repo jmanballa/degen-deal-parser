@@ -13,14 +13,20 @@ from app.models import InventoryItem, ShopifyOrder, TikTokOrder
 from app.pack_station import (
     PACK_SCAN_DUPLICATE,
     PACK_SCAN_MATCHED,
+    PACK_SCAN_OVERRIDE,
+    PACK_SCAN_REOPENED,
+    PACK_SCAN_UNEXPECTED,
     PACK_SCAN_UNLINKED_ORDER,
     build_pack_order_row,
     extract_expected_pack_items,
+    load_pack_exception_queue,
     load_pack_queue,
     pack_queue_summary,
+    record_pack_override,
+    record_pack_reopen,
     record_pack_scan,
 )
-from app.routers.pack_station import pack_station_page
+from app.routers.pack_station import pack_exception_queue_page, pack_station_page
 
 
 def make_request(path: str = "/pack-station") -> Request:
@@ -147,6 +153,73 @@ class PackStationTests(unittest.TestCase):
         self.assertEqual(queue[0]["pack_status"], "needs_item_link")
         self.assertEqual(summary["needs_item_link"], 1)
 
+    def test_pack_exception_override_and_reopen_are_audited(self) -> None:
+        now = datetime.now(timezone.utc)
+        user = SimpleNamespace(id=7, username="lead", display_name="Pack Lead")
+        with Session(self.engine) as session:
+            session.add(
+                InventoryItem(
+                    barcode="DGN-000001",
+                    item_type="single",
+                    game="Pokemon",
+                    card_name="Charizard",
+                    status="sold",
+                )
+            )
+            session.add(
+                InventoryItem(
+                    barcode="DGN-000003",
+                    item_type="single",
+                    game="Pokemon",
+                    card_name="Squirtle",
+                    status="in_stock",
+                )
+            )
+            session.add(
+                TikTokOrder(
+                    tiktok_order_id="tt-override",
+                    order_number="TT2001",
+                    created_at=now,
+                    updated_at=now,
+                    customer_name="Brock",
+                    total_price=25.0,
+                    subtotal_price=25.0,
+                    financial_status="paid",
+                    fulfillment_status="unfulfilled",
+                    order_status="awaiting_shipment",
+                    line_items_summary_json='[{"title":"Charizard","quantity":1,"sku":"DGN-000001"}]',
+                )
+            )
+            session.commit()
+
+            bad_scan = record_pack_scan(session, source="tiktok", order_id="tt-override", barcode="DGN-000003")
+            blocked = load_pack_exception_queue(session, source="tiktok", status_filter="blocked", days=1, limit=10)
+            override = record_pack_override(
+                session,
+                source="tiktok",
+                order_id="tt-override",
+                reason="Verified item against order photo",
+                user=user,
+            )
+            overridden = load_pack_exception_queue(session, source="tiktok", status_filter="override", days=1, limit=10)
+            reopened_event = record_pack_reopen(
+                session,
+                source="tiktok",
+                order_id="tt-override",
+                reason="Need a second check",
+                user=user,
+            )
+            reopened = load_pack_exception_queue(session, source="tiktok", status_filter="blocked", days=1, limit=10)
+
+        self.assertEqual(bad_scan.status, PACK_SCAN_UNEXPECTED)
+        self.assertEqual(blocked[0]["pack_status"], "exception")
+        self.assertEqual(blocked[0]["exception_reasons"][0]["status"], PACK_SCAN_UNEXPECTED)
+        self.assertEqual(override.status, PACK_SCAN_OVERRIDE)
+        self.assertEqual(overridden[0]["pack_status"], "override")
+        self.assertEqual(overridden[0]["exception_reasons"][0]["notes"], "Verified item against order photo")
+        self.assertEqual(reopened_event.status, PACK_SCAN_REOPENED)
+        self.assertEqual(reopened[0]["pack_status"], "exception")
+
     def test_pack_station_page_renders_empty_queue(self) -> None:
         with Session(self.engine) as session, patch(
             "app.routers.pack_station.require_role_response",
@@ -165,6 +238,41 @@ class PackStationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Pack Station", body)
         self.assertIn("No open paid orders matched", body)
+
+    def test_pack_exception_queue_page_renders_needs_link_order(self) -> None:
+        now = datetime.now(timezone.utc)
+        with Session(self.engine) as session:
+            session.add(
+                ShopifyOrder(
+                    shopify_order_id="sh-needs-link",
+                    order_number="#2001",
+                    created_at=now,
+                    updated_at=now,
+                    customer_name="Tracey",
+                    total_price=15.0,
+                    subtotal_price=15.0,
+                    financial_status="paid",
+                    fulfillment_status="unfulfilled",
+                    line_items_summary_json='[{"title":"Mystery Pull","quantity":1,"sku":"SKU-1"}]',
+                )
+            )
+            session.commit()
+            with patch("app.routers.pack_station.require_role_response", return_value=None):
+                response = pack_exception_queue_page(
+                    make_request("/pack-station/exceptions"),
+                    source="shopify",
+                    status="blocked",
+                    search="",
+                    days=30,
+                    limit=75,
+                    session=session,
+                )
+
+        body = response.body.decode("utf-8")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Pack Exceptions", body)
+        self.assertIn("#2001", body)
+        self.assertIn("Needs item link", body)
 
 
 if __name__ == "__main__":

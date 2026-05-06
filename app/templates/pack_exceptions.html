@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/linear.css?v=1776749171">
+    <link rel="stylesheet" href="/static/safe-area.css?v=1776747800">
+    <style>
+        .exceptions-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .exception-metric { border: 1px solid var(--lx-br); border-radius: 8px; background: var(--lx-s1); padding: 10px 12px; }
+        .exception-metric-value { color: var(--lx-text); font-size: 22px; font-weight: 700; line-height: 1; }
+        .exception-metric-label { color: var(--lx-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; margin-top: 6px; }
+        .exception-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 14px; }
+        .exception-list { display: grid; gap: 10px; }
+        .exception-card { border: 1px solid var(--lx-br); border-radius: 8px; background: var(--lx-s1); padding: 12px; }
+        .exception-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+        .exception-title { margin: 0; color: var(--lx-text); font-size: 15px; }
+        .exception-meta { margin-top: 4px; color: var(--lx-muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .exception-status { display: inline-flex; align-items: center; border-radius: 5px; padding: 3px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+        .exception-status.exception, .exception-status.needs_item_link { color: #fca5a5; background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.28); }
+        .exception-status.override { color: #c4b5fd; background: rgba(139,92,246,.14); border: 1px solid rgba(139,92,246,.32); }
+        .exception-reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .exception-chip { border: 1px solid var(--lx-br); border-radius: 5px; padding: 4px 7px; color: var(--lx-muted); font-size: 12px; }
+        .exception-chip strong { color: var(--lx-text); font-weight: 700; }
+        .exception-items { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+        .exception-items li { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--lx-br); padding-top: 6px; color: var(--lx-text); font-size: 13px; }
+        .exception-items .muted { color: var(--lx-muted); font-size: 12px; }
+        .exception-actions { display: grid; grid-template-columns: minmax(180px, 1fr) auto; gap: 8px; margin-top: 12px; align-items: center; }
+        .exception-note { font-size: 12px; color: var(--lx-muted); margin-top: 8px; }
+        @media (max-width: 980px) {
+            .exceptions-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .exception-filters { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 640px) {
+            .exception-card-head { display: grid; }
+            .exception-filters, .exception-actions { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    {% include "_linear_sidebar.html" %}
+    <div class="lx-page-head">
+        <div class="lx-head-row">
+            <div>
+                <p class="lx-eyebrow">Fulfillment</p>
+                <h1 class="lx-h1">{{ title }}</h1>
+                <p class="lx-subtitle">Blocked scan checks and audited override decisions for open paid orders.</p>
+            </div>
+            <div class="lx-head-actions">
+                <a class="lx-btn" href="/pack-station">Pack Station</a>
+                <span class="lx-pill">{{ summary.blocked }} blocked</span>
+                <span class="lx-pill">{{ summary.override }} overridden</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="exceptions-grid">
+        <div class="exception-metric"><div class="exception-metric-value">{{ summary.blocked }}</div><div class="exception-metric-label">Blocked</div></div>
+        <div class="exception-metric"><div class="exception-metric-value">{{ summary.unknown_barcode }}</div><div class="exception-metric-label">Unknown</div></div>
+        <div class="exception-metric"><div class="exception-metric-value">{{ summary.unexpected }}</div><div class="exception-metric-label">Unexpected</div></div>
+        <div class="exception-metric"><div class="exception-metric-value">{{ summary.duplicate }}</div><div class="exception-metric-label">Duplicate</div></div>
+        <div class="exception-metric"><div class="exception-metric-value">{{ summary.needs_item_link }}</div><div class="exception-metric-label">Needs Link</div></div>
+    </div>
+
+    <form method="get" action="/pack-station/exceptions" class="exception-filters">
+        <label class="lx-label">Source
+            <select class="lx-select" name="source">
+                <option value="all" {% if selected_source == "all" %}selected{% endif %}>All</option>
+                <option value="tiktok" {% if selected_source == "tiktok" %}selected{% endif %}>TikTok</option>
+                <option value="shopify" {% if selected_source == "shopify" %}selected{% endif %}>Shopify</option>
+            </select>
+        </label>
+        <label class="lx-label">Status
+            <select class="lx-select" name="status">
+                <option value="blocked" {% if selected_status == "blocked" %}selected{% endif %}>Blocked</option>
+                <option value="exception" {% if selected_status == "exception" %}selected{% endif %}>Scan exception</option>
+                <option value="needs_item_link" {% if selected_status == "needs_item_link" %}selected{% endif %}>Needs item link</option>
+                <option value="override" {% if selected_status == "override" %}selected{% endif %}>Override</option>
+                <option value="all" {% if selected_status == "all" %}selected{% endif %}>All exceptions</option>
+            </select>
+        </label>
+        <label class="lx-label">Search
+            <input class="lx-input" name="search" value="{{ selected_search }}" placeholder="Order, customer, item, barcode">
+        </label>
+        <label class="lx-label">Days
+            <input class="lx-input" type="number" name="days" min="1" max="120" value="{{ selected_days }}">
+        </label>
+        <label class="lx-label">Limit
+            <input class="lx-input" type="number" name="limit" min="1" max="200" value="{{ selected_limit }}">
+        </label>
+        <button class="lx-btn" type="submit">Apply</button>
+    </form>
+
+    <main class="exception-list">
+        {% for order in orders %}
+        <article class="exception-card">
+            <div class="exception-card-head">
+                <div>
+                    <h2 class="exception-title">{{ order.source|upper }} {{ order.order_number }} · {{ order.customer_name }}</h2>
+                    <div class="exception-meta">
+                        <span>${{ "%.2f"|format(order.total) }}</span>
+                        <span>{{ order.created_at | pacific_datetime }}</span>
+                        <span>{{ order.progress_label }} scans</span>
+                        {% if order.latest_exception_activity and order.latest_exception_activity.operator %}
+                        <span>{{ order.latest_exception_activity.operator }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <span class="exception-status {{ order.pack_status }}">{{ order.pack_status.replace("_", " ") }}</span>
+            </div>
+
+            <div class="exception-reasons">
+                {% for reason in order.exception_reasons %}
+                <span class="exception-chip">
+                    <strong>{{ reason.label }}</strong>
+                    {% if reason.barcode %} · {{ reason.barcode }}{% endif %}
+                    {% if reason.created_at %} · {{ reason.created_at | pacific_datetime }}{% endif %}
+                    {% if reason.notes %} · {{ reason.notes }}{% endif %}
+                </span>
+                {% endfor %}
+            </div>
+
+            <ul class="exception-items">
+                {% for item in order.line_items[:4] %}
+                <li>
+                    <span>{{ item.quantity }}x {{ item.title }}</span>
+                    <span class="muted">{{ item.sku or "no barcode sku" }}</span>
+                </li>
+                {% endfor %}
+                {% if not order.line_items %}
+                <li><span>No line items stored</span><span class="muted">needs source sync</span></li>
+                {% endif %}
+            </ul>
+
+            {% if order.pack_status == "override" %}
+            <form class="exception-actions" method="post" action="/pack-station/exceptions/reopen">
+                <input type="hidden" name="source" value="{{ order.source }}">
+                <input type="hidden" name="order_id" value="{{ order.order_id }}">
+                <input class="lx-input" name="reason" placeholder="Reopen note">
+                <button class="lx-btn" type="submit">Reopen</button>
+            </form>
+            {% else %}
+            <form class="exception-actions" method="post" action="/pack-station/exceptions/override">
+                <input type="hidden" name="source" value="{{ order.source }}">
+                <input type="hidden" name="order_id" value="{{ order.order_id }}">
+                <input class="lx-input" name="reason" placeholder="Override reason" required minlength="3">
+                <button class="lx-btn lx-btn-primary" type="submit">Override</button>
+            </form>
+            {% endif %}
+        </article>
+        {% else %}
+        <div class="lx-empty">No pack exceptions matched the current filters.</div>
+        {% endfor %}
+    </main>
+</div>
+{% include "_csrf_bootstrap.html" %}
+</body>
+</html>

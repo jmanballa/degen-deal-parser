@@ -27,6 +27,8 @@ PACK_SCAN_DUPLICATE = "duplicate"
 PACK_SCAN_UNEXPECTED = "unexpected"
 PACK_SCAN_UNKNOWN_BARCODE = "unknown_barcode"
 PACK_SCAN_UNLINKED_ORDER = "unlinked_order"
+PACK_SCAN_OVERRIDE = "override"
+PACK_SCAN_REOPENED = "reopened"
 
 PACK_EXCEPTION_STATUSES = {
     PACK_SCAN_DUPLICATE,
@@ -34,6 +36,8 @@ PACK_EXCEPTION_STATUSES = {
     PACK_SCAN_UNKNOWN_BARCODE,
     PACK_SCAN_UNLINKED_ORDER,
 }
+PACK_CONTROL_STATUSES = {PACK_SCAN_OVERRIDE, PACK_SCAN_REOPENED}
+PACK_QUEUE_EXCEPTION_FILTERS = {"all", "blocked", "exception", "needs_item_link", "override"}
 
 _BARCODE_RE = re.compile(r"^DGN-\d{6}$", re.IGNORECASE)
 
@@ -137,7 +141,37 @@ def _matched_count(expected: Counter[str], scans: Iterable[PackScanEvent]) -> in
     return sum(min(expected[barcode], matched[barcode]) for barcode in expected)
 
 
+def _scan_sort_key(scan: PackScanEvent) -> tuple[datetime, int]:
+    created = scan.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return created.astimezone(timezone.utc), int(scan.id or 0)
+
+
+def _latest_scan_with_status(scans: Iterable[PackScanEvent], statuses: set[str]) -> PackScanEvent | None:
+    matches = [scan for scan in scans if scan.status in statuses]
+    if not matches:
+        return None
+    return max(matches, key=_scan_sort_key)
+
+
+def _has_active_override(scans: list[PackScanEvent]) -> bool:
+    latest_override = _latest_scan_with_status(scans, {PACK_SCAN_OVERRIDE})
+    if latest_override is None:
+        return False
+    latest_reopen = _latest_scan_with_status(scans, {PACK_SCAN_REOPENED})
+    latest_exception = _latest_scan_with_status(scans, PACK_EXCEPTION_STATUSES)
+    override_key = _scan_sort_key(latest_override)
+    if latest_reopen is not None and _scan_sort_key(latest_reopen) > override_key:
+        return False
+    if latest_exception is not None and _scan_sort_key(latest_exception) > override_key:
+        return False
+    return True
+
+
 def pack_status_for(expected_items: list[dict[str, Any]], scans: list[PackScanEvent]) -> str:
+    if _has_active_override(scans):
+        return "override"
     expected = _expected_counter(expected_items)
     if not expected:
         return "needs_item_link"
@@ -205,6 +239,13 @@ def build_pack_order_row(
     expected_count = sum(expected.values())
     matched_count = _matched_count(expected, scans)
     status = pack_status_for(expected_items, scans)
+    exception_scans = sorted(
+        [scan for scan in scans if scan.status in PACK_EXCEPTION_STATUSES or scan.status in PACK_CONTROL_STATUSES],
+        key=_scan_sort_key,
+        reverse=True,
+    )
+    latest_exception = _latest_scan_with_status(scans, PACK_EXCEPTION_STATUSES)
+    latest_control = _latest_scan_with_status(scans, PACK_CONTROL_STATUSES)
     return {
         "source": source,
         "order_id": order_id,
@@ -224,6 +265,9 @@ def build_pack_order_row(
         "pack_status": status,
         "progress_label": f"{matched_count}/{expected_count}" if expected_count else "0/0",
         "recent_scans": sorted(scans, key=lambda scan: scan.created_at, reverse=True)[:4],
+        "exception_scans": exception_scans,
+        "latest_exception": latest_exception,
+        "latest_control": latest_control,
     }
 
 
@@ -405,12 +449,193 @@ def record_pack_scan(
     return event
 
 
+def _record_pack_control_event(
+    session: Session,
+    *,
+    source: str,
+    order_id: str,
+    status: str,
+    user: Optional[User] = None,
+    notes: str | None = None,
+) -> PackScanEvent:
+    source = str(source or "").strip().lower()
+    if source not in PACK_SOURCES:
+        raise ValueError("Unknown pack source")
+    clean_order_id = str(order_id or "").strip()
+    if not clean_order_id:
+        raise ValueError("Order id is required")
+    order = _get_order(session, source, clean_order_id)
+    if order is None:
+        raise LookupError("Order not found")
+
+    order_id_value, order_number = _order_identity(order, source)
+    label = ""
+    user_id = None
+    if user is not None:
+        user_id = user.id
+        label = (user.display_name or user.username or "").strip()
+
+    event = PackScanEvent(
+        order_source=source,
+        order_id=order_id_value,
+        order_number=order_number,
+        barcode="OVERRIDE" if status == PACK_SCAN_OVERRIDE else "REOPEN",
+        inventory_item_id=None,
+        expected=False,
+        status=status,
+        item_snapshot_json="{}",
+        scanned_by_user_id=user_id,
+        scanned_by_label=label or None,
+        notes=(notes or "").strip() or None,
+        created_at=utcnow(),
+    )
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+    return event
+
+
+def record_pack_override(
+    session: Session,
+    *,
+    source: str,
+    order_id: str,
+    reason: str,
+    user: Optional[User] = None,
+) -> PackScanEvent:
+    clean_reason = str(reason or "").strip()
+    if len(clean_reason) < 3:
+        raise ValueError("Override reason is required")
+    return _record_pack_control_event(
+        session,
+        source=source,
+        order_id=order_id,
+        status=PACK_SCAN_OVERRIDE,
+        user=user,
+        notes=clean_reason,
+    )
+
+
+def record_pack_reopen(
+    session: Session,
+    *,
+    source: str,
+    order_id: str,
+    reason: str | None = None,
+    user: Optional[User] = None,
+) -> PackScanEvent:
+    return _record_pack_control_event(
+        session,
+        source=source,
+        order_id=order_id,
+        status=PACK_SCAN_REOPENED,
+        user=user,
+        notes=reason,
+    )
+
+
+def _exception_reason_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
+    reasons: list[dict[str, Any]] = []
+    if row.get("pack_status") == "needs_item_link":
+        reasons.append(
+            {
+                "status": "needs_item_link",
+                "label": "Needs item link",
+                "barcode": "",
+                "operator": "",
+                "notes": "No DGN barcode SKU was found on this order.",
+                "created_at": row.get("created_at"),
+            }
+        )
+    for scan in row.get("exception_scans") or []:
+        if scan.status not in PACK_EXCEPTION_STATUSES and scan.status not in PACK_CONTROL_STATUSES:
+            continue
+        reasons.append(
+            {
+                "status": scan.status,
+                "label": scan.status.replace("_", " ").title(),
+                "barcode": scan.barcode,
+                "operator": scan.scanned_by_label or "",
+                "notes": scan.notes or "",
+                "created_at": scan.created_at,
+            }
+        )
+    return reasons
+
+
+def _exception_filter_matches(row: dict[str, Any], status_filter: str) -> bool:
+    pack_status = str(row.get("pack_status") or "")
+    if status_filter == "all":
+        return pack_status in {"exception", "needs_item_link", "override"}
+    if status_filter == "blocked":
+        return pack_status in {"exception", "needs_item_link"}
+    return pack_status == status_filter
+
+
+def load_pack_exception_queue(
+    session: Session,
+    *,
+    source: str = "all",
+    status_filter: str = "blocked",
+    days: int = 30,
+    limit: int = 75,
+    search: str = "",
+) -> list[dict[str, Any]]:
+    selected_filter = status_filter if status_filter in PACK_QUEUE_EXCEPTION_FILTERS else "blocked"
+    rows = load_pack_queue(
+        session,
+        source=source,
+        days=days,
+        limit=max(limit * 4, limit),
+        search=search,
+    )
+    queue_rows = [row for row in rows if _exception_filter_matches(row, selected_filter)]
+    for row in queue_rows:
+        reasons = _exception_reason_rows(row)
+        row["exception_reasons"] = reasons
+        row["latest_exception_activity"] = reasons[0] if reasons else None
+    queue_rows.sort(
+        key=lambda row: (
+            row.get("latest_exception_activity", {}).get("created_at")
+            if row.get("latest_exception_activity")
+            else row["created_at"]
+        ),
+        reverse=True,
+    )
+    return queue_rows[: max(limit, 1)]
+
+
+def pack_exception_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {
+        "total": len(rows),
+        "blocked": 0,
+        "exception": 0,
+        "needs_item_link": 0,
+        "override": 0,
+        PACK_SCAN_UNKNOWN_BARCODE: 0,
+        PACK_SCAN_UNEXPECTED: 0,
+        PACK_SCAN_DUPLICATE: 0,
+        PACK_SCAN_UNLINKED_ORDER: 0,
+    }
+    for row in rows:
+        pack_status = str(row.get("pack_status") or "")
+        if pack_status in {"exception", "needs_item_link"}:
+            counts["blocked"] += 1
+        if pack_status in counts:
+            counts[pack_status] += 1
+        for scan in row.get("exception_scans") or []:
+            if scan.status in counts:
+                counts[scan.status] += 1
+    return counts
+
+
 def pack_queue_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
     counts = {
         "total": len(rows),
         "ready_to_scan": 0,
         "in_progress": 0,
         "verified": 0,
+        "override": 0,
         "exception": 0,
         "needs_item_link": 0,
     }
