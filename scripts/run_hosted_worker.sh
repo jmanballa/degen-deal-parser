@@ -14,4 +14,4 @@ echo "Starting hosted worker process."
 echo "This process runs Discord ingest, backfill execution, and parser worker."
 echo "DATABASE_URL loaded from .env (not overridden)."
 
-exec python -m app.worker_service
+exec python -m app.discord.worker_service

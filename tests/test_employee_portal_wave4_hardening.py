@@ -119,7 +119,7 @@ class _Harness:
 
     def _seed_employee(self, *, user_id: int = 500, username: str = "tgt"):
         from app.models import EmployeeProfile, User
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from datetime import date
 
         u = User(
@@ -333,7 +333,7 @@ class CompensationPermissionGateTests(unittest.TestCase, _Harness):
 
     def test_pay_rates_get_uses_compensation_view_and_post_requires_edit(self):
         from app.models import EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         self._login(role="manager", user_id=25, username="mgr_comp_view")
         self._set_role_permission("manager", "admin.labor_financials.view", True)
@@ -359,7 +359,7 @@ class CompensationPermissionGateTests(unittest.TestCase, _Harness):
 
     def test_pay_rates_post_allows_explicit_compensation_edit_permission(self):
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii, encrypt_pii
+        from app.team.pii import decrypt_pii, encrypt_pii
 
         self._login(role="manager", user_id=26, username="mgr_comp_edit")
         self._set_role_permission("manager", "admin.labor_financials.view", True)
@@ -384,7 +384,7 @@ class CompensationPermissionGateTests(unittest.TestCase, _Harness):
 
     def test_profile_update_compensation_ignores_labor_view_without_edit(self):
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii, encrypt_pii
+        from app.team.pii import decrypt_pii, encrypt_pii
 
         self._login(role="manager", user_id=27, username="mgr_profile_comp")
         self._set_role_permission("manager", "admin.employees.edit", True)
@@ -532,7 +532,7 @@ class PasswordResetActionSplitTests(unittest.TestCase, _Harness):
 
     def test_invalid_hourly_rate_does_not_clobber_existing_value(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii, encrypt_pii
+        from app.team.pii import decrypt_pii, encrypt_pii
 
         self._login(role="admin", user_id=7000, username="adm_rate_bad")
         emp = self._seed_employee(user_id=7100, username="emp7100")
@@ -561,7 +561,7 @@ class PasswordResetActionSplitTests(unittest.TestCase, _Harness):
 
     def test_hourly_rate_is_clamped_before_storage(self):
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         self._login(role="admin", user_id=7001, username="adm_rate_clamp")
         emp = self._seed_employee(user_id=7101, username="emp7101")
@@ -956,7 +956,7 @@ class ProfileSelfUpdateHardeningTests(unittest.TestCase, _Harness):
 
     def test_profile_save_overwrites_corrupt_pii_blob(self):
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
         from app.routers.team import team_profile_post
 
         emp = self._seed_employee(user_id=8801, username="corrupt_pii")

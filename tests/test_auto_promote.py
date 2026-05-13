@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 from sqlmodel import SQLModel, Session, create_engine, select
 
-from app.corrections import auto_promote_eligible_patterns
+from app.discord.corrections import auto_promote_eligible_patterns
 from app.models import OperationsLog, ReviewCorrection
-from app.worker import auto_promote_once
+from app.discord.worker import auto_promote_once
 
 
 def _utcnow():
@@ -139,8 +139,8 @@ class AutoPromoteOnceLoggingTests(unittest.TestCase):
 
     def test_promoted_pattern_logged_to_operations_log(self):
         self._seed_promotable()
-        with patch("app.worker.managed_session", self._managed_session), \
-             patch("app.worker.settings") as mock_settings:
+        with patch("app.discord.worker.managed_session", self._managed_session), \
+             patch("app.discord.worker.settings") as mock_settings:
             mock_settings.auto_promote_min_count = 5
             mock_settings.auto_promote_min_confidence = 0.85
             auto_promote_once()
@@ -161,8 +161,8 @@ class AutoPromoteOnceLoggingTests(unittest.TestCase):
                 session.add(_make_correction("too few", confidence=0.90))
             session.commit()
 
-        with patch("app.worker.managed_session", self._managed_session), \
-             patch("app.worker.settings") as mock_settings:
+        with patch("app.discord.worker.managed_session", self._managed_session), \
+             patch("app.discord.worker.settings") as mock_settings:
             mock_settings.auto_promote_min_count = 5
             mock_settings.auto_promote_min_confidence = 0.85
             auto_promote_once()

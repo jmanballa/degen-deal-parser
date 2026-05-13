@@ -57,7 +57,7 @@ class _FakeClockifyClient:
         return list(self.entries)
 
     def user_week_summary(self, user_id, *, today=None, settings=None):
-        from app.clockify import build_week_summary, clockify_week_bounds
+        from app.team.clockify import build_week_summary, clockify_week_bounds
 
         start, end = clockify_week_bounds(today, settings=settings)
         return build_week_summary(
@@ -413,7 +413,7 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
 
     def test_shift_tracker_adds_hourly_labor_from_cached_entries(self):
         from app.models import ClockifyTimeEntry, EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         self._seed_linked_employee()
         profile = self.session.get(EmployeeProfile, 20)
@@ -533,7 +533,7 @@ class ClockifyAdminPerfPrivacyTests(unittest.TestCase):
 
     def test_labor_stats_use_clockify_hours_and_salary_not_schedule(self):
         from app.models import ClockifyTimeEntry, EmployeeProfile, User
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from app.routers import team_admin_clockify as mod
 
         self._seed_linked_employee()

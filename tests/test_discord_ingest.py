@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 from sqlmodel import SQLModel, Session, create_engine, select
 
-import app.discord_ingest as discord_ingest_module
-from app.discord_ingest import (
+import app.discord.discord_ingest as discord_ingest_module
+from app.discord.discord_ingest import (
     get_attachment_payloads,
     invalidate_available_channels_cache,
     insert_or_update_message,
@@ -20,7 +20,7 @@ from app.discord_ingest import (
     mark_message_deleted_row,
     persist_available_discord_channels,
 )
-from app.channels import get_available_channel_choices
+from app.discord.channels import get_available_channel_choices
 from app.models import (
     AvailableDiscordChannel,
     DiscordMessage,
@@ -95,9 +95,9 @@ class InsertOrUpdateMessageTests(unittest.TestCase):
 
     def _patch(self):
         return [
-            patch("app.discord_ingest.managed_session", self._managed_session),
-            patch("app.discord_ingest.sync_attachment_assets"),
-            patch("app.discord_ingest.ingest_log"),
+            patch("app.discord.discord_ingest.managed_session", self._managed_session),
+            patch("app.discord.discord_ingest.sync_attachment_assets"),
+            patch("app.discord.discord_ingest.ingest_log"),
         ]
 
     _WATCHED_CHANNEL_IDS = {999}
@@ -233,8 +233,8 @@ class MarkMessageDeletedTests(unittest.TestCase):
         row_id = self._make_row()
         with Session(self.engine) as session:
             row = session.get(DiscordMessage, row_id)
-            with patch("app.discord_ingest.sync_transaction_from_message"), \
-                 patch("app.discord_ingest.ingest_log"):
+            with patch("app.discord.discord_ingest.sync_transaction_from_message"), \
+                 patch("app.discord.discord_ingest.ingest_log"):
                 result = mark_message_deleted_row(session, row)
 
         self.assertTrue(result)
@@ -247,8 +247,8 @@ class MarkMessageDeletedTests(unittest.TestCase):
         row_id = self._make_row()
         with Session(self.engine) as session:
             row = session.get(DiscordMessage, row_id)
-            with patch("app.discord_ingest.sync_transaction_from_message"), \
-                 patch("app.discord_ingest.ingest_log"):
+            with patch("app.discord.discord_ingest.sync_transaction_from_message"), \
+                 patch("app.discord.discord_ingest.ingest_log"):
                 first = mark_message_deleted_row(session, row)
                 second = mark_message_deleted_row(session, row)
 
@@ -342,15 +342,15 @@ class AvailableDiscordChannelInventoryTests(unittest.TestCase):
         async def fake_fetch(_client):
             return [(guild, channel, "Show Deals")], True
 
-        with patch("app.discord_ingest.get_discord_client", return_value=self._fake_client(guild)), patch(
-            "app.discord_ingest._fetch_live_guild_channels_rest", side_effect=fake_fetch
+        with patch("app.discord.discord_ingest.get_discord_client", return_value=self._fake_client(guild)), patch(
+            "app.discord.discord_ingest._fetch_live_guild_channels_rest", side_effect=fake_fetch
         ) as fetch_mock, patch(
-            "app.discord_ingest.asyncio.run_coroutine_threadsafe",
+            "app.discord.discord_ingest.asyncio.run_coroutine_threadsafe",
             side_effect=self._run_coroutine_threadsafe_immediately,
         ), patch(
-            "app.discord_ingest.persist_available_discord_channels"
+            "app.discord.discord_ingest.persist_available_discord_channels"
         ) as persist_mock, patch(
-            "app.discord_ingest.get_cached_available_discord_channels", return_value=[]
+            "app.discord.discord_ingest.get_cached_available_discord_channels", return_value=[]
         ):
             channels = list_available_discord_channels()
 
@@ -366,15 +366,15 @@ class AvailableDiscordChannelInventoryTests(unittest.TestCase):
         async def fake_fetch(_client):
             return [(guild, channel, "Show Deals")], True
 
-        with patch("app.discord_ingest.get_discord_client", return_value=self._fake_client(guild)), patch(
-            "app.discord_ingest._fetch_live_guild_channels_rest", side_effect=fake_fetch
+        with patch("app.discord.discord_ingest.get_discord_client", return_value=self._fake_client(guild)), patch(
+            "app.discord.discord_ingest._fetch_live_guild_channels_rest", side_effect=fake_fetch
         ) as fetch_mock, patch(
-            "app.discord_ingest.asyncio.run_coroutine_threadsafe",
+            "app.discord.discord_ingest.asyncio.run_coroutine_threadsafe",
             side_effect=self._run_coroutine_threadsafe_immediately,
         ), patch(
-            "app.discord_ingest.persist_available_discord_channels"
+            "app.discord.discord_ingest.persist_available_discord_channels"
         ), patch(
-            "app.discord_ingest.get_cached_available_discord_channels", return_value=[]
+            "app.discord.discord_ingest.get_cached_available_discord_channels", return_value=[]
         ):
             first = list_available_discord_channels()
             second = list_available_discord_channels()
@@ -400,15 +400,15 @@ class AvailableDiscordChannelInventoryTests(unittest.TestCase):
         async def fake_fetch(_client):
             return [(guild, channel, "Offline Deals")], False
 
-        with patch("app.discord_ingest.get_discord_client", return_value=self._fake_client(guild)), patch(
-            "app.discord_ingest._fetch_live_guild_channels_rest", side_effect=fake_fetch
+        with patch("app.discord.discord_ingest.get_discord_client", return_value=self._fake_client(guild)), patch(
+            "app.discord.discord_ingest._fetch_live_guild_channels_rest", side_effect=fake_fetch
         ), patch(
-            "app.discord_ingest.asyncio.run_coroutine_threadsafe",
+            "app.discord.discord_ingest.asyncio.run_coroutine_threadsafe",
             side_effect=self._run_coroutine_threadsafe_immediately,
         ), patch(
-            "app.discord_ingest.persist_available_discord_channels"
+            "app.discord.discord_ingest.persist_available_discord_channels"
         ) as persist_mock, patch(
-            "app.discord_ingest.get_cached_available_discord_channels", return_value=[cached_private_channel]
+            "app.discord.discord_ingest.get_cached_available_discord_channels", return_value=[cached_private_channel]
         ):
             channels = list_available_discord_channels()
 
@@ -485,7 +485,7 @@ class AvailableDiscordChannelPersistenceTests(unittest.TestCase):
         }
 
     def _persist(self, channels: list[dict]) -> None:
-        with patch("app.discord_ingest.managed_session", self._managed_session):
+        with patch("app.discord.discord_ingest.managed_session", self._managed_session):
             persist_available_discord_channels(channels)
 
     def test_auto_adds_new_show_deals_channel_as_backfill_ready(self):
@@ -608,10 +608,10 @@ class ShowDealsAutoWatchMessageTests(unittest.TestCase):
         async def noop_auto_import(_message):
             return None
 
-        with patch("app.discord_ingest.managed_session", self._managed_session), patch(
-            "app.discord_ingest.maybe_auto_import_bookkeeping_message",
+        with patch("app.discord.discord_ingest.managed_session", self._managed_session), patch(
+            "app.discord.discord_ingest.maybe_auto_import_bookkeeping_message",
             side_effect=noop_auto_import,
-        ), patch("app.discord_ingest.sync_attachment_assets"):
+        ), patch("app.discord.discord_ingest.sync_attachment_assets"):
             bot = discord_ingest_module.DealIngestBot(
                 intents=discord_ingest_module.discord.Intents.none()
             )
@@ -664,8 +664,8 @@ class AvailableChannelChoiceTests(unittest.TestCase):
         }
 
         with Session(self.engine) as session, patch(
-            "app.channels.list_available_discord_channels", return_value=[live_channel]
-        ), patch("app.channels.get_cached_available_discord_channels", return_value=[cached_channel]):
+            "app.discord.channels.list_available_discord_channels", return_value=[live_channel]
+        ), patch("app.discord.channels.get_cached_available_discord_channels", return_value=[cached_channel]):
             choices, has_live = get_available_channel_choices(session)
 
         self.assertTrue(has_live)
@@ -684,8 +684,8 @@ class AvailableChannelChoiceTests(unittest.TestCase):
         }
 
         with Session(self.engine) as session, patch(
-            "app.channels.list_available_discord_channels", return_value=[]
-        ), patch("app.channels.get_cached_available_discord_channels", return_value=[cached_channel]):
+            "app.discord.channels.list_available_discord_channels", return_value=[]
+        ), patch("app.discord.channels.get_cached_available_discord_channels", return_value=[cached_channel]):
             choices, has_live = get_available_channel_choices(session)
 
         self.assertFalse(has_live)

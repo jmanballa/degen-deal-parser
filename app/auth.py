@@ -562,7 +562,7 @@ def create_draft_employee(
     normalized_legal = (legal_name or "").strip()
     role_clean = (role or "employee").strip().lower() or "employee"
 
-    from .pii import email_lookup_hash as _email_hash, encrypt_pii as _encrypt
+    from .team.pii import email_lookup_hash as _email_hash, encrypt_pii as _encrypt
 
     email_clean = (email or "").strip().lower() or None
     email_hash: Optional[str] = None
@@ -709,7 +709,7 @@ def consume_invite_token(
 
     # Lazy-import pii so auth.py stays importable when the portal is disabled
     # (pii module fails-closed at import time when EMPLOYEE_PORTAL_ENABLED=true).
-    from .pii import email_lookup_hash as _email_hash, encrypt_pii as _encrypt
+    from .team.pii import email_lookup_hash as _email_hash, encrypt_pii as _encrypt
 
     email_clean = (email or "").strip().lower() or None
     email_hash: Optional[str] = None

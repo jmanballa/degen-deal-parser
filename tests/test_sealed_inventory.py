@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from sqlmodel import Session, SQLModel, create_engine, select
 from starlette.requests import Request
 
-from app.inventory import (
+from app.inventory.routes import (
     _ADD_STOCK_SINGLE_CACHE,
     _add_stock_category_ids_for_game,
     _add_stock_single_category_id,
@@ -467,12 +467,12 @@ class SealedInventoryTests(unittest.TestCase):
         )
 
         with Session(self.engine) as session, patch(
-            "app.inventory._cached_add_stock_sealed_search",
+            "app.inventory.routes._cached_add_stock_sealed_search",
             sealed_search,
         ), patch(
-            "app.inventory._cached_add_stock_single_search",
+            "app.inventory.routes._cached_add_stock_single_search",
             single_search,
-        ), patch("app.inventory.issue_token", return_value="csrf"):
+        ), patch("app.inventory.routes.issue_token", return_value="csrf"):
             context = asyncio.run(
                 _inventory_sealed_template_context(
                     request,
@@ -516,12 +516,12 @@ class SealedInventoryTests(unittest.TestCase):
         )
 
         with Session(self.engine) as session, patch(
-            "app.inventory._cached_add_stock_sealed_search",
+            "app.inventory.routes._cached_add_stock_sealed_search",
             sealed_search,
         ), patch(
-            "app.inventory._cached_add_stock_single_search",
+            "app.inventory.routes._cached_add_stock_single_search",
             single_search,
-        ), patch("app.inventory.issue_token", return_value="csrf"):
+        ), patch("app.inventory.routes.issue_token", return_value="csrf"):
             context = asyncio.run(
                 _inventory_sealed_template_context(
                     request,
@@ -615,7 +615,7 @@ class SealedInventoryTests(unittest.TestCase):
             }
             return mapping.get(query, []), ""
 
-        with patch("app.inventory._search_sealed_products", side_effect=fake_search):
+        with patch("app.inventory.routes._search_sealed_products", side_effect=fake_search):
             rows = asyncio.run(
                 _build_bulk_sealed_preview("5 ascended heroes etbs\n10 151 Packs English")
             )
@@ -662,7 +662,7 @@ class SealedInventoryTests(unittest.TestCase):
                 "candidates": [],
             }
 
-        with patch("app.inventory.text_search_cards", side_effect=fake_search) as mocked:
+        with patch("app.inventory.routes.text_search_cards", side_effect=fake_search) as mocked:
             first = asyncio.run(_cached_add_stock_single_search("charizard ex 151 199", game="Pokemon"))
             second = asyncio.run(_cached_add_stock_single_search("charizard ex 151 199", game="Pokemon"))
 
@@ -716,8 +716,8 @@ class SealedInventoryTests(unittest.TestCase):
             }
         )
         with Session(self.engine) as session:
-            with patch("app.inventory._require_employee_permission", return_value=None), patch(
-                "app.inventory._current_user_label", return_value="tester"
+            with patch("app.inventory.routes._require_employee_permission", return_value=None), patch(
+                "app.inventory.routes._current_user_label", return_value="tester"
             ):
                 response = asyncio.run(
                     inventory_sealed_receive(
@@ -783,8 +783,8 @@ class SealedInventoryTests(unittest.TestCase):
         ]
         """
         with Session(self.engine) as session:
-            with patch("app.inventory._require_employee_permission", return_value=None), patch(
-                "app.inventory._current_user_label", return_value="tester"
+            with patch("app.inventory.routes._require_employee_permission", return_value=None), patch(
+                "app.inventory.routes._current_user_label", return_value="tester"
             ):
                 response = asyncio.run(
                     inventory_singles_receive(
@@ -820,8 +820,7 @@ class SealedInventoryTests(unittest.TestCase):
             self.assertEqual(item.auto_price, 386.73)
 
     def test_shopify_sale_decrements_sealed_quantity_and_logs_movement(self) -> None:
-        from app.shopify_ingest import mark_inventory_sold_from_shopify_order
-        from app.models import ShopifySyncJob
+        from app.inventory.shopify_ingest import mark_inventory_sold_from_shopify_order
 
         with Session(self.engine) as session:
             item = InventoryItem(
@@ -881,7 +880,7 @@ class SealedInventoryTests(unittest.TestCase):
             self.assertEqual(item.status, INVENTORY_SOLD)
 
     def test_shopify_sale_webhook_retry_does_not_double_decrement(self) -> None:
-        from app.shopify_ingest import mark_inventory_sold_from_shopify_order
+        from app.inventory.shopify_ingest import mark_inventory_sold_from_shopify_order
         from app.models import ShopifySyncJob
 
         with Session(self.engine) as session:
@@ -919,7 +918,7 @@ class SealedInventoryTests(unittest.TestCase):
             self.assertEqual(len(sync_jobs), 1)
 
     def test_shopify_unknown_sku_creates_visible_sync_issue(self) -> None:
-        from app.shopify_ingest import mark_inventory_sold_from_shopify_order
+        from app.inventory.shopify_ingest import mark_inventory_sold_from_shopify_order
         from app.models import ShopifySyncIssue
 
         with Session(self.engine) as session:

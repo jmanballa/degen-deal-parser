@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session
 
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
-from ..bank_reconciliation import (
+from ..discord.bank_reconciliation import (
     BANK_ACCOUNT_FILTER_LABELS,
     build_finance_bank_expense_data,
     normalize_bank_account_filter,

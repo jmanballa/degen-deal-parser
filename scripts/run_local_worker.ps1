@@ -17,4 +17,4 @@ Write-Host "Starting local worker host mode."
 Write-Host "This process runs Discord ingest, backfill execution, and parser worker."
 Write-Host "Using local SQLite database at $dbPath"
 
-& "$repoRoot\.venv\Scripts\python.exe" -m app.worker_service
+& "$repoRoot\.venv\Scripts\python.exe" -m app.discord.worker_service

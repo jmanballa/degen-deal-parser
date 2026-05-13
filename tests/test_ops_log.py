@@ -6,7 +6,7 @@ from unittest.mock import patch
 from sqlmodel import Session, create_engine
 
 from app.models import SQLModel, OperationsLog
-from app.ops_log import (
+from app.discord.ops_log import (
     count_recent_errors,
     list_operations_logs,
     parse_operations_log_details,

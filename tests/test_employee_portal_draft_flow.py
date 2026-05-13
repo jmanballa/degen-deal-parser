@@ -149,7 +149,7 @@ class CreateDraftEmployeeTests(unittest.TestCase, _DraftHarness):
     def test_create_draft_encrypts_legal_name_and_marks_inactive(self):
         from app.auth import create_draft_employee, is_draft_user
         from app.models import EmployeeProfile, User
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         admin = self._login_as("admin")
         user = create_draft_employee(
@@ -199,7 +199,7 @@ class CreateDraftEmployeeTests(unittest.TestCase, _DraftHarness):
     def test_duplicate_draft_email_is_reported_from_unique_constraint(self):
         from app.auth import create_draft_employee
         from app.models import EmployeeProfile, User
-        from app.pii import email_lookup_hash
+        from app.team.pii import email_lookup_hash
 
         admin = self._login_as("admin")
         create_draft_employee(
@@ -387,7 +387,7 @@ class ConsumeInviteForDraftTests(unittest.TestCase, _DraftHarness):
             generate_invite_token,
         )
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         admin = self._login_as("admin")
         draft = create_draft_employee(
@@ -424,7 +424,7 @@ class ConsumeInviteForDraftTests(unittest.TestCase, _DraftHarness):
             generate_invite_token,
         )
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         admin = self._login_as("admin")
         draft = create_draft_employee(
@@ -548,7 +548,7 @@ class AdminDraftUITests(unittest.TestCase, _DraftHarness):
 
     def test_admin_can_create_draft_via_http(self):
         from app.models import User, EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         self._login_as("admin")
         csrf = self._csrf()

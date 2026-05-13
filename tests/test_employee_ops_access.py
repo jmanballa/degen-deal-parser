@@ -898,7 +898,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
 
     def test_manager_catalog_scan_links_dgn_sku_and_queues_unlinked_shopify_product(self):
         self._login_as("manager", user_id=248, username="mgr48")
-        from app.inventory_shopify import ShopifyVariantRef
+        from app.inventory.shopify import ShopifyVariantRef
         from app.models import InventoryItem, ShopifySyncIssue
 
         item = InventoryItem(
@@ -1021,7 +1021,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
         self.session.add(item)
         self.session.commit()
 
-        with patch("app.inventory._cached_add_stock_sealed_search", new=AsyncMock(return_value=([], ""))):
+        with patch("app.inventory.routes._cached_add_stock_sealed_search", new=AsyncMock(return_value=([], ""))):
             page = self.client.get(
                 "/inventory/add-stock?game=Pokemon&search_type=sealed&q=Existing+Market+Box",
                 follow_redirects=False,

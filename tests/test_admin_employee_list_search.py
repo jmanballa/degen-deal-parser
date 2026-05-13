@@ -79,7 +79,7 @@ class EmployeeListSearchTests(unittest.TestCase):
 
     def _seed_user(self, uid: int, username: str, *, display_name: str = "", legal_name: str = ""):
         from app.models import EmployeeProfile, User
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         user = User(
             id=uid,

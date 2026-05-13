@@ -89,7 +89,7 @@ class EmployeeInviteSmsTests(unittest.TestCase):
     def _draft_with_phone(self, phone: str):
         from app.auth import create_draft_employee
         from app.models import EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         draft = create_draft_employee(
             self.session,
@@ -105,7 +105,7 @@ class EmployeeInviteSmsTests(unittest.TestCase):
     def test_text_invite_creates_unique_token_and_sends_safe_sms(self):
         from app.models import AuditLog, InviteToken
         from app.routers import team_admin_employees as mod
-        from app.sms import SmsSendResult
+        from app.team.sms import SmsSendResult
 
         draft = self._draft_with_phone("(555) 867-5309")
         sent: dict[str, str] = {}

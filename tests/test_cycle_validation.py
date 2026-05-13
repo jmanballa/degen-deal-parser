@@ -12,11 +12,11 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from starlette.requests import Request
 
 import app.config as config_module
-import app.corrections as corrections_module
+import app.discord.corrections as corrections_module
 import app.db as db_module
-import app.discord_ingest as discord_ingest_module
+import app.discord.discord_ingest as discord_ingest_module
 import app.main as main_module
-from app.corrections import get_learned_rule_match
+from app.discord.corrections import get_learned_rule_match
 from app.db import fixup_transaction_parse_status_aliases
 from app.routers.admin_actions import admin_parser_reparse_runs_json, admin_parser_reparse_runs_page
 from app.models import ReparseRun, ReviewCorrection, Transaction, utcnow
@@ -79,7 +79,7 @@ class CycleValidationTests(unittest.TestCase):
             session.add(self.make_correction(source_message_id=1))
             session.commit()
 
-        with patch("app.corrections.managed_session", self.managed_session_override):
+        with patch("app.discord.corrections.managed_session", self.managed_session_override):
             learned_parse, event = get_learned_rule_match("$11 zelle")
 
         self.assertIsNone(learned_parse)
@@ -94,7 +94,7 @@ class CycleValidationTests(unittest.TestCase):
                 session.add(self.make_correction(source_message_id=index + 1))
             session.commit()
 
-        with patch("app.corrections.managed_session", self.managed_session_override):
+        with patch("app.discord.corrections.managed_session", self.managed_session_override):
             learned_parse, event = get_learned_rule_match("$11 zelle")
 
         self.assertIsNotNone(learned_parse)

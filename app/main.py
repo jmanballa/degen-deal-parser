@@ -34,7 +34,7 @@ from .auth import (
     seed_default_users,
 )
 from .attachment_storage import attachment_cache_path, generate_thumbnail, warm_attachment_cache, write_attachment_cache_file
-from .bookkeeping import (
+from .discord.bookkeeping import (
     refresh_bookkeeping_import_from_source,
     import_bookkeeping_file,
     get_bookkeeping_status_by_message_ids,
@@ -43,7 +43,7 @@ from .bookkeeping import (
     reconcile_bookkeeping_import,
 )
 from .cache import cache_get, cache_invalidate, cache_set
-from .backfill_requests import (
+from .discord.backfill_requests import (
     backfill_request_loop,
     cancel_backfill_request,
     enqueue_backfill_request,
@@ -51,7 +51,7 @@ from .backfill_requests import (
     requeue_interrupted_backfill_requests,
     trigger_backfill_claim_attempt,
 )
-from .channels import (
+from .discord.channels import (
     get_available_channel_choices,
     get_channel_filter_choices,
     get_expense_category_filter_choices,
@@ -61,7 +61,7 @@ from .channels import (
     upsert_watched_channel,
 )
 from .config import get_settings
-from .corrections import (
+from .discord.corrections import (
     get_correction_pattern_counts,
     get_learning_signal,
     get_learning_signals,
@@ -79,7 +79,7 @@ from .db import (
     recent_db_failure,
     run_write_with_retry,
 )
-from .discord_ingest import (
+from .discord.discord_ingest import (
     discord_runtime_state,
     get_discord_client,
     list_available_discord_channels,
@@ -90,7 +90,7 @@ from .discord_ingest import (
     run_discord_bot,
     seed_channels_from_env,
 )
-from .financials import compute_financials
+from .discord.financials import compute_financials
 from .models import (
     AppSetting,
     AttachmentAsset,
@@ -127,10 +127,10 @@ from .models import (
     signed_money_delta,
     utcnow,
 )
-from .ops_log import count_recent_errors, list_operations_logs, list_operations_logs_for_backfill_request, parse_operations_log_details
-from .price_cache import start_background_warm_refresh
-from .reparse_runs import list_recent_reparse_runs, safe_create_reparse_run, safe_finalize_reparse_run_queue
-from .reparse import reparse_message_row, reparse_message_rows
+from .discord.ops_log import count_recent_errors, list_operations_logs, list_operations_logs_for_backfill_request, parse_operations_log_details
+from .inventory.price_cache import start_background_warm_refresh
+from .discord.reparse_runs import list_recent_reparse_runs, safe_create_reparse_run, safe_finalize_reparse_run_queue
+from .discord.reparse import reparse_message_row, reparse_message_rows
 from .reporting import (
     build_financial_summary,
     build_reporting_periods,
@@ -148,8 +148,8 @@ from .reporting import (
 from .runtime_logging import resolve_runtime_log_path, setup_runtime_file_logging, structured_log_line
 from .runtime_monitor import get_runtime_heartbeat_status, runtime_heartbeat_loop
 from .schemas import HealthOut
-from .inventory_shopify import shopify_admin_configured
-from .shopify_ingest import (
+from .inventory.shopify import shopify_admin_configured
+from .inventory.shopify_ingest import (
     backfill_shopify_orders,
     mark_inventory_sold_from_shopify_order,
     read_shopify_backfill_state,
@@ -165,9 +165,9 @@ from .display_media import (
     normalize_attachment_urls_for_row,
     row_has_images,
 )
-from .transactions import build_transaction_summary, get_transactions, rebuild_transactions, sync_transaction_from_message
-from .tiktok_auth_refresh import refresh_tiktok_auth_if_needed as _refresh_tiktok_auth_fn
-from .tiktok_ingest import (
+from .discord.transactions import build_transaction_summary, get_transactions, rebuild_transactions, sync_transaction_from_message
+from .tiktok.tiktok_auth_refresh import refresh_tiktok_auth_if_needed as _refresh_tiktok_auth_fn
+from .tiktok.tiktok_ingest import (
     TikTokIngestError,
     _build_webhook_signature_candidates,
     exchange_tiktok_authorization_code,
@@ -176,7 +176,7 @@ from .tiktok_ingest import (
     upsert_tiktok_auth_from_callback,
     upsert_tiktok_order_from_payload,
 )
-from .tiktok_live_chat import (
+from .tiktok.tiktok_live_chat import (
     get_chat_status,
     get_recent_messages as get_live_chat_messages,
     get_room_id as get_live_room_id,
@@ -184,7 +184,7 @@ from .tiktok_live_chat import (
     start_live_chat,
     stop_live_chat,
 )
-from .worker import (
+from .discord.worker import (
     STALE_PROCESSING_AFTER,
     clear_parsed_fields,
     parser_loop,
@@ -258,7 +258,7 @@ setup_runtime_file_logging("app.log")
 async def lifespan(app: FastAPI):
     if settings.employee_portal_enabled:
         # Imported for side-effect: fail-closed key validation at startup.
-        from . import pii as _pii  # noqa: F401
+        from .team import pii as _pii  # noqa: F401
         _token_hmac_key()
         print("[main] employee portal: enabled")
     else:
@@ -537,7 +537,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 # attach_current_user tries to resolve the logged-in user from the cookie.
 app.mount("/static", StaticFiles(directory=normalize_filesystem_path(BASE_DIR / "static")), name="static")
 
-from .inventory import router as inventory_router  # noqa: E402 — after app is created
+from .inventory.routes import router as inventory_router  # noqa: E402 — after app is created
 app.include_router(inventory_router)
 
 from .routers.stream_manager import router as stream_manager_router  # noqa: E402

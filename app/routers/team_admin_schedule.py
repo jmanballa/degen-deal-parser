@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
 from ..auth import has_permission
-from ..clockify import clockify_today
+from ..team.clockify import clockify_today
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import (
@@ -48,9 +48,9 @@ from ..models import (
     classify_shift_label,
     utcnow,
 )
-from ..pii import decrypt_pii
+from ..team.pii import decrypt_pii
 from ..shared import templates
-from ..team_notifications import notify_employee
+from ..team.team_notifications import notify_employee
 from .team_admin import _admin_gate, _permission_gate
 
 router = APIRouter()

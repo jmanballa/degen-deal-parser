@@ -18,7 +18,7 @@ from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import AuditLog, SupplyRequest, User, utcnow
 from ..shared import templates
-from ..supply_deals import (
+from ..team.supply_deals import (
     get_cached_supply_deals,
     refresh_supply_deal_cache,
     supply_deal_catalog,

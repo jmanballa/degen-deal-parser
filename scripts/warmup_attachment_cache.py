@@ -21,8 +21,8 @@ from app.attachment_repair import (
 from app.attachment_storage import attachment_cache_path, write_attachment_cache_file
 from app.config import get_settings
 from app.db import managed_session
-from app.discord_ingest import DealIngestBot, recover_attachment_assets_for_message
-import app.discord_ingest as discord_ingest
+from app.discord.discord_ingest import DealIngestBot, recover_attachment_assets_for_message
+import app.discord.discord_ingest as discord_ingest
 from app.models import AttachmentAsset
 
 

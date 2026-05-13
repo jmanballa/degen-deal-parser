@@ -18,7 +18,7 @@ os.environ.setdefault("ADMIN_PASSWORD", "unit-test-admin-password-clockify")
 
 class ClockifyServiceTests(unittest.TestCase):
     def test_week_summary_totals_entries_and_daily_rollup(self):
-        from app.clockify import build_week_summary, format_hours
+        from app.team.clockify import build_week_summary, format_hours
 
         tz = ZoneInfo("America/Los_Angeles")
         week_start = datetime(2026, 4, 20, 0, 0, tzinfo=tz)
@@ -58,7 +58,7 @@ class ClockifyServiceTests(unittest.TestCase):
         self.assertEqual([row.description for row in summary.entries], ["Open store", "Close store"])
 
     def test_running_entry_uses_now_for_duration(self):
-        from app.clockify import build_week_summary
+        from app.team.clockify import build_week_summary
 
         tz = ZoneInfo("America/Los_Angeles")
         week_start = datetime(2026, 4, 20, 0, 0, tzinfo=tz)
@@ -83,7 +83,7 @@ class ClockifyServiceTests(unittest.TestCase):
     def test_hours_template_renders_summary(self):
         from types import SimpleNamespace
 
-        from app.clockify import build_week_summary, format_hours
+        from app.team.clockify import build_week_summary, format_hours
         from app.shared import templates
 
         tz = ZoneInfo("America/Los_Angeles")
@@ -126,7 +126,7 @@ class ClockifyServiceTests(unittest.TestCase):
         self.assertIn("Daily totals", html)
 
     def test_client_filters_entries_to_requested_range(self):
-        from app.clockify import ClockifyClient
+        from app.team.clockify import ClockifyClient
 
         class FakeClockifyClient(ClockifyClient):
             def __init__(self):
@@ -166,7 +166,7 @@ class ClockifyServiceTests(unittest.TestCase):
         self.assertEqual(client.params_seen[0]["page-size"], 50)
 
     def test_workspace_users_request_includes_limited_accounts(self):
-        from app.clockify import ClockifyClient
+        from app.team.clockify import ClockifyClient
 
         class FakeClockifyClient(ClockifyClient):
             def __init__(self):
@@ -204,7 +204,7 @@ class ClockifyAdminSyncTests(unittest.TestCase):
 
     def test_sync_maps_by_email_without_overwriting_conflicts(self):
         from app.models import AuditLog, EmployeeProfile, User
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from app.routers.team_admin_clockify import sync_clockify_user_ids_by_email
 
         admin = User(

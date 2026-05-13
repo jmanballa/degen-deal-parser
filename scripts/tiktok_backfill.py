@@ -27,7 +27,7 @@ load_dotenv(ROOT_DIR / ".env")
 from app.db import init_db, is_sqlite_lock_error, managed_session  # noqa: E402
 from app.models import TikTokAuth, TikTokOrder, TikTokProduct, utcnow  # noqa: E402
 from app.runtime_logging import structured_log_line  # noqa: E402
-from app.tiktok_ingest import (  # noqa: E402
+from app.tiktok.tiktok_ingest import (  # noqa: E402
     TIKTOK_DEFAULT_API_BASE_URL,
     TIKTOK_SHOP_AUTH_BASE_URL,
     TIKTOK_SHOP_TOKEN_GET_PATH,

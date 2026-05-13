@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlmodel import SQLModel, Session, create_engine, select
 from sqlalchemy import func, distinct
 
-from app.shopify_ingest import (
+from app.inventory.shopify_ingest import (
     extract_order_tax_fields,
     order_record_from_payload,
     upsert_shopify_order,

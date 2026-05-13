@@ -30,8 +30,9 @@ from app.reporting import (
     classify_tiktok_reporting_status,
     get_tiktok_reporting_rows,
 )
-from scripts.tiktok_backfill import build_tiktok_request, upsert_tiktok_order
-from app.tiktok_ingest import (
+from scripts.tiktok_backfill import build_tiktok_request
+from app.tiktok.tiktok_ingest import (
+    TIKTOK_DEFAULT_API_BASE_URL,
     TIKTOK_SHOP_AUTH_BASE_URL,
     TIKTOK_SHOP_TOKEN_GET_PATH,
     TikTokIngestError,
@@ -41,6 +42,7 @@ from app.tiktok_ingest import (
     normalize_tiktok_order_payload,
     parse_tiktok_webhook_payload,
     refresh_tiktok_shop_token,
+    upsert_tiktok_order,
     upsert_tiktok_order_from_payload,
     verify_tiktok_webhook_signature,
 )

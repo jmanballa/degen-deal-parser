@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.parser import (
+from app.discord.parser import (
     _normalize_amount_text,
     extract_payment_amount_method,
     extract_payment_segments,

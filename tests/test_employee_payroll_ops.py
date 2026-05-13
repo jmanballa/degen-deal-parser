@@ -86,7 +86,7 @@ class PayrollOpsTests(unittest.TestCase):
         monthly_salary_cents=None,
     ):
         from app.models import EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         profile = EmployeeProfile(
             user_id=user_id,
@@ -176,7 +176,7 @@ class PayrollOpsTests(unittest.TestCase):
 
     def test_payroll_uses_compensation_history_effective_dates(self):
         from app.models import EmployeeCompensationHistory
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from app.routers import team_admin_clockify as mod
         from app.routers.team_admin_employees import (
             _compensation_signature_from_profile,

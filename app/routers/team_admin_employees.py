@@ -23,7 +23,7 @@ from sqlalchemy import or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
-from ..clockify import clockify_today
+from ..team.clockify import clockify_today
 from ..auth import (
     create_draft_employee,
     generate_invite_token,
@@ -48,10 +48,10 @@ from ..models import (
     User,
     utcnow,
 )
-from ..pii import decrypt_pii, email_lookup_hash, encrypt_pii
+from ..team.pii import decrypt_pii, email_lookup_hash, encrypt_pii
 from ..rate_limit import rate_limited_or_429
 from ..shared import templates
-from ..sms import mask_sms_phone, normalize_sms_phone, send_sms, sms_phone_fingerprint
+from ..team.sms import mask_sms_phone, normalize_sms_phone, send_sms, sms_phone_fingerprint
 from .team_admin import _admin_denied_response, _admin_gate, _permission_gate
 
 router = APIRouter()
@@ -1922,7 +1922,7 @@ async def admin_employee_profile_update(
         else:
             rate_int = None
         if rate_int is not None:
-            from ..pii import decrypt_pii, encrypt_pii
+            from ..team.pii import decrypt_pii, encrypt_pii
             try:
                 current_rate = decrypt_pii(profile.hourly_rate_cents_enc) or ""
             except ValueError:
@@ -1936,7 +1936,7 @@ async def admin_employee_profile_update(
                 monthly_salary_dollars
             )
             if salary_int is not None:
-                from ..pii import encrypt_pii
+                from ..team.pii import encrypt_pii
 
                 current_salary = _decrypt_monthly_salary_cents(profile)
                 if salary_int != current_salary:
@@ -2066,7 +2066,7 @@ async def admin_employee_pii_update(
         session.add(profile)
         session.flush()
 
-    from ..pii import encrypt_pii, email_lookup_hash as _email_hash
+    from ..team.pii import encrypt_pii, email_lookup_hash as _email_hash
 
     now = utcnow()
     changed: list[str] = []

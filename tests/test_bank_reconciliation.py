@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.bank_reconciliation import (
+from app.discord.bank_reconciliation import (
     bank_row_review_reason,
     bank_row_suggested_action,
     build_bank_review_items,

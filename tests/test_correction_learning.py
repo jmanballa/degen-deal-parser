@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.corrections import (
+from app.discord.corrections import (
     MIN_LEARNED_RULE_CORRECTION_COUNT,
     build_field_diffs,
     build_learned_rule_parse,
@@ -18,7 +18,7 @@ from app.corrections import (
     infer_pattern_type,
 )
 from app.models import ReviewCorrection
-from app.parser import parse_message
+from app.discord.parser import parse_message
 
 
 class CorrectionLearningTests(unittest.TestCase):
@@ -124,8 +124,8 @@ class CorrectionLearningTests(unittest.TestCase):
             "needs_review": False,
         }
 
-        with patch("app.parser.get_exact_correction_match", return_value=exact_match), patch(
-            "app.parser.get_learned_rule_match",
+        with patch("app.discord.parser.get_exact_correction_match", return_value=exact_match), patch(
+            "app.discord.parser.get_learned_rule_match",
             side_effect=AssertionError("learned rule lookup should not run after exact match"),
         ):
             parsed = asyncio.run(parse_message("sold 25 cash", [], "tester"))
@@ -164,7 +164,7 @@ class CorrectionLearningTests(unittest.TestCase):
             )
             session.commit()
 
-        with patch("app.corrections.managed_session", self.managed_session_override):
+        with patch("app.discord.corrections.managed_session", self.managed_session_override):
             learned_parse, event = get_learned_rule_match("$11 zelle")
 
         self.assertIsNone(learned_parse)
@@ -207,7 +207,7 @@ class CorrectionLearningTests(unittest.TestCase):
                 )
             session.commit()
 
-        with patch("app.corrections.managed_session", self.managed_session_override):
+        with patch("app.discord.corrections.managed_session", self.managed_session_override):
             learned_parse, event = get_learned_rule_match("$11 zelle")
 
         self.assertIsNotNone(learned_parse)

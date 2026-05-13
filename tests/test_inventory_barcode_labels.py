@@ -1,4 +1,4 @@
-from app.inventory_barcode import (
+from app.inventory.barcode import (
     _BARCODE_AVAILABLE,
     generate_barcode_value,
     label_context_for_items,

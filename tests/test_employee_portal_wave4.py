@@ -108,7 +108,7 @@ class _W4Harness:
 
     def _seed_employee(self, *, user_id: int = 500, username: str = "tgt", role: str = "employee"):
         from app.models import EmployeeProfile, User
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from datetime import date
 
         u = User(
@@ -157,7 +157,7 @@ class EmployeeListTests(unittest.TestCase, _W4Harness):
 
     def test_admin_search_matches_display_name_and_email_fingerprint(self):
         from app.models import EmployeeProfile
-        from app.pii import email_lookup_hash, encrypt_pii
+        from app.team.pii import email_lookup_hash, encrypt_pii
 
         self._login(role="admin", user_id=104, username="adm-search")
         emp = self._seed_employee(user_id=504, username="emp504")
@@ -240,7 +240,7 @@ class DetailAndRevealTests(unittest.TestCase, _W4Harness):
 
     def test_manager_cannot_blind_overwrite_sensitive_pii(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         self._login(role="manager", user_id=205, username="mgr3")
         emp = self._seed_employee(user_id=605, username="emp605")
@@ -261,7 +261,7 @@ class DetailAndRevealTests(unittest.TestCase, _W4Harness):
 
     def test_manager_blank_sensitive_pii_update_preserves_existing_values(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         self._login(role="manager", user_id=206, username="mgr4")
         emp = self._seed_employee(user_id=606, username="emp606")
@@ -322,7 +322,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
     def test_employee_detail_hourly_rate_uses_dollars_not_cents(self):
         from app.models import EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from app.routers.team_admin_employees import _detail_context
 
         admin = self._login(role="admin", user_id=519, username="adm519")
@@ -380,7 +380,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
     def test_hourly_rate_rejects_invalid_inputs_without_mutating_existing_value(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii, encrypt_pii
+        from app.team.pii import decrypt_pii, encrypt_pii
 
         self._login(role="admin", user_id=520, username="adm520")
         emp = self._seed_employee(user_id=820, username="emp820")
@@ -421,7 +421,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
     def test_hourly_rate_accepts_sane_integer_value(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         self._login(role="admin", user_id=521, username="adm521")
         emp = self._seed_employee(user_id=821, username="emp821")
@@ -464,7 +464,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
     def test_profile_update_saves_monthly_salary_compensation(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         self._login(role="admin", user_id=524, username="adm524")
         emp = self._seed_employee(user_id=825, username="emp825")
@@ -498,7 +498,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
     def test_bulk_pay_rates_page_updates_rates_and_payment_methods(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii, encrypt_pii
+        from app.team.pii import decrypt_pii, encrypt_pii
 
         self._login(role="admin", user_id=523, username="adm523")
         emp_a = self._seed_employee(user_id=823, username="emp823")
@@ -549,7 +549,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
     def test_bulk_pay_rates_page_updates_monthly_salary_compensation(self):
         from app.models import AuditLog, EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         self._login(role="admin", user_id=525, username="adm525")
         emp = self._seed_employee(user_id=826, username="emp826")
@@ -591,7 +591,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
 
     def test_bulk_compensation_only_updates_fields_for_selected_pay_type(self):
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii, encrypt_pii
+        from app.team.pii import decrypt_pii, encrypt_pii
         from app.routers.team_admin_employees import _payroll_cost_summary
 
         self._login(role="admin", user_id=529, username="adm529")
@@ -709,7 +709,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
         from datetime import date
 
         from app.models import EmployeeProfile, ShiftEntry
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from app.routers.team_admin_employees import _payroll_cost_summary
 
         self._login(role="admin", user_id=526, username="adm526")
@@ -745,7 +745,7 @@ class AdminProfileUpdateHardeningTests(unittest.TestCase, _W4Harness):
         from datetime import date
 
         from app.models import EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
         from app.routers.team_admin_employees import _payroll_cost_summary
 
         self._login(role="admin", user_id=527, username="adm527")

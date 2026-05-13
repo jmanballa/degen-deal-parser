@@ -652,7 +652,7 @@ class ScheduleMobileSummaryRenderTests(unittest.TestCase):
             ShiftEntry,
             User,
         )
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         paid = User(
             id=6501,

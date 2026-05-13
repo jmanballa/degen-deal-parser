@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 from sqlmodel import SQLModel, Session, create_engine, select
 
-from app.inventory_shopify import (
+from app.inventory.shopify import (
     SHOPIFY_API_VERSION,
     build_shopify_product_payload,
     get_shopify_inventory_item_location_id,

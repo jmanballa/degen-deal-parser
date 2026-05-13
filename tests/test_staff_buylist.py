@@ -41,7 +41,7 @@ def _user(user_id=1, role="admin"):
         role=role,
         is_active=True,
     )
-from app.tcgplayer_sales import normalize_tcgplayer_sales_payload, tcgplayer_product_id_from_url
+from app.inventory.tcgplayer_sales import normalize_tcgplayer_sales_payload, tcgplayer_product_id_from_url
 
 
 def test_staff_buylist_uses_cash_and_trade_ranges():

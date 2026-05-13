@@ -534,7 +534,7 @@ class InviteAcceptTests(unittest.TestCase, _PortalHarness):
     def test_invite_accept_email_collision_keeps_onboarding_successful_with_flash(self):
         from app.auth import generate_invite_token, hash_password
         from app.models import AuditLog, EmployeeProfile, User
-        from app.pii import email_lookup_hash, encrypt_pii
+        from app.team.pii import email_lookup_hash, encrypt_pii
 
         ph, salt = hash_password("AdminPass1!")
         admin = User(username="adm2", password_hash=ph, password_salt=salt,

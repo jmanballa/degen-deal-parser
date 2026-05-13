@@ -167,7 +167,7 @@ class LegacySecurityHardeningTests(unittest.TestCase):
 
     def test_outbound_fetch_helpers_reject_untrusted_hosts(self):
         from app.attachment_repair import download_attachment
-        from app.bookkeeping import build_google_sheet_export_url
+        from app.discord.bookkeeping import build_google_sheet_export_url
 
         with self.assertRaises(ValueError):
             build_google_sheet_export_url("https://example.com/spreadsheets/d/abc")
@@ -236,7 +236,7 @@ class LegacySecurityHardeningTests(unittest.TestCase):
         import asyncio
         from unittest.mock import patch
 
-        from app import bookkeeping
+        from app.discord import bookkeeping
 
         class FakeAsyncResponse:
             def __init__(self, *, status_code: int = 200, headers: dict[str, str] | None = None):

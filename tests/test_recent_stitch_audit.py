@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-import app.worker as worker_module
+import app.discord.worker as worker_module
 from app.models import DiscordMessage, ParseAttempt, WatchedChannel, PARSE_PARSED, PARSE_PENDING, utcnow
-from app.worker import queue_recent_stitch_audit_candidates
+from app.discord.worker import queue_recent_stitch_audit_candidates
 
 
 class RecentStitchAuditTests(unittest.TestCase):

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
-from ..clockify import clockify_today
+from ..team.clockify import clockify_today
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import AuditLog, TimeOffRequest

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.bookkeeping import fetch_google_sheet_export, read_tabular_rows, reconcile_bookkeeping_import
+from app.discord.bookkeeping import fetch_google_sheet_export, read_tabular_rows, reconcile_bookkeeping_import
 from app.models import (
     BookkeepingEntry,
     BookkeepingImport,
