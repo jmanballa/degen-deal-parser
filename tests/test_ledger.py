@@ -327,17 +327,122 @@ def test_ledger_review_agent_clears_false_discord_matches_and_auto_reviews_safe_
 
     assert result["updated_count"] == 2
     assert result["cleared_false_matches"] == 2
-    assert result["auto_reviewed"] == 1
+    assert result["auto_reviewed"] == 0
     assert amazon.matched_transaction_id is None
     assert amazon.matched_platform is None
     assert amazon.expense_category == "meals_entertainment"
-    assert amazon.review_status == "reviewed"
-    assert ledger_status_for_bank_row(amazon) == "reconciled"
+    assert amazon.review_status == "open"
+    assert ledger_status_for_bank_row(amazon) == "needs_action"
     assert apple_cash.matched_transaction_id is None
     assert apple_cash.matched_platform is None
     assert apple_cash.classification == "direct_payment_out_needs_log_check"
     assert apple_cash.review_status == "open"
     assert ledger_status_for_bank_row(apple_cash) == "needs_action"
+
+
+def test_ledger_review_agent_leaves_medium_confidence_safe_category_open():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=22,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="Canva subscription",
+                amount=-19.99,
+                classification="expense_or_purchase_needs_review",
+                confidence="low",
+                expense_category="software_subscriptions",
+                expense_subcategory="Software/subscription",
+                category_confidence="medium",
+                category_reason="Software or recurring subscription descriptor.",
+            )
+        )
+        session.commit()
+
+        result = run_ledger_review_agent(session, filters=LedgerFilters(status="needs_action"), limit=50)
+        row = session.get(BankTransaction, 22)
+
+    assert result["scanned_count"] == 1
+    assert result["updated_count"] == 0
+    assert result["auto_reviewed"] == 0
+    assert row.review_status == "open"
+    assert ledger_status_for_bank_row(row) == "needs_action"
+
+
+def test_ledger_review_agent_preserves_manual_category_when_clearing_false_discord_match():
+    _assert_ledger_review_agent_preserves_locked_category_when_clearing_false_discord_match("manual")
+
+
+def test_ledger_review_agent_preserves_rule_category_when_clearing_false_discord_match():
+    _assert_ledger_review_agent_preserves_locked_category_when_clearing_false_discord_match("rule")
+
+
+def _assert_ledger_review_agent_preserves_locked_category_when_clearing_false_discord_match(category_confidence: str):
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+    category_reason = {
+        "manual": "Manually changed from the ledger.",
+        "rule": "Ledger rule: PSA grading fees.",
+    }[category_confidence]
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            Transaction(
+                id=523,
+                source_message_id=1523,
+                occurred_at=posted_at,
+                parse_status="parsed",
+                entry_kind="buy",
+                payment_method="cash",
+                expense_category="inventory",
+                amount=149.0,
+                money_in=0.0,
+                money_out=149.0,
+                source_content="Bought for 149 cash",
+            )
+        )
+        session.add(
+            BankTransaction(
+                id=23,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="WWW.PSACARD.COM",
+                amount=-149.0,
+                classification="logged_in_discord_possible",
+                confidence="medium",
+                expense_category="grading_fees",
+                expense_subcategory="Manual override",
+                category_confidence=category_confidence,
+                category_reason=category_reason,
+                matched_transaction_id=523,
+                matched_source_message_id=1523,
+                matched_platform="discord",
+            )
+        )
+        session.commit()
+
+        result = run_ledger_review_agent(session, filters=LedgerFilters(status="needs_action"), limit=50)
+        row = session.get(BankTransaction, 23)
+
+    assert result["updated_count"] == 1
+    assert result["cleared_false_matches"] == 1
+    assert row.matched_transaction_id is None
+    assert row.matched_platform is None
+    assert row.expense_category == "grading_fees"
+    assert row.expense_subcategory == "Manual override"
+    assert row.category_confidence == category_confidence
+    assert row.category_reason == category_reason
 
 
 def test_ledger_agent_route_auto_applies_and_redirects_to_selected_view():
@@ -403,7 +508,7 @@ def test_ledger_agent_route_auto_applies_and_redirects_to_selected_view():
     assert response.status_code == 303
     assert "action_reason=possible_discord_match" in response.headers["location"]
     assert "Ledger+agent+updated+1" in response.headers["location"]
-    assert row.review_status == "reviewed"
+    assert row.review_status == "open"
 
 
 def test_ledger_export_handles_cash_rows():
@@ -531,6 +636,43 @@ def test_rule_draft_preview_and_apply_updates_only_matching_rows():
     assert apple.review_status == "reviewed"
     assert psa.expense_category == "uncategorized"
     assert psa.review_status == "open"
+
+
+def test_apply_ledger_rule_appends_note_to_existing_review_note():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=24,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="Canva subscription",
+                amount=-19.99,
+                classification="expense_or_purchase_needs_review",
+                expense_category="uncategorized",
+                review_note="Keep receipt in Drive.",
+            )
+        )
+        rule = LedgerRule(
+            name="Canva note",
+            conditions_json=json.dumps({"description_contains": "canva"}),
+            actions_json=json.dumps({"note": "Monthly design software."}),
+        )
+        session.add(rule)
+        session.commit()
+        session.refresh(rule)
+
+        applied = apply_ledger_rule(session, rule, filters=LedgerFilters(status="all"), applied_by="tester")
+        row = session.get(BankTransaction, 24)
+
+    assert applied["updated_count"] == 1
+    assert row.review_note == "Keep receipt in Drive.\nMonthly design software."
 
 
 def test_rule_draft_can_force_unmatch_rows_from_discord():
@@ -754,3 +896,218 @@ def test_ledger_row_status_form_can_return_json_for_in_place_updates():
     assert json.loads(response.body)["row"]["action_reason_label"] == ""
     assert row.review_status == "reviewed"
     assert row.expense_category == "inventory_purchases"
+
+
+def test_ledger_row_status_form_preserves_existing_review_note_when_note_is_blank():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=51,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="WWW.PSACARD.COM",
+                amount=-140.0,
+                classification="expense_or_purchase_needs_review",
+                expense_category="uncategorized",
+                review_note="Existing reviewer context.",
+            )
+        )
+        session.commit()
+
+        with patch("app.routers.ledger.require_role_response", return_value=None):
+            response = ledger_row_status_form(
+                make_request(
+                    "/ledger/rows/51/status-form",
+                    method="POST",
+                    headers=[(b"x-requested-with", b"fetch")],
+                ),
+                row_id=51,
+                review_status="reviewed",
+                classification="",
+                expense_category="grading_fees",
+                note="",
+                selected_account="",
+                selected_start="",
+                selected_end="",
+                selected_status="needs_action",
+                selected_category="",
+                selected_source="",
+                selected_search="",
+                selected_sort="posted_at",
+                selected_direction="desc",
+                session=session,
+            )
+        row = session.get(BankTransaction, 51)
+
+    assert response.status_code == 200
+    assert row.review_status == "reviewed"
+    assert row.expense_category == "grading_fees"
+    assert row.review_note == "Existing reviewer context."
+
+
+def test_ledger_row_status_form_preserves_existing_review_note_when_note_is_whitespace_only():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=52,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="WWW.PSACARD.COM",
+                amount=-140.0,
+                classification="expense_or_purchase_needs_review",
+                expense_category="uncategorized",
+                review_note="Existing reviewer context.",
+            )
+        )
+        session.commit()
+
+        with patch("app.routers.ledger.require_role_response", return_value=None):
+            response = ledger_row_status_form(
+                make_request(
+                    "/ledger/rows/52/status-form",
+                    method="POST",
+                    headers=[(b"x-requested-with", b"fetch")],
+                ),
+                row_id=52,
+                review_status="reviewed",
+                classification="",
+                expense_category="grading_fees",
+                note="   \n\t  ",
+                selected_account="",
+                selected_start="",
+                selected_end="",
+                selected_status="needs_action",
+                selected_category="",
+                selected_source="",
+                selected_search="",
+                selected_sort="posted_at",
+                selected_direction="desc",
+                session=session,
+            )
+        row = session.get(BankTransaction, 52)
+
+    assert response.status_code == 200
+    assert row.review_status == "reviewed"
+    assert row.expense_category == "grading_fees"
+    assert row.review_note == "Existing reviewer context."
+
+
+def test_ledger_row_status_form_preserves_existing_review_note_when_note_is_omitted():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=53,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="WWW.PSACARD.COM",
+                amount=-140.0,
+                classification="expense_or_purchase_needs_review",
+                expense_category="uncategorized",
+                review_note="Existing reviewer context.",
+            )
+        )
+        session.commit()
+
+        with patch("app.routers.ledger.require_role_response", return_value=None):
+            response = ledger_row_status_form(
+                make_request(
+                    "/ledger/rows/53/status-form",
+                    method="POST",
+                    headers=[(b"x-requested-with", b"fetch")],
+                ),
+                row_id=53,
+                review_status="reviewed",
+                classification="",
+                expense_category="grading_fees",
+                selected_account="",
+                selected_start="",
+                selected_end="",
+                selected_status="needs_action",
+                selected_category="",
+                selected_source="",
+                selected_search="",
+                selected_sort="posted_at",
+                selected_direction="desc",
+                session=session,
+            )
+        row = session.get(BankTransaction, 53)
+
+    assert response.status_code == 200
+    assert row.review_status == "reviewed"
+    assert row.expense_category == "grading_fees"
+    assert row.review_note == "Existing reviewer context."
+
+
+def test_ledger_row_status_form_updates_review_note_to_stripped_nonblank_note():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=54,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="WWW.PSACARD.COM",
+                amount=-140.0,
+                classification="expense_or_purchase_needs_review",
+                expense_category="uncategorized",
+                review_note="Existing reviewer context.",
+            )
+        )
+        session.commit()
+
+        with patch("app.routers.ledger.require_role_response", return_value=None):
+            response = ledger_row_status_form(
+                make_request(
+                    "/ledger/rows/54/status-form",
+                    method="POST",
+                    headers=[(b"x-requested-with", b"fetch")],
+                ),
+                row_id=54,
+                review_status="reviewed",
+                classification="",
+                expense_category="grading_fees",
+                note="  Updated reviewer context.  \n",
+                selected_account="",
+                selected_start="",
+                selected_end="",
+                selected_status="needs_action",
+                selected_category="",
+                selected_source="",
+                selected_search="",
+                selected_sort="posted_at",
+                selected_direction="desc",
+                session=session,
+            )
+        row = session.get(BankTransaction, 54)
+
+    assert response.status_code == 200
+    assert row.review_status == "reviewed"
+    assert row.expense_category == "grading_fees"
+    assert row.review_note == "Updated reviewer context."

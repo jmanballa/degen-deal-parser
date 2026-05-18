@@ -69,6 +69,6 @@ def test_plaid_sync_runs_ledger_agent_after_successful_sync(monkeypatch):
 
     assert result["added"] == 1
     assert result["ledger_agent"]["scanned_count"] == 1
-    assert result["ledger_agent"]["auto_reviewed"] == 1
+    assert result["ledger_agent"]["auto_reviewed"] == 0
     assert row.expense_category == "meals_entertainment"
-    assert row.review_status == "reviewed"
+    assert row.review_status == "open"

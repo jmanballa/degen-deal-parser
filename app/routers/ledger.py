@@ -191,7 +191,10 @@ def ledger_row_status_form(
         if review_status in {"open", "reviewed", "ignored"}:
             row.review_status = review_status
             changed = True
-        row.review_note = (note or "").strip() or None
+        stripped_note = note.strip() if isinstance(note, str) else ""
+        if stripped_note:
+            row.review_note = stripped_note
+            changed = True
         if changed:
             row.updated_at = utcnow()
             session.add(row)

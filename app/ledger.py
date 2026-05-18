@@ -73,7 +73,7 @@ LEDGER_AGENT_AUTO_REVIEW_CATEGORIES = {
     "travel_lodging",
 }
 
-LEDGER_AGENT_REVIEW_CONFIDENCES = {"high", "medium", "manual", "rule"}
+LEDGER_AGENT_REVIEW_CONFIDENCES = {"high", "manual", "rule"}
 
 
 @dataclass
@@ -572,9 +572,10 @@ def run_ledger_review_agent(
             row.matched_source_message_id = None
             row.matched_platform = None
             row.match_reason = f"Ledger agent cleared Discord match: {reason}"
-            category_payload = _bank_row_payload(row)
-            category_payload["classification"] = classification
-            _set_category_from_payload(row, categorize_bank_payload(category_payload))
+            if (row.category_confidence or "").lower() not in {"manual", "rule"}:
+                category_payload = _bank_row_payload(row)
+                category_payload["classification"] = classification
+                _set_category_from_payload(row, categorize_bank_payload(category_payload))
             changed = True
             result["cleared_false_matches"] += 1
             actions.append("cleared false Discord match")
@@ -1042,7 +1043,7 @@ def apply_ledger_rule(
                 changed = True
         note = str(actions.get("note") or "").strip()
         if note:
-            row.review_note = note
+            row.review_note = _append_review_note(row.review_note, note)
             changed = True
         if changed:
             row.updated_at = now
