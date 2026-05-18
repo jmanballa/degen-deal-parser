@@ -1372,7 +1372,9 @@ class EmployeeScheduleViewTests(unittest.TestCase, _W47Harness):
         self.session.add(emp)
         self.session.commit()
 
-        today = date.today()
+        from app.routers.team_admin_schedule import clockify_today
+
+        today = clockify_today()
         monday = today - timedelta(days=today.weekday())
         self.session.add(
             ShiftEntry(

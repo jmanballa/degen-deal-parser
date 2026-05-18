@@ -21,7 +21,7 @@ from .bank_reconciliation import (
     expense_category_label,
     transaction_bank_match_block_reason,
 )
-from .models import BankStatementImport, BankTransaction, LedgerRule, Transaction, utcnow
+from .models import BankTransaction, LedgerRule, Transaction, utcnow
 
 
 LEDGER_STATUS_LABELS = {
@@ -56,6 +56,14 @@ LEDGER_ACTION_REASON_LABELS = {
 
 RULE_ALLOWED_REVIEW_STATUSES = {"open", "reviewed", "ignored"}
 RULE_ALLOWED_MATCH_OVERRIDES = {"force_unmatched", "clear", "none", ""}
+
+LEDGER_AUTOMATION_ACTIONS = {
+    "mark_needs_log_checked": {
+        "label": "Mark log-check rows reviewed",
+        "description": "For incoming customer payments already checked against the Discord/bookkeeping log.",
+        "review_note": "Log checked from ledger automation workbench",
+    },
+}
 
 LEDGER_AGENT_AUTO_REVIEW_CATEGORIES = {
     "bank_fees",
@@ -526,6 +534,76 @@ def _append_review_note(existing: str | None, note: str) -> str:
     return f"{existing}\n{note}" if existing else note
 
 
+def _automation_matching_rows(
+    session: Session,
+    *,
+    action_key: str,
+    filters: Optional[LedgerFilters] = None,
+) -> list[BankTransaction]:
+    selected = filters or LedgerFilters(status="needs_action")
+    if action_key != "mark_needs_log_checked":
+        raise ValueError("Unknown ledger automation action")
+    return [
+        row
+        for row in _load_bank_rows(session)
+        if _row_matches_filters(row, selected)
+        and ledger_action_reason_for_bank_row(row) == "needs_log_check"
+    ]
+
+
+def preview_ledger_automation(
+    session: Session,
+    *,
+    action_key: str,
+    filters: Optional[LedgerFilters] = None,
+    sample_limit: int = 8,
+) -> dict[str, Any]:
+    rows = _automation_matching_rows(session, action_key=action_key, filters=filters)
+    action = LEDGER_AUTOMATION_ACTIONS[action_key]
+    count = len(rows)
+    return {
+        "action_key": action_key,
+        "label": action["label"],
+        "description": action["description"],
+        "affected_count": count,
+        "sample_rows": [_preview_sample_view(row) for row in _sort_rows(rows, "posted_at", "desc")[:sample_limit]],
+        "summary": f"Mark {count} needs-log-check row(s) reviewed after log verification.",
+        "warnings": [] if count else ["No needs-log-check rows match the current filters."],
+    }
+
+
+def apply_ledger_automation(
+    session: Session,
+    *,
+    action_key: str,
+    filters: Optional[LedgerFilters] = None,
+    applied_by: str = "",
+) -> dict[str, Any]:
+    rows = _automation_matching_rows(session, action_key=action_key, filters=filters)
+    action = LEDGER_AUTOMATION_ACTIONS[action_key]
+    now = utcnow()
+    updated = 0
+    note = action["review_note"]
+    if applied_by:
+        note = f"{note} by {applied_by}."
+    else:
+        note = f"{note}."
+    for row in rows:
+        changed = False
+        if row.review_status != "reviewed":
+            row.review_status = "reviewed"
+            changed = True
+        if note not in (row.review_note or ""):
+            row.review_note = _append_review_note(row.review_note, note)
+            changed = True
+        if changed:
+            row.updated_at = now
+            session.add(row)
+            updated += 1
+    session.commit()
+    return {"action_key": action_key, "matched_count": len(rows), "updated_count": updated}
+
+
 def _set_category_from_payload(row: BankTransaction, payload: dict[str, str]) -> None:
     row.expense_category = payload.get("expense_category") or row.expense_category or "uncategorized"
     row.expense_subcategory = payload.get("expense_subcategory") or None
@@ -934,14 +1012,17 @@ def _rule_summary(conditions: dict[str, Any], actions: dict[str, Any]) -> str:
 
 
 def _preview_sample_view(row: BankTransaction) -> dict[str, Any]:
+    category = row.expense_category or "uncategorized"
     return {
         "id": row.id,
         "posted_at": _short_date(row.posted_at),
+        "posted_at_display": _short_date(row.posted_at),
         "account_label": row.account_label,
         "description": row.description,
         "amount": _money(row.amount),
         "amount_display": format_ledger_money(row.amount),
-        "expense_category": row.expense_category or "uncategorized",
+        "expense_category": category,
+        "expense_category_label": expense_category_label(category),
         "classification": row.classification,
         "ledger_status": ledger_status_for_bank_row(row),
     }

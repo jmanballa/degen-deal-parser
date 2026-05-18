@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -9,15 +10,23 @@ from starlette.requests import Request
 from app.bank_reconciliation import rerun_bank_reconciliation
 from app.ledger import (
     LedgerFilters,
+    apply_ledger_automation,
     apply_ledger_rule,
     build_ledger_page_data,
     draft_ledger_rule_from_instruction,
     ledger_status_for_bank_row,
+    preview_ledger_automation,
     preview_ledger_rule,
     run_ledger_review_agent,
 )
 from app.models import BankStatementImport, BankTransaction, LedgerRule, Transaction
-from app.routers.ledger import ledger_agent_run_form, ledger_export_csv, ledger_page, ledger_row_status_form
+from app.routers.ledger import (
+    ledger_agent_run_form,
+    ledger_automation_apply_form,
+    ledger_export_csv,
+    ledger_page,
+    ledger_row_status_form,
+)
 
 
 def make_request(path: str, role: str = "admin", *, method: str = "GET", headers: list[tuple[bytes, bytes]] | None = None) -> Request:
@@ -638,6 +647,196 @@ def test_rule_draft_preview_and_apply_updates_only_matching_rows():
     assert psa.review_status == "open"
 
 
+def test_preview_ledger_automation_targets_needs_log_check_rows_only():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=22,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="QuickPay with Zelle payment from Customer",
+                amount=180.0,
+                classification="direct_customer_payment_needs_log_check",
+                expense_category="sales_collections",
+            )
+        )
+        session.add(
+            BankTransaction(
+                id=23,
+                import_id=bank_import.id,
+                row_index=2,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="PYMT SENT APPLE CASH SENT MONEY CUPERTINO CA",
+                amount=-280.0,
+                classification="direct_payment_out_needs_log_check",
+                expense_category="inventory_purchases",
+            )
+        )
+        session.commit()
+
+        preview = preview_ledger_automation(
+            session,
+            action_key="mark_needs_log_checked",
+            filters=LedgerFilters(status="needs_action"),
+        )
+
+    assert preview["action_key"] == "mark_needs_log_checked"
+    assert preview["affected_count"] == 1
+    assert preview["sample_rows"][0]["id"] == 22
+    assert "mark 1 needs-log-check row" in preview["summary"].lower()
+
+
+def test_apply_ledger_automation_marks_needs_log_check_rows_reviewed_with_note():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=25,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="QuickPay with Zelle payment from Customer",
+                amount=180.0,
+                classification="direct_customer_payment_needs_log_check",
+                expense_category="sales_collections",
+                review_note="Verified order #123.",
+            )
+        )
+        session.add(
+            BankTransaction(
+                id=26,
+                import_id=bank_import.id,
+                row_index=2,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="WWW.PSACARD.COM",
+                amount=-140.0,
+                classification="expense_or_purchase_needs_review",
+                expense_category="uncategorized",
+            )
+        )
+        session.commit()
+
+        result = apply_ledger_automation(
+            session,
+            action_key="mark_needs_log_checked",
+            filters=LedgerFilters(status="needs_action"),
+            applied_by="tester",
+        )
+        log_check = session.get(BankTransaction, 25)
+        expense = session.get(BankTransaction, 26)
+
+    assert result["matched_count"] == 1
+    assert result["updated_count"] == 1
+    assert log_check.review_status == "reviewed"
+    assert log_check.review_note == "Verified order #123.\nLog checked from ledger automation workbench by tester."
+    assert ledger_status_for_bank_row(log_check) == "reconciled"
+    assert expense.review_status == "open"
+
+
+def test_ledger_automation_apply_form_redirects_and_updates_matching_rows():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=27,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="QuickPay with Zelle payment from Customer",
+                amount=180.0,
+                classification="direct_customer_payment_needs_log_check",
+                expense_category="sales_collections",
+            )
+        )
+        session.commit()
+
+        with patch("app.routers.ledger.require_role_response", return_value=None):
+            response = ledger_automation_apply_form(
+                make_request("/ledger/automation/mark_needs_log_checked/apply-form", method="POST"),
+                action_key="mark_needs_log_checked",
+                selected_account="",
+                selected_start="",
+                selected_end="",
+                selected_status="needs_action",
+                selected_category="",
+                selected_source="",
+                selected_action_reason="needs_log_check",
+                selected_search="",
+                selected_sort="posted_at",
+                selected_direction="desc",
+                selected_include_cash="",
+                session=session,
+            )
+        row = session.get(BankTransaction, 27)
+
+    assert response.status_code == 303
+    assert "action_reason=needs_log_check" in response.headers["location"]
+    assert "Automation+updated+1+of+1" in response.headers["location"]
+    assert row.review_status == "reviewed"
+
+
+def test_ledger_automation_apply_form_hides_unexpected_exception_details(caplog):
+    engine = make_engine()
+    with Session(engine) as session:
+        with (
+            patch("app.routers.ledger.require_role_response", return_value=None),
+            patch(
+                "app.routers.ledger.apply_ledger_automation",
+                side_effect=RuntimeError("database password is super-secret"),
+            ),
+        ):
+            response = ledger_automation_apply_form(
+                make_request("/ledger/automation/mark_needs_log_checked/apply-form", method="POST"),
+                action_key="mark_needs_log_checked",
+                selected_account="",
+                selected_start="",
+                selected_end="",
+                selected_status="needs_action",
+                selected_category="",
+                selected_source="",
+                selected_action_reason="needs_log_check",
+                selected_search="",
+                selected_sort="posted_at",
+                selected_direction="desc",
+                selected_include_cash="",
+                session=session,
+            )
+
+    location = response.headers["location"]
+    assert response.status_code == 303
+    assert "An+unexpected+error+occurred" in location
+    assert "database" not in location
+    assert "super-secret" not in location
+    assert "ledger automation apply failed" in caplog.text
+
+
+def test_ledger_warning_uses_defined_css_variable():
+    template = Path("app/templates/ledger.html").read_text()
+    assert "var(--warning)" not in template
+    assert "var(--warn)" in template
+
+
 def test_apply_ledger_rule_appends_note_to_existing_review_note():
     engine = make_engine()
     posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
@@ -812,6 +1011,14 @@ def test_ledger_route_renders_default_needs_action_grid():
     cash_body = cash_response.body.decode("utf-8")
     assert response.status_code == 200
     assert "Unified Ledger" in body
+    assert "Automation Workbench" in body
+    assert 'action="/ledger/automation/mark_needs_log_checked/apply-form"' in body
+    assert "Preview: 0 row(s)" in body
+    assert "No needs-log-check rows match the current filters." in body
+    assert "Mark 0 reviewed" in body
+    assert "disabled" in body
+    assert "Scope:" in body
+    assert "Review log-check rows" in body
     assert "Ledger Assistant" in body
     assert 'href="/ledger?status=all"' in body
     assert "All transactions" in body

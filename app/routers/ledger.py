@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 from io import StringIO
 from urllib.parse import urlencode
 
@@ -20,6 +21,7 @@ from ..db import get_session
 from ..ledger import (
     LEDGER_ACTION_REASON_LABELS,
     LEDGER_STATUS_LABELS,
+    apply_ledger_automation,
     apply_ledger_rule,
     build_ledger_page_data,
     create_ledger_rule,
@@ -31,6 +33,7 @@ from ..ledger import (
     ledger_filters_from_values,
     ledger_source_for_bank_row,
     ledger_status_for_bank_row,
+    preview_ledger_automation,
     preview_ledger_rule,
     run_ledger_review_agent,
 )
@@ -38,6 +41,7 @@ from ..models import BankTransaction, LedgerRule, utcnow
 from ..shared import *  # noqa: F401,F403 -- templates, auth helpers, user labels
 
 router = APIRouter(route_class=CSRFProtectedRoute)
+logger = logging.getLogger(__name__)
 
 
 def _ledger_redirect_url(
@@ -139,6 +143,9 @@ def ledger_page(
         include_cash=include_cash,
     )
     data = build_ledger_page_data(session, filters)
+    data["automation_previews"] = [
+        preview_ledger_automation(session, action_key="mark_needs_log_checked", filters=filters)
+    ]
     return templates.TemplateResponse(
         request,
         "ledger.html",
@@ -343,6 +350,75 @@ def ledger_agent_run_form(
             direction=selected_direction,
             include_cash=selected_include_cash,
             success=success,
+        ),
+        status_code=303,
+    )
+
+
+@router.post("/ledger/automation/{action_key}/apply-form")
+def ledger_automation_apply_form(
+    request: Request,
+    action_key: str,
+    selected_account: str = Form(default=""),
+    selected_start: str = Form(default=""),
+    selected_end: str = Form(default=""),
+    selected_status: str = Form(default="needs_action"),
+    selected_category: str = Form(default=""),
+    selected_source: str = Form(default=""),
+    selected_action_reason: str = Form(default=""),
+    selected_search: str = Form(default=""),
+    selected_sort: str = Form(default="posted_at"),
+    selected_direction: str = Form(default="desc"),
+    selected_include_cash: str = Form(default=""),
+    session: Session = Depends(get_session),
+):
+    if denial := require_role_response(request, "reviewer"):
+        return denial
+    filters = ledger_filters_from_values(
+        account=selected_account,
+        start=selected_start,
+        end=selected_end,
+        status=selected_status or "needs_action",
+        category=selected_category,
+        source=selected_source,
+        action_reason=selected_action_reason,
+        search=selected_search,
+        sort=selected_sort,
+        direction=selected_direction,
+        include_cash=selected_include_cash,
+        limit=1000,
+    )
+    try:
+        result = apply_ledger_automation(
+            session,
+            action_key=action_key,
+            filters=filters,
+            applied_by=current_user_label(request),
+        )
+        success = f"Automation updated {result['updated_count']} of {result['matched_count']} matching row(s)."
+        error = ""
+    except ValueError as exc:
+        success = ""
+        error = str(exc)
+    except Exception:
+        logger.exception("ledger automation apply failed")
+        success = ""
+        error = "An unexpected error occurred, please try again."
+    return RedirectResponse(
+        url=_ledger_redirect_url(
+            account=selected_account,
+            start=selected_start,
+            end=selected_end,
+            status=selected_status,
+            category=selected_category,
+            source=selected_source,
+            action_reason=selected_action_reason,
+            search=selected_search,
+            sort=selected_sort,
+            direction=selected_direction,
+            include_cash=selected_include_cash,
+            success=success,
+            error=error,
         ),
         status_code=303,
     )

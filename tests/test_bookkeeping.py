@@ -1,9 +1,11 @@
+import asyncio
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.bookkeeping import read_tabular_rows, reconcile_bookkeeping_import
+from app.bookkeeping import fetch_google_sheet_export, read_tabular_rows, reconcile_bookkeeping_import
 from app.models import (
     BookkeepingEntry,
     BookkeepingImport,
@@ -54,6 +56,81 @@ class ReadTabularRowsTests(unittest.TestCase):
     def test_unsupported_extension_raises(self):
         with self.assertRaises(ValueError):
             read_tabular_rows("export.txt", b"some data")
+
+
+class GoogleSheetExportFetchTests(unittest.TestCase):
+    def test_follows_safe_google_redirect_before_streaming_export(self):
+        class FakeResponse:
+            def __init__(self, status_code=200, headers=None, chunks=None):
+                self.status_code = status_code
+                self.headers = headers or {}
+                self._chunks = chunks or [b"date,amount\n", b"2026-05-15,50\n"]
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            def raise_for_status(self):
+                return None
+
+            async def aiter_bytes(self):
+                for chunk in self._chunks:
+                    yield chunk
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                self.streamed_urls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            def stream(self, method, url):
+                self.streamed_urls.append(url)
+                if len(self.streamed_urls) == 1:
+                    return FakeResponse(
+                        status_code=302,
+                        headers={"location": "https://docs.google.com/spreadsheets/d/abc/export?format=xlsx&gid=0"},
+                    )
+                return FakeResponse()
+
+        export_url = "https://docs.google.com/spreadsheets/d/abc/export?format=xlsx"
+        client = FakeAsyncClient()
+        with patch("app.bookkeeping.httpx.AsyncClient", return_value=client):
+            content = asyncio.run(fetch_google_sheet_export(export_url))
+
+        self.assertEqual(content, b"date,amount\n2026-05-15,50\n")
+        self.assertEqual(len(client.streamed_urls), 2)
+
+    def test_rejects_google_sheet_export_redirect_to_untrusted_host(self):
+        class FakeResponse:
+            status_code = 302
+            headers = {"location": "https://evil.example/export.xlsx"}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+        class FakeAsyncClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            def stream(self, method, url):
+                return FakeResponse()
+
+        export_url = "https://docs.google.com/spreadsheets/d/abc/export?format=xlsx"
+        with patch("app.bookkeeping.httpx.AsyncClient", return_value=FakeAsyncClient()):
+            with self.assertRaises(ValueError):
+                asyncio.run(fetch_google_sheet_export(export_url))
 
 
 class ReconcileBookkeepingTests(unittest.TestCase):

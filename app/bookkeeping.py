@@ -8,7 +8,7 @@ from datetime import datetime, time, timedelta, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from openpyxl import load_workbook
@@ -24,7 +24,7 @@ from .models import (
     utcnow,
 )
 from .transactions import transaction_base_query
-from .db import engine, managed_session
+from .db import managed_session
 
 
 KIND_ALIASES = {
@@ -112,25 +112,43 @@ def build_google_sheet_export_url(sheet_url: str) -> tuple[str, str]:
     return f"{normalized}/export?format=xlsx", ".xlsx"
 
 
+def _allowed_google_export_url(url: str) -> bool:
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    return parsed.scheme == "https" and hostname in {"docs.google.com", "drive.usercontent.google.com"}
+
+
 async def fetch_google_sheet_export(export_url: str) -> bytes:
+    if not _allowed_google_export_url(export_url):
+        raise ValueError("Unsupported Google Sheet export URL")
+    next_url = export_url
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
-        async with client.stream("GET", export_url) as response:
-            if 300 <= response.status_code < 400:
-                raise ValueError("Google Sheet export redirects are not allowed")
-            response.raise_for_status()
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > MAX_GOOGLE_SHEET_EXPORT_BYTES:
-                raise ValueError("Google Sheet export exceeds size limit")
-            chunks: list[bytes] = []
-            total = 0
-            async for chunk in response.aiter_bytes():
-                if not chunk:
+        for _ in range(4):
+            async with client.stream("GET", next_url) as response:
+                if 300 <= response.status_code < 400:
+                    location = response.headers.get("location") or response.headers.get("Location")
+                    if not location:
+                        raise ValueError("Google Sheet export redirect is missing a target")
+                    redirected_url = urljoin(next_url, location)
+                    if not _allowed_google_export_url(redirected_url):
+                        raise ValueError("Google Sheet export redirected to an unsupported host")
+                    next_url = redirected_url
                     continue
-                total += len(chunk)
-                if total > MAX_GOOGLE_SHEET_EXPORT_BYTES:
+                response.raise_for_status()
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > MAX_GOOGLE_SHEET_EXPORT_BYTES:
                     raise ValueError("Google Sheet export exceeds size limit")
-                chunks.append(chunk)
-            return b"".join(chunks)
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > MAX_GOOGLE_SHEET_EXPORT_BYTES:
+                        raise ValueError("Google Sheet export exceeds size limit")
+                    chunks.append(chunk)
+                return b"".join(chunks)
+    raise ValueError("Google Sheet export redirected too many times")
 
 
 def infer_show_label_from_message(message_text: str, fallback_name: str) -> str:

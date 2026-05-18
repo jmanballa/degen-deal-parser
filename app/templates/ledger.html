@@ -582,6 +582,53 @@
                 </section>
 
                 <section class="panel">
+                    <h2>Automation Workbench</h2>
+                    <div class="mini" style="margin: 8px 0 12px;">One-click review automation scoped to the current filters. <a href="/ledger?status=needs_action&action_reason=needs_log_check">Review log-check rows</a></div>
+                    <div class="mini" style="margin-bottom: 12px;">
+                        Scope: status={{ selected.status or 'all' }} · reason={{ selected.action_reason or 'all' }} · account={{ selected.account or 'all' }} · date={{ selected.start or 'any' }}–{{ selected.end or 'any' }} · search={{ selected.search or 'none' }}
+                    </div>
+                    {% for automation in automation_previews %}
+                    <div class="rule-row">
+                        <strong>{{ automation.label }}</strong>
+                        <div class="mini">{{ automation.description }}</div>
+                        <div class="mini">Preview: {{ automation.affected_count }} row(s) · {{ automation.summary }}</div>
+                        {% if automation.warnings %}
+                        <div class="mini" style="color: var(--warn); margin-top: 6px;">
+                            {% for warning in automation.warnings %}{{ warning }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if automation.sample_rows %}
+                        <div class="sample-list">
+                            {% for sample in automation.sample_rows %}
+                            <div class="sample-row">
+                                <strong>{{ sample.amount_display }}</strong> · {{ sample.description }}
+                                <div class="mini">#{{ sample.id }} · {{ sample.posted_at_display }} · {{ sample.account_label or 'Account n/a' }} · {{ sample.expense_category_label }}</div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="mini">Showing first {{ automation.sample_rows|length }} of {{ automation.affected_count }} matching rows.</div>
+                        {% endif %}
+                        <form method="post" action="/ledger/automation/{{ automation.action_key }}/apply-form" style="margin-top: 8px;" onsubmit="return confirm('Mark {{ automation.affected_count }} needs-log-check row(s) reviewed for the current filters?');">
+                            <input type="hidden" name="selected_account" value="{{ selected.account }}">
+                            <input type="hidden" name="selected_start" value="{{ selected.start }}">
+                            <input type="hidden" name="selected_end" value="{{ selected.end }}">
+                            <input type="hidden" name="selected_status" value="{{ selected.status }}">
+                            <input type="hidden" name="selected_category" value="{{ selected.category }}">
+                            <input type="hidden" name="selected_source" value="{{ selected.source }}">
+                            <input type="hidden" name="selected_action_reason" value="{{ selected.action_reason }}">
+                            <input type="hidden" name="selected_search" value="{{ selected.search }}">
+                            <input type="hidden" name="selected_sort" value="{{ selected.sort }}">
+                            <input type="hidden" name="selected_direction" value="{{ selected.direction }}">
+                            <input type="hidden" name="selected_include_cash" value="{{ 'true' if selected.include_cash else '' }}">
+                            <button class="tiny primary" type="submit" {% if automation.affected_count == 0 %}disabled{% endif %}>Mark {{ automation.affected_count }} reviewed</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div class="mini">No automation actions are available.</div>
+                    {% endfor %}
+                </section>
+
+                <section class="panel">
                     <h2>Saved Rules</h2>
                     <div class="rule-list" style="margin-top: 12px;">
                         {% for rule in rules %}

@@ -234,3 +234,11 @@ def test_project_codex_config_only_adds_ruflo_mcp() -> None:
     assert "model =" not in config
     assert "approval_policy" not in config
     assert "sandbox_mode" not in config
+
+
+def test_ruflo_skill_documents_ledger_workbench_handoff() -> None:
+    skill = (PROJECT_ROOT / ".agents" / "skills" / "ruflo-degen-orchestration" / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "/ledger?status=needs_action&action_reason=needs_log_check" in skill
+    assert "Automation Workbench" in skill
+    assert "review-diff --apply" in skill

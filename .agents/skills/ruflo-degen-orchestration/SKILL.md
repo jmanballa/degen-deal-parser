@@ -17,6 +17,7 @@ edits, tests, commits, and pushes.
 - Use `scripts/ruflo_pilot.py handoff-openclaw "<task>" --apply` before handing work to OpenClaw.
 - Use `scripts/ruflo_pilot.py remember "<key>" "<lesson>" --tags tag1,tag2 --apply` after a useful fix.
 - Use `scripts/ruflo_pilot.py review-diff --apply` as an extra review signal before risky commits.
+- Ledger automation handoffs should start from `/ledger?status=needs_action&action_reason=needs_log_check`, use the Automation Workbench preview before applying bulk log-check changes, and then re-run `scripts/ruflo_pilot.py review-diff --apply` before commit.
 - Do not run `ruflo init --codex --force`; this repo already has a specific `AGENTS.md`.
 - Do not let Ruflo touch production, pull on production, restart services, or override deploy rules.
 - Continue to coordinate local Codex and OpenClaw through git, explicit file scopes, and tests.
