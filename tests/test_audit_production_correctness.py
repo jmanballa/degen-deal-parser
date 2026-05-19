@@ -830,6 +830,15 @@ class ConfigSecretFailClosedTests(unittest.TestCase):
             settings.validate_runtime_secrets()
         self.assertIn("ADMIN_PASSWORD", str(exc.exception))
 
+    def test_nine_character_admin_password_rejected(self) -> None:
+        settings = self._build_settings(
+            SESSION_SECRET="a" * 64,
+            ADMIN_PASSWORD="safe9char",
+        )
+        with self.assertRaises(RuntimeError) as exc:
+            settings.validate_runtime_secrets()
+        self.assertIn("ADMIN_PASSWORD", str(exc.exception))
+
     def test_error_does_not_leak_secret_values(self) -> None:
         leakable_secret = "supersecret-value-XYZ-12345"
         leakable_password = "leaky-password-ABCDEF"
@@ -848,6 +857,15 @@ class ConfigSecretFailClosedTests(unittest.TestCase):
         # Field names should be listed; values must not appear.
         self.assertIn("SESSION_SECRET", text)
         self.assertIn("ADMIN_PASSWORD", text)
+
+    def test_compatible_existing_admin_password_length_validates(self) -> None:
+        settings = self._build_settings(
+            SESSION_SECRET="a" * 64,
+            ADMIN_PASSWORD="safe10char",
+            EMPLOYEE_PORTAL_ENABLED="false",
+        )
+        # Must not raise for existing production-compatible credentials.
+        settings.validate_runtime_secrets()
 
     def test_strong_secrets_validate(self) -> None:
         settings = self._build_settings(

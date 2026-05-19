@@ -44,7 +44,7 @@ INSECURE_ADMIN_PASSWORD_VALUES = {"", "degen1234"}
 # Minimum lengths chosen to be resistant to casual brute-force / guessing.
 # SESSION_SECRET is used as HMAC keying material so we require a longer value.
 MIN_SESSION_SECRET_LENGTH = 32
-MIN_ADMIN_PASSWORD_LENGTH = 12
+MIN_ADMIN_PASSWORD_LENGTH = 10
 
 
 def _is_insecure_placeholder(value: str) -> bool:
