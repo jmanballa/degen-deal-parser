@@ -33,6 +33,7 @@ from ..ledger import (
     ledger_filters_from_values,
     ledger_source_for_bank_row,
     ledger_status_for_bank_row,
+    LEDGER_AGENT_MAX_LIMIT,
     preview_ledger_automation,
     preview_ledger_rule,
     run_ledger_review_agent,
@@ -323,12 +324,12 @@ def ledger_agent_run_form(
         sort=selected_sort,
         direction=selected_direction,
         include_cash=selected_include_cash,
-        limit=1000,
+        limit=LEDGER_AGENT_MAX_LIMIT,
     )
     result = run_ledger_review_agent(
         session,
         filters=filters,
-        limit=1000,
+        limit=LEDGER_AGENT_MAX_LIMIT,
         applied_by=current_user_label(request),
     )
     success = (

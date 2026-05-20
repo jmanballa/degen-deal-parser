@@ -1166,8 +1166,10 @@ class TikTokRegressionTests(unittest.TestCase):
         self.assertEqual(stored.financial_status, "paid")
         self.assertEqual(stored.order_status, "AWAITING_SHIPMENT")
         self.assertIsNotNone(stored.created_at)
-        self.assertEqual(int(stored.created_at.timestamp()), created_ts)
-        self.assertEqual(int(stored.updated_at.timestamp()), update_ts)
+        stored_created_at = stored.created_at if stored.created_at.tzinfo else stored.created_at.replace(tzinfo=timezone.utc)
+        stored_updated_at = stored.updated_at if stored.updated_at.tzinfo else stored.updated_at.replace(tzinfo=timezone.utc)
+        self.assertEqual(int(stored_created_at.timestamp()), created_ts)
+        self.assertEqual(int(stored_updated_at.timestamp()), update_ts)
         self.assertEqual(stored.total_price, 10.0)
         self.assertEqual(classify_tiktok_reporting_status(stored), "paid")
 

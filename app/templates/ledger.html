@@ -92,6 +92,61 @@
         .metric { padding: 10px 12px; min-height: 62px; }
         .metric-label { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
         .metric-value { margin-top: 8px; font-size: 24px; color: #fff; font-weight: 800; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+        .cleanup-panel { display: grid; gap: 14px; }
+        .cleanup-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .cleanup-status { flex: 0 0 auto; }
+        .cleanup-stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+            padding: 12px 0;
+        }
+        .cleanup-stat { min-width: 0; }
+        .cleanup-stat strong {
+            display: block;
+            margin-top: 5px;
+            color: #fff;
+            font-size: 22px;
+            font-variant-numeric: tabular-nums;
+            overflow-wrap: anywhere;
+        }
+        .cleanup-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .cleanup-list { display: grid; gap: 0; }
+        .cleanup-row {
+            display: grid;
+            grid-template-columns: minmax(150px, 1.1fr) minmax(90px, .45fr) minmax(120px, .55fr) minmax(0, 2fr);
+            gap: 12px;
+            align-items: center;
+            border-top: 1px solid var(--line);
+            padding: 10px 0;
+        }
+        .cleanup-row:hover { background: rgba(255,255,255,.03); }
+        .cleanup-row:first-child { border-top: 0; }
+        .cleanup-row strong { color: #fff; }
+        .cleanup-priority {
+            display: inline-flex;
+            width: fit-content;
+            border: 1px solid rgba(245,158,11,.35);
+            border-radius: 999px;
+            color: #fde68a;
+            padding: 3px 7px;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
         label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
         input, select, textarea {
             width: 100%;
@@ -239,6 +294,9 @@
             .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .filters label.search { grid-column: span 2; }
+            .cleanup-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .cleanup-row { grid-template-columns: minmax(0, 1fr) minmax(90px, auto); }
+            .cleanup-row .mini:last-child { grid-column: span 2; }
             .sheet-wrap { max-height: calc(100vh - 240px); }
         }
         @media (max-width: 700px) {
@@ -249,6 +307,12 @@
             .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .metric:last-child { grid-column: span 2; }
             .metric-value { font-size: 20px; }
+            .cleanup-head { display: grid; }
+            .cleanup-stats { grid-template-columns: 1fr; gap: 8px; }
+            .cleanup-stat strong { font-size: 20px; }
+            .cleanup-actions button { width: 100%; }
+            .cleanup-row { grid-template-columns: 1fr; gap: 5px; }
+            .cleanup-row .mini:last-child { grid-column: auto; }
             .panel { padding: 12px; }
             .quick-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .quick-chip { justify-content: center; min-height: 38px; padding: 8px; text-align: center; white-space: normal; }
@@ -344,6 +408,72 @@
             <div class="metric"><div class="metric-label">Bank Net</div><div class="metric-value">{{ summary.bank_net_display }}</div></div>
             <div class="metric"><div class="metric-label">Needs Action</div><div class="metric-value">{{ summary.needs_action_count }}</div></div>
             <div class="metric"><div class="metric-label">Unbanked Cash</div><div class="metric-value">{{ summary.unbanked_cash_display }}</div></div>
+        </section>
+
+        <section class="panel cleanup-panel">
+            <div class="cleanup-head">
+                <div>
+                    <h2>Tax Cleanup</h2>
+                    <div class="mini" style="margin-top: 6px;">{{ tax_cleanup.needs_action_count }} open bank row(s), {{ tax_cleanup.cash_count }} unbanked cash deal(s), {{ tax_cleanup.open_exposure_display }} open exposure.</div>
+                </div>
+                <span class="pill cleanup-status {% if tax_cleanup.status == 'ready' %}reconciled{% else %}needs_action{% endif %}">{% if tax_cleanup.status == 'ready' %}Ready{% else %}Needs Cleanup{% endif %}</span>
+            </div>
+            <div class="cleanup-stats">
+                <div class="cleanup-stat">
+                    <div class="metric-label">Agent Ready</div>
+                    <strong>{{ tax_cleanup.agent_ready_count }}</strong>
+                    <div class="mini">{{ tax_cleanup.agent_ready_exposure_display }} can be handled by the ledger agent.</div>
+                </div>
+                <div class="cleanup-stat">
+                    <div class="metric-label">Needs Evidence</div>
+                    <strong>{{ tax_cleanup.evidence_count }}</strong>
+                    <div class="mini">{{ tax_cleanup.evidence_exposure_display }} needs source, match, or category proof.</div>
+                </div>
+                <div class="cleanup-stat">
+                    <div class="metric-label">Cash Net</div>
+                    <strong>{{ tax_cleanup.cash_net_display }}</strong>
+                    <div class="mini">Discord cash deals outside bank totals.</div>
+                </div>
+                <div class="cleanup-actions">
+                    <form method="post" action="/ledger/agent/run-form">
+                        <input type="hidden" name="selected_account" value="">
+                        <input type="hidden" name="selected_start" value="{{ selected.start }}">
+                        <input type="hidden" name="selected_end" value="{{ selected.end }}">
+                        <input type="hidden" name="selected_status" value="needs_action">
+                        <input type="hidden" name="selected_category" value="">
+                        <input type="hidden" name="selected_source" value="">
+                        <input type="hidden" name="selected_action_reason" value="">
+                        <input type="hidden" name="selected_search" value="">
+                        <input type="hidden" name="selected_sort" value="amount">
+                        <input type="hidden" name="selected_direction" value="asc">
+                        <input type="hidden" name="selected_include_cash" value="false">
+                        <button class="primary" type="submit" {% if tax_cleanup.agent_ready_count == 0 %}disabled{% endif %}>Run Tax Agent</button>
+                    </form>
+                    <a class="button" href="/ledger?status=needs_action&sort=amount&direction=asc&include_cash=false">Open Cleanup Queue</a>
+                </div>
+            </div>
+            {% if tax_cleanup.buckets %}
+            <div class="cleanup-list">
+                {% for bucket in tax_cleanup.buckets %}
+                <a class="cleanup-row" href="{{ bucket.href }}">
+                    <div>
+                        <strong>{{ bucket.label }}</strong>
+                        <div class="mini">{{ bucket.count }} row(s){% if bucket.agent_ready_count %} &middot; {{ bucket.agent_ready_count }} agent-ready{% endif %}</div>
+                    </div>
+                    <div>
+                        <span class="cleanup-priority">{{ bucket.priority }}</span>
+                    </div>
+                    <div>
+                        <strong>{{ bucket.exposure_display }}</strong>
+                        <div class="mini">net {{ bucket.signed_display }}</div>
+                    </div>
+                    <div class="mini">{{ bucket.guidance }}</div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="mini">No tax cleanup buckets are open.</div>
+            {% endif %}
         </section>
 
         <div class="ledger-shell">

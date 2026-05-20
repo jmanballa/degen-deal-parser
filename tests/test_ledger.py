@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 from starlette.requests import Request
 
 from app.bank_reconciliation import rerun_bank_reconciliation
@@ -387,6 +387,132 @@ def test_ledger_review_agent_leaves_medium_confidence_safe_category_open():
     assert result["auto_reviewed"] == 0
     assert row.review_status == "open"
     assert ledger_status_for_bank_row(row) == "needs_action"
+
+
+def test_ledger_review_agent_can_process_prod_sized_safe_expense_batches():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        for index in range(1200):
+            session.add(
+                BankTransaction(
+                    id=2000 + index,
+                    import_id=bank_import.id,
+                    row_index=index + 1,
+                    account_label="Chase Checking",
+                    account_type="checking",
+                    posted_at=posted_at,
+                    description=f"USPS POSTAGE #{index}",
+                    amount=-5.0,
+                    classification="expense_or_purchase_needs_review",
+                    confidence="high",
+                    expense_category="shipping_postage",
+                    expense_subcategory="Shipping label/postage",
+                    category_confidence="high",
+                    category_reason="Carrier, postage, or shipping software descriptor.",
+                )
+            )
+        session.commit()
+
+        result = run_ledger_review_agent(session, filters=LedgerFilters(status="needs_action"), limit=1500)
+        reviewed_count = len(
+            session.exec(
+                select(BankTransaction).where(BankTransaction.review_status == "reviewed")
+            ).all()
+        )
+
+    assert result["scanned_count"] == 1200
+    assert result["updated_count"] == 1200
+    assert result["auto_reviewed"] == 1200
+    assert reviewed_count == 1200
+
+
+def test_ledger_page_data_builds_tax_cleanup_summary():
+    engine = make_engine()
+    posted_at = datetime(2026, 5, 15, 12, tzinfo=timezone.utc)
+
+    with Session(engine) as session:
+        bank_import = add_import(session)
+        session.add(
+            BankTransaction(
+                id=2400,
+                import_id=bank_import.id,
+                row_index=1,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="ATM cash deposit",
+                amount=500.0,
+                classification="cash_deposit_needs_source",
+                expense_category="cash_deposits",
+                category_confidence="medium",
+            )
+        )
+        session.add(
+            BankTransaction(
+                id=2401,
+                import_id=bank_import.id,
+                row_index=2,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="USPS POSTAGE",
+                amount=-20.0,
+                classification="expense_or_purchase_needs_review",
+                expense_category="shipping_postage",
+                category_confidence="high",
+            )
+        )
+        session.add(
+            BankTransaction(
+                id=2402,
+                import_id=bank_import.id,
+                row_index=3,
+                account_label="Chase Checking",
+                account_type="checking",
+                posted_at=posted_at,
+                description="Amazon Prime Video",
+                amount=-12.0,
+                classification="logged_in_discord_possible",
+                expense_category="meals_entertainment",
+                category_confidence="medium",
+            )
+        )
+        session.add(
+            Transaction(
+                id=2450,
+                source_message_id=2450,
+                occurred_at=posted_at,
+                parse_status="parsed",
+                entry_kind="buy",
+                payment_method="cash",
+                expense_category="inventory",
+                amount=80.0,
+                money_in=0.0,
+                money_out=80.0,
+                source_content="buy inventory 80 cash",
+            )
+        )
+        session.commit()
+
+        data = build_ledger_page_data(session, LedgerFilters(status="all", include_cash=True))
+
+    cleanup = data["tax_cleanup"]
+    buckets = {bucket["reason"]: bucket for bucket in cleanup["buckets"]}
+
+    assert cleanup["status"] == "needs_cleanup"
+    assert cleanup["needs_action_count"] == 3
+    assert cleanup["agent_ready_count"] == 1
+    assert cleanup["evidence_count"] == 2
+    assert cleanup["cash_count"] == 1
+    assert cleanup["cash_net_total"] == -80.0
+    assert cleanup["cash_net_display"] == "-$80.00"
+    assert buckets["needs_source"]["count"] == 1
+    assert buckets["needs_source"]["exposure_total"] == 500.0
+    assert buckets["expense_review"]["agent_ready_count"] == 1
+    assert buckets["possible_discord_match"]["href"] == "/ledger?status=needs_action&action_reason=possible_discord_match"
 
 
 def test_ledger_review_agent_preserves_manual_category_when_clearing_false_discord_match():
@@ -839,6 +965,14 @@ def test_ledger_warning_uses_defined_css_variable():
     template = Path("app/templates/ledger.html").read_text()
     assert "var(--warning)" not in template
     assert "var(--warn)" in template
+
+
+def test_ledger_template_exposes_tax_cleanup_panel():
+    template = Path("app/templates/ledger.html").read_text()
+    assert "Tax Cleanup" in template
+    assert "Run Tax Agent" in template
+    assert "tax_cleanup.buckets" in template
+    assert "agent_ready_count" in template
 
 
 def test_apply_ledger_rule_appends_note_to_existing_review_note():

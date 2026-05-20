@@ -82,6 +82,42 @@ LEDGER_AGENT_AUTO_REVIEW_CATEGORIES = {
 }
 
 LEDGER_AGENT_REVIEW_CONFIDENCES = {"high", "manual", "rule"}
+LEDGER_AGENT_MAX_LIMIT = 5000
+
+LEDGER_TAX_BUCKET_GUIDANCE = {
+    "needs_source": {
+        "priority": "high",
+        "guidance": "Cash deposits need a source before tax reports are reliable.",
+    },
+    "needs_match_check": {
+        "priority": "high",
+        "guidance": "Payment-app outflows need buy, expense, or payback evidence.",
+    },
+    "needs_log_check": {
+        "priority": "high",
+        "guidance": "Customer payments need sales-log evidence or a manual note.",
+    },
+    "possible_discord_match": {
+        "priority": "medium",
+        "guidance": "Amount/date-only Discord matches need a descriptor check.",
+    },
+    "expense_review": {
+        "priority": "medium",
+        "guidance": "Known operating expenses can be auto-reviewed when category confidence is high.",
+    },
+    "credit_review": {
+        "priority": "medium",
+        "guidance": "Incoming credits need payout, refund, transfer, or sales context.",
+    },
+    "payout_review": {
+        "priority": "medium",
+        "guidance": "Processor sweeps and transfers need confirmation.",
+    },
+    "needs_category": {
+        "priority": "medium",
+        "guidance": "Uncategorized rows need a tax category.",
+    },
+}
 
 
 @dataclass
@@ -529,6 +565,32 @@ def _bank_row_payload(row: BankTransaction) -> dict[str, Any]:
     }
 
 
+def _bounded_ledger_agent_limit(limit: int | None) -> int:
+    try:
+        requested = int(limit or 250)
+    except (TypeError, ValueError):
+        requested = 250
+    return max(min(requested, LEDGER_AGENT_MAX_LIMIT), 1)
+
+
+def _ledger_agent_false_discord_reason(row: BankTransaction, matched: Optional[Transaction]) -> str:
+    if row.matched_platform != "discord":
+        return ""
+    bank_reason = bank_payload_discord_match_block_reason(_bank_row_payload(row))
+    transaction_reason = transaction_bank_match_block_reason(matched) if matched else ""
+    return transaction_reason or bank_reason
+
+
+def _ledger_agent_safe_review_candidate(row: BankTransaction) -> bool:
+    safe_category = row.expense_category in LEDGER_AGENT_AUTO_REVIEW_CATEGORIES
+    safe_confidence = (row.category_confidence or "").lower() in LEDGER_AGENT_REVIEW_CONFIDENCES
+    return row.review_status == "open" and not row.matched_transaction_id and safe_category and safe_confidence
+
+
+def _ledger_agent_would_update(row: BankTransaction, matched: Optional[Transaction]) -> bool:
+    return bool(_ledger_agent_false_discord_reason(row, matched)) or _ledger_agent_safe_review_candidate(row)
+
+
 def _append_review_note(existing: str | None, note: str) -> str:
     existing = (existing or "").strip()
     return f"{existing}\n{note}" if existing else note
@@ -623,7 +685,7 @@ def run_ledger_review_agent(
         row
         for row in _load_bank_rows(session)
         if ledger_status_for_bank_row(row) == "needs_action" and _row_matches_filters(row, selected)
-    ][: max(min(int(limit or 250), 1000), 1)]
+    ][: _bounded_ledger_agent_limit(limit)]
     matched_by_id = _matched_transactions_by_id(session, rows)
     result = {
         "scanned_count": len(rows),
@@ -638,18 +700,16 @@ def run_ledger_review_agent(
         changed = False
         actions: list[str] = []
         matched = matched_by_id.get(row.matched_transaction_id or -1)
-        bank_reason = bank_payload_discord_match_block_reason(_bank_row_payload(row))
-        transaction_reason = transaction_bank_match_block_reason(matched) if matched else ""
+        false_match_reason = _ledger_agent_false_discord_reason(row, matched)
 
-        if row.matched_platform == "discord" and (bank_reason or transaction_reason):
-            reason = transaction_reason or bank_reason
+        if false_match_reason:
             classification = base_classification(row.description or "", _money(row.amount))
             row.classification = classification
             row.confidence = classification_confidence(classification)
             row.matched_transaction_id = None
             row.matched_source_message_id = None
             row.matched_platform = None
-            row.match_reason = f"Ledger agent cleared Discord match: {reason}"
+            row.match_reason = f"Ledger agent cleared Discord match: {false_match_reason}"
             if (row.category_confidence or "").lower() not in {"manual", "rule"}:
                 category_payload = _bank_row_payload(row)
                 category_payload["classification"] = classification
@@ -658,9 +718,7 @@ def run_ledger_review_agent(
             result["cleared_false_matches"] += 1
             actions.append("cleared false Discord match")
 
-        safe_category = row.expense_category in LEDGER_AGENT_AUTO_REVIEW_CATEGORIES
-        safe_confidence = (row.category_confidence or "").lower() in LEDGER_AGENT_REVIEW_CONFIDENCES
-        if row.review_status == "open" and not row.matched_transaction_id and safe_category and safe_confidence:
+        if _ledger_agent_safe_review_candidate(row):
             row.review_status = "reviewed"
             row.review_note = _append_review_note(
                 row.review_note,
@@ -731,6 +789,91 @@ def _load_unbanked_cash_transactions(session: Session) -> list[Transaction]:
     return cash_rows
 
 
+def _tax_bucket_view(reason: str) -> dict[str, Any]:
+    meta = LEDGER_TAX_BUCKET_GUIDANCE.get(
+        reason,
+        {"priority": "medium", "guidance": "Review before tax reports are final."},
+    )
+    return {
+        "reason": reason,
+        "label": LEDGER_ACTION_REASON_LABELS.get(reason, reason.replace("_", " ").title()),
+        "priority": meta["priority"],
+        "guidance": meta["guidance"],
+        "href": f"/ledger?status=needs_action&action_reason={reason}",
+        "count": 0,
+        "signed_total": 0.0,
+        "exposure_total": 0.0,
+        "agent_ready_count": 0,
+        "agent_ready_exposure": 0.0,
+    }
+
+
+def _finalize_tax_bucket(bucket: dict[str, Any]) -> dict[str, Any]:
+    bucket["signed_total"] = round(float(bucket["signed_total"] or 0.0), 2)
+    bucket["exposure_total"] = round(float(bucket["exposure_total"] or 0.0), 2)
+    bucket["agent_ready_exposure"] = round(float(bucket["agent_ready_exposure"] or 0.0), 2)
+    bucket["signed_display"] = format_ledger_money(bucket["signed_total"])
+    bucket["exposure_display"] = format_ledger_money(bucket["exposure_total"])
+    bucket["agent_ready_display"] = format_ledger_money(bucket["agent_ready_exposure"])
+    return bucket
+
+
+def build_tax_cleanup_summary(
+    session: Session,
+    bank_rows: list[BankTransaction],
+    unbanked_cash_transactions: list[Transaction],
+) -> dict[str, Any]:
+    needs_action_rows = [row for row in bank_rows if ledger_status_for_bank_row(row) == "needs_action"]
+    matched_by_id = _matched_transactions_by_id(session, needs_action_rows)
+    buckets_by_reason: dict[str, dict[str, Any]] = {}
+    agent_ready_count = 0
+    agent_ready_exposure = 0.0
+    evidence_count = 0
+    evidence_exposure = 0.0
+    total_exposure = 0.0
+
+    for row in needs_action_rows:
+        reason = ledger_action_reason_for_bank_row(row) or "needs_category"
+        bucket = buckets_by_reason.setdefault(reason, _tax_bucket_view(reason))
+        amount = _money(row.amount)
+        exposure = abs(amount)
+        bucket["count"] += 1
+        bucket["signed_total"] += amount
+        bucket["exposure_total"] += exposure
+        total_exposure += exposure
+
+        matched = matched_by_id.get(row.matched_transaction_id or -1)
+        if _ledger_agent_would_update(row, matched):
+            bucket["agent_ready_count"] += 1
+            bucket["agent_ready_exposure"] += exposure
+            agent_ready_count += 1
+            agent_ready_exposure += exposure
+        else:
+            evidence_count += 1
+            evidence_exposure += exposure
+
+    buckets = [_finalize_tax_bucket(bucket) for bucket in buckets_by_reason.values()]
+    buckets.sort(key=lambda bucket: (-float(bucket["exposure_total"]), str(bucket["label"])))
+    cash_net_total = round(sum(_cash_transaction_signed_amount(tx) for tx in unbanked_cash_transactions), 2)
+    needs_action_count = len(needs_action_rows)
+    return {
+        "status": "ready" if needs_action_count == 0 and not unbanked_cash_transactions else "needs_cleanup",
+        "needs_action_count": needs_action_count,
+        "evidence_count": evidence_count,
+        "evidence_exposure": round(evidence_exposure, 2),
+        "evidence_exposure_display": format_ledger_money(evidence_exposure),
+        "agent_ready_count": agent_ready_count,
+        "agent_ready_exposure": round(agent_ready_exposure, 2),
+        "agent_ready_exposure_display": format_ledger_money(agent_ready_exposure),
+        "open_exposure": round(total_exposure, 2),
+        "open_exposure_display": format_ledger_money(total_exposure),
+        "cash_count": len(unbanked_cash_transactions),
+        "cash_net_total": cash_net_total,
+        "cash_net_display": format_ledger_money(cash_net_total),
+        "buckets": buckets,
+    }
+
+
 def build_ledger_page_data(session: Session, filters: Optional[LedgerFilters] = None) -> dict[str, Any]:
     selected = filters or LedgerFilters()
     all_rows = _load_bank_rows(session)
@@ -739,6 +882,7 @@ def build_ledger_page_data(session: Session, filters: Optional[LedgerFilters] = 
     row_views = [_bank_row_view(row, matched_by_id.get(row.matched_transaction_id or -1)) for row in filtered]
     unbanked_cash_transactions = _load_unbanked_cash_transactions(session)
     unbanked_cash = [_unbanked_cash_view(tx) for tx in unbanked_cash_transactions]
+    tax_cleanup = build_tax_cleanup_summary(session, all_rows, unbanked_cash_transactions)
     if selected.include_cash or (selected.source or "").strip() == "cash":
         cash_row_views = [
             row
@@ -765,6 +909,7 @@ def build_ledger_page_data(session: Session, filters: Optional[LedgerFilters] = 
     return {
         "rows": visible_row_views,
         "unbanked_cash_rows": unbanked_cash,
+        "tax_cleanup": tax_cleanup,
         "rules": recent_rules,
         "summary": {
             "bank_row_count": len(all_rows),

@@ -18,7 +18,7 @@ from .bank_reconciliation import (
     rerun_bank_reconciliation,
 )
 from .config import get_settings
-from .ledger import LedgerFilters, run_ledger_review_agent
+from .ledger import LEDGER_AGENT_MAX_LIMIT, LedgerFilters, run_ledger_review_agent
 from .models import (
     BankFeedAccount,
     BankFeedConnection,
@@ -478,7 +478,7 @@ def run_post_plaid_sync_ledger_agent(session: Session) -> dict[str, Any]:
     return run_ledger_review_agent(
         session,
         filters=LedgerFilters(status="needs_action"),
-        limit=1000,
+        limit=LEDGER_AGENT_MAX_LIMIT,
         applied_by="Plaid sync",
     )
 
