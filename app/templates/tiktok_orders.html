@@ -263,6 +263,8 @@
                         <li>Last auth: {{ auth_row.updated_at|pacific_datetime if auth_row and auth_row.updated_at else "none yet" }}</li>
                         <li>Last callback: {{ integration_state["last_callback"]["received_at"] if integration_state["last_callback"] else "none yet" }}</li>
                         <li>Last webhook: {{ integration_state["last_webhook_at"]|pacific_datetime if integration_state["last_webhook_at"] else "none yet" }}</li>
+                        {% set enrich_queue = sync_snapshot.get("webhook_enrichment_queue", {}) %}
+                        <li>Enrichment queue: pending {{ enrich_queue.get("pending", 0) }}, processing {{ enrich_queue.get("processing", 0) }}, failed {{ enrich_queue.get("failed", 0) }}</li>
                     </ul>
                 </div>
                 <div class="tk-inner-card">

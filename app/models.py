@@ -543,6 +543,22 @@ class TikTokOrder(SQLModel, table=True):
     received_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+class TikTokWebhookEnrichmentJob(SQLModel, table=True):
+    __tablename__ = "tiktok_webhook_enrichment_jobs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tiktok_order_id: str = Field(index=True, unique=True)
+    status: str = Field(default="pending", index=True)
+    attempts: int = Field(default=0, index=True)
+    max_attempts: int = Field(default=5)
+    next_attempt_at: Optional[datetime] = Field(default=None, index=True)
+    last_attempt_at: Optional[datetime] = Field(default=None, index=True)
+    succeeded_at: Optional[datetime] = Field(default=None, index=True)
+    last_error: str = Field(default="")
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
 class TikTokProduct(SQLModel, table=True):
     __tablename__ = "tiktok_products"
 

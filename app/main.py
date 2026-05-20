@@ -248,7 +248,9 @@ from .shared import (  # noqa: F401 - explicit imports for underscore-prefixed n
     _load_stream_range,
     _load_tiktok_state_from_db,
     _poll_tiktok_live_analytics,
+    tiktok_webhook_enrichment_queue_loop,
 )
+from .tiktok_enrichment_queue import requeue_interrupted_tiktok_webhook_enrichment_jobs
 
 settings = get_settings()
 setup_runtime_file_logging("app.log")
@@ -268,6 +270,8 @@ async def lifespan(app: FastAPI):
         migrate_empty_password_salts(session)
         seed_default_users(session)
         requeue_interrupted_backfill_requests(session)
+        requeue_interrupted_tiktok_webhook_enrichment_jobs(session)
+        session.commit()
     seed_channels_from_env()
     reset_background_task_failures()
 
@@ -422,9 +426,21 @@ async def lifespan(app: FastAPI):
         )
         background_tasks.append(tiktok_backfill_task)
         app.state.tiktok_backfill_task = tiktok_backfill_task
+        tiktok_enrichment_queue_task = track_background_task(
+            asyncio.create_task(
+                tiktok_webhook_enrichment_queue_loop(stop_event),
+                name="tiktok-webhook-enrichment-queue",
+            ),
+            runtime_name=WORKER_RUNTIME_NAME,
+            task_name="tiktok-webhook-enrichment-queue",
+            stop_event=stop_event,
+        )
+        background_tasks.append(tiktok_enrichment_queue_task)
+        app.state.tiktok_enrichment_queue_task = tiktok_enrichment_queue_task
     else:
         app.state.tiktok_pull_task = None
         app.state.tiktok_backfill_task = None
+        app.state.tiktok_enrichment_queue_task = None
 
     live_analytics_stop = threading.Event()
     app.state.live_analytics_stop = live_analytics_stop

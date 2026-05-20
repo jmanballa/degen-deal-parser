@@ -14,15 +14,17 @@ from unittest.mock import patch
 
 import httpx
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine, select
 
+import app.db as db_module
 import app.main as main_module
 import app.routers.reports as reports_module
 import app.routers.dashboard as dashboard_module
 import app.routers.tiktok_orders as tiktok_orders_module
 import app.routers.shopify as shopify_module
 import app.shared as shared_module
-from app.models import TikTokAuth, TikTokOrder, utcnow
+from app.models import TikTokAuth, TikTokOrder, TikTokWebhookEnrichmentJob, utcnow
 from app.reporting import (
     build_tiktok_reporting_summary,
     classify_tiktok_reporting_status,
@@ -41,6 +43,13 @@ from app.tiktok_ingest import (
     refresh_tiktok_shop_token,
     upsert_tiktok_order_from_payload,
     verify_tiktok_webhook_signature,
+)
+from app.tiktok_enrichment_queue import (
+    ENRICH_PROCESSING,
+    enqueue_tiktok_webhook_enrichment,
+    get_tiktok_webhook_enrichment_queue_counts,
+    process_due_tiktok_webhook_enrichment_jobs,
+    requeue_interrupted_tiktok_webhook_enrichment_jobs,
 )
 
 
@@ -757,6 +766,369 @@ class TikTokRegressionTests(unittest.TestCase):
         self.assertEqual(stored.total_price, 15.0)
         self.assertEqual(json.loads(stored.line_items_summary_json)[0]["unit_price"], 15.0)
         self.assertEqual(record["tiktok_order_id"], "tt-1")
+
+    def test_sqlite_schema_migration_creates_tiktok_webhook_enrichment_queue_table(self) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text("DROP TABLE tiktok_webhook_enrichment_jobs"))
+
+        original_engine = db_module.engine
+        original_database_url = db_module.database_url
+        try:
+            db_module.engine = self.engine
+            db_module.database_url = str(self.engine.url)
+            db_module.ensure_sqlite_schema()
+        finally:
+            db_module.engine = original_engine
+            db_module.database_url = original_database_url
+
+        with self.engine.begin() as connection:
+            table_row = connection.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type = 'table' AND name = 'tiktok_webhook_enrichment_jobs'"
+                )
+            ).first()
+            index_rows = connection.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type = 'index' AND tbl_name = 'tiktok_webhook_enrichment_jobs'"
+                )
+            ).all()
+
+        self.assertIsNotNone(table_row)
+        self.assertIn(
+            "ix_tiktok_webhook_enrichment_jobs_tiktok_order_id",
+            {row[0] for row in index_rows},
+        )
+
+    def test_tiktok_webhook_enrichment_queue_persists_and_deduplicates_jobs(self) -> None:
+        due_at = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        with Session(self.engine) as session:
+            first = enqueue_tiktok_webhook_enrichment(session, "tt-durable-1", now=due_at)
+            second = enqueue_tiktok_webhook_enrichment(session, "tt-durable-1", now=due_at)
+            session.commit()
+
+            self.assertEqual(first.tiktok_order_id, "tt-durable-1")
+            self.assertEqual(second.id, first.id)
+            rows = session.exec(select(TikTokWebhookEnrichmentJob)).all()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].status, "pending")
+
+        with Session(self.engine) as session:
+            persisted = session.exec(
+                select(TikTokWebhookEnrichmentJob).where(
+                    TikTokWebhookEnrichmentJob.tiktok_order_id == "tt-durable-1"
+                )
+            ).one()
+            self.assertEqual(persisted.status, "pending")
+
+    def test_tiktok_webhook_enrichment_queue_retries_transient_failure_then_succeeds(self) -> None:
+        started_at = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        calls: list[str] = []
+
+        with Session(self.engine) as session:
+            enqueue_tiktok_webhook_enrichment(session, "tt-retry-1", now=started_at)
+            session.commit()
+
+            def fail_once(order_id: str) -> None:
+                calls.append(order_id)
+                raise RuntimeError("temporary TikTok API outage")
+
+            processed = process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                now=started_at,
+                enrich_fn=fail_once,
+            )
+            session.commit()
+
+            self.assertEqual(processed, 1)
+            self.assertEqual(calls, ["tt-retry-1"])
+            job = session.exec(select(TikTokWebhookEnrichmentJob)).one()
+            self.assertEqual(job.status, "pending")
+            self.assertEqual(job.attempts, 1)
+            self.assertIsNotNone(job.next_attempt_at)
+            assert job.next_attempt_at is not None
+            self.assertGreater(
+                job.next_attempt_at.replace(tzinfo=timezone.utc),
+                started_at,
+            )
+            self.assertIn("temporary TikTok API outage", job.last_error or "")
+
+            calls.clear()
+            skipped = process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                now=started_at + timedelta(seconds=1),
+                enrich_fn=lambda order_id: calls.append(order_id),
+            )
+            self.assertEqual(skipped, 0)
+            self.assertEqual(calls, [])
+
+            retried = process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                now=started_at + timedelta(minutes=10),
+                enrich_fn=lambda order_id: calls.append(order_id),
+            )
+            session.commit()
+
+            self.assertEqual(retried, 1)
+            self.assertEqual(calls, ["tt-retry-1"])
+            session.refresh(job)
+            self.assertEqual(job.status, "succeeded")
+            self.assertEqual(job.last_error, "")
+
+    def test_tiktok_webhook_enrichment_queue_duplicate_preserves_pending_backoff(self) -> None:
+        started_at = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        duplicate_at = started_at + timedelta(seconds=10)
+        with Session(self.engine) as session:
+            enqueue_tiktok_webhook_enrichment(session, "tt-backoff-1", now=started_at)
+            process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                now=started_at,
+                enrich_fn=lambda order_id: (_ for _ in ()).throw(RuntimeError("slow down")),
+            )
+            job = session.exec(select(TikTokWebhookEnrichmentJob)).one()
+            first_retry_at = job.next_attempt_at
+            assert first_retry_at is not None
+
+            duplicate = enqueue_tiktok_webhook_enrichment(
+                session,
+                "tt-backoff-1",
+                now=duplicate_at,
+            )
+            session.commit()
+
+            self.assertEqual(duplicate.status, "pending")
+            self.assertEqual(duplicate.attempts, 1)
+            self.assertEqual(duplicate.next_attempt_at, first_retry_at)
+
+            calls: list[str] = []
+            processed = process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                now=duplicate_at,
+                enrich_fn=lambda order_id: calls.append(order_id),
+            )
+            self.assertEqual(processed, 0)
+            self.assertEqual(calls, [])
+
+    def test_tiktok_webhook_enrichment_queue_duplicate_preserves_processing_claim(self) -> None:
+        now = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        with Session(self.engine) as session:
+            job = enqueue_tiktok_webhook_enrichment(session, "tt-processing-1", now=now)
+            job.status = ENRICH_PROCESSING
+            job.last_attempt_at = now
+            job.next_attempt_at = now
+            session.add(job)
+            session.commit()
+
+            duplicate = enqueue_tiktok_webhook_enrichment(
+                session,
+                "tt-processing-1",
+                now=now + timedelta(seconds=5),
+            )
+            session.commit()
+
+            self.assertEqual(duplicate.status, ENRICH_PROCESSING)
+            self.assertIsNotNone(duplicate.last_attempt_at)
+            self.assertIsNotNone(duplicate.next_attempt_at)
+            assert duplicate.last_attempt_at is not None
+            assert duplicate.next_attempt_at is not None
+            self.assertEqual(
+                duplicate.last_attempt_at.replace(tzinfo=timezone.utc),
+                now,
+            )
+            self.assertEqual(
+                duplicate.next_attempt_at.replace(tzinfo=timezone.utc),
+                now,
+            )
+
+    def test_tiktok_webhook_enrichment_queue_requeues_interrupted_processing_jobs(self) -> None:
+        interrupted_at = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        restart_at = interrupted_at + timedelta(minutes=5)
+        with Session(self.engine) as session:
+            job = enqueue_tiktok_webhook_enrichment(
+                session,
+                "tt-interrupted-1",
+                now=interrupted_at,
+            )
+            job.status = ENRICH_PROCESSING
+            job.last_attempt_at = interrupted_at
+            job.next_attempt_at = None
+            session.add(job)
+            session.commit()
+
+            fresh_count = requeue_interrupted_tiktok_webhook_enrichment_jobs(
+                session,
+                now=restart_at,
+            )
+            session.commit()
+
+            self.assertEqual(fresh_count, 0)
+            session.refresh(job)
+            self.assertEqual(job.status, ENRICH_PROCESSING)
+
+            stale_count = requeue_interrupted_tiktok_webhook_enrichment_jobs(
+                session,
+                now=interrupted_at + timedelta(minutes=11),
+            )
+            session.commit()
+
+            self.assertEqual(stale_count, 1)
+            session.refresh(job)
+            self.assertEqual(job.status, "pending")
+            self.assertIsNotNone(job.next_attempt_at)
+            assert job.next_attempt_at is not None
+            self.assertEqual(
+                job.next_attempt_at.replace(tzinfo=timezone.utc),
+                interrupted_at + timedelta(minutes=11),
+            )
+
+    def test_tiktok_webhook_enrichment_queue_processor_recovers_stale_processing_jobs(self) -> None:
+        interrupted_at = utcnow() - timedelta(minutes=20)
+        calls: list[tuple[str, bool]] = []
+
+        with Session(self.engine) as session:
+            job = enqueue_tiktok_webhook_enrichment(
+                session,
+                "tt-loop-recovery-1",
+                now=interrupted_at,
+            )
+            job.status = ENRICH_PROCESSING
+            job.last_attempt_at = interrupted_at
+            job.next_attempt_at = None
+            session.add(job)
+            session.commit()
+
+        @contextmanager
+        def fake_managed_session():
+            with Session(self.engine) as session:
+                yield session
+
+        def fake_enrich(order_id: str, *, raise_errors: bool = False) -> None:
+            calls.append((order_id, raise_errors))
+
+        with patch.object(shared_module, "managed_session", fake_managed_session), patch.object(
+            shared_module, "_fetch_tiktok_order_details", object()
+        ), patch.object(
+            shared_module, "_order_record_from_payload", object()
+        ), patch.object(
+            shared_module, "_enrich_tiktok_order_from_api", side_effect=fake_enrich
+        ):
+            attempted = shared_module._process_tiktok_webhook_enrichment_queue_once(limit=5)
+
+        self.assertEqual(attempted, 1)
+        self.assertEqual(calls, [("tt-loop-recovery-1", True)])
+        with Session(self.engine) as session:
+            job = session.exec(
+                select(TikTokWebhookEnrichmentJob).where(
+                    TikTokWebhookEnrichmentJob.tiktok_order_id == "tt-loop-recovery-1"
+                )
+            ).one()
+            self.assertEqual(job.status, "succeeded")
+
+    def test_tiktok_webhook_enrichment_queue_reenqueue_resets_terminal_retry_budget(self) -> None:
+        first_seen_at = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        second_seen_at = first_seen_at + timedelta(hours=1)
+        with Session(self.engine) as session:
+            job = enqueue_tiktok_webhook_enrichment(
+                session,
+                "tt-requeue-1",
+                now=first_seen_at,
+                max_attempts=2,
+            )
+            job.status = "failed"
+            job.attempts = 2
+            job.last_error = "previous outage"
+            session.add(job)
+            session.commit()
+
+            refreshed = enqueue_tiktok_webhook_enrichment(
+                session,
+                "tt-requeue-1",
+                now=second_seen_at,
+                max_attempts=2,
+            )
+            session.commit()
+
+            self.assertEqual(refreshed.status, "pending")
+            self.assertEqual(refreshed.attempts, 0)
+            self.assertEqual(refreshed.last_error, "")
+            self.assertEqual(
+                refreshed.next_attempt_at.replace(tzinfo=timezone.utc),
+                second_seen_at,
+            )
+
+            processed = process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                now=second_seen_at,
+                enrich_fn=lambda order_id: (_ for _ in ()).throw(RuntimeError("new temporary outage")),
+            )
+
+            self.assertEqual(processed, 1)
+            session.refresh(refreshed)
+            self.assertEqual(refreshed.status, "pending")
+            self.assertEqual(refreshed.attempts, 1)
+            self.assertIn("new temporary outage", refreshed.last_error or "")
+
+    def test_tiktok_webhook_enrichment_queue_redacts_sensitive_retry_errors(self) -> None:
+        now = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        with Session(self.engine) as session:
+            enqueue_tiktok_webhook_enrichment(session, "tt-redact-1", now=now)
+            session.commit()
+
+            process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                now=now,
+                enrich_fn=lambda order_id: (_ for _ in ()).throw(
+                    RuntimeError("access_token=tok_live_123 app_secret: super-secret")
+                ),
+            )
+
+            job = session.exec(select(TikTokWebhookEnrichmentJob)).one()
+            self.assertIn("access_token=[REDACTED]", job.last_error)
+            self.assertIn("app_secret: [REDACTED]", job.last_error)
+            self.assertNotIn("tok_live_123", job.last_error)
+            self.assertNotIn("super-secret", job.last_error)
+
+    def test_tiktok_webhook_enrichment_queue_counts_pending_and_failed_jobs(self) -> None:
+        now = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        with Session(self.engine) as session:
+            enqueue_tiktok_webhook_enrichment(session, "tt-pending-1", now=now)
+            failed = enqueue_tiktok_webhook_enrichment(session, "tt-failed-1", now=now)
+            failed.status = "failed"
+            failed.last_error = "permanent failure"
+            session.add(failed)
+            session.commit()
+
+            counts = get_tiktok_webhook_enrichment_queue_counts(session)
+
+        self.assertEqual(counts["pending"], 1)
+        self.assertEqual(counts["failed"], 1)
+        self.assertEqual(counts["active"], 1)
+
+    def test_tiktok_webhook_enrichment_queue_counts_are_visible_in_status_surfaces(self) -> None:
+        now = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)
+        with Session(self.engine) as session:
+            enqueue_tiktok_webhook_enrichment(session, "tt-visible-pending", now=now)
+            failed = enqueue_tiktok_webhook_enrichment(session, "tt-visible-failed", now=now)
+            failed.status = "failed"
+            failed.last_error = "detail fetch failed"
+            session.add(failed)
+            session.commit()
+
+            status_snapshot = shared_module.build_tiktok_status_snapshot(session)
+            orders_page_data = tiktok_orders_module._collect_tiktok_orders_page_data(session)
+
+        self.assertEqual(status_snapshot["webhook_enrichment_queue"]["pending"], 1)
+        self.assertEqual(status_snapshot["webhook_enrichment_queue"]["failed"], 1)
+        self.assertEqual(orders_page_data["sync_snapshot"]["webhook_enrichment_queue"]["pending"], 1)
+        self.assertEqual(orders_page_data["sync_snapshot"]["webhook_enrichment_queue"]["failed"], 1)
+
+        status_template = (Path(__file__).parents[1] / "app" / "templates" / "status.html").read_text()
+        orders_template = (Path(__file__).parents[1] / "app" / "templates" / "tiktok_orders.html").read_text()
+        self.assertIn("webhook_enrichment_queue", status_template)
+        self.assertIn("Enrichment queue", status_template)
+        self.assertIn("webhook_enrichment_queue", orders_template)
+        self.assertIn("Enrichment queue", orders_template)
 
     def test_tiktok_backfill_thin_payload_preserves_existing_paid_status(self) -> None:
         created_at = datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc)

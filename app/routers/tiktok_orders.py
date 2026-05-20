@@ -132,6 +132,7 @@ def _collect_tiktok_orders_page_data(
     auth_row = ensure_tiktok_auth_row(session)
     integration_state = read_tiktok_integration_state()
     sync_snapshot = describe_tiktok_sync_status(auth_row, integration_state)
+    sync_snapshot["webhook_enrichment_queue"] = get_tiktok_webhook_enrichment_queue_counts(session)
     page_data = build_tiktok_orders_page_reporting_data(
         session,
         start=start_dt,

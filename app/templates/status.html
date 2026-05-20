@@ -237,6 +237,8 @@
                     <div class="item"><strong>Last webhook:</strong> {{ snapshot["tiktok_sync"]["last_webhook_label"] }}</div>
                     <div class="item"><strong>Last pull started:</strong> {{ snapshot["tiktok_sync"]["last_pull_started_label"] }}</div>
                     <div class="item"><strong>Last pull finished:</strong> {{ snapshot["tiktok_sync"]["last_pull_finished_label"] }}</div>
+                    {% set enrich_queue = snapshot["tiktok_sync"].get("webhook_enrichment_queue", {}) %}
+                    <div class="item"><strong>Enrichment queue:</strong> pending {{ enrich_queue.get("pending", 0) }}, processing {{ enrich_queue.get("processing", 0) }}, failed {{ enrich_queue.get("failed", 0) }}</div>
                     {% if snapshot["tiktok_sync"]["last_pull"] %}
                     <div class="item"><strong>Last result:</strong> {{ snapshot["tiktok_sync"]["last_pull"].get("status", "idle") }}{% if snapshot["tiktok_sync"]["last_pull"].get("fetched") is not none %} | fetched {{ snapshot["tiktok_sync"]["last_pull"].get("fetched", 0) }}, inserted {{ snapshot["tiktok_sync"]["last_pull"].get("inserted", 0) }}, updated {{ snapshot["tiktok_sync"]["last_pull"].get("updated", 0) }}, failed {{ snapshot["tiktok_sync"]["last_pull"].get("failed", 0) }}{% endif %}</div>
                     {% endif %}

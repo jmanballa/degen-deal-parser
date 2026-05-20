@@ -21,6 +21,7 @@ LEGACY_SHOPIFY_TABLE = "shopifyorder"
 SHOPIFY_TABLE = "shopify_orders"
 TIKTOK_AUTH_TABLE = "tiktok_auth"
 TIKTOK_ORDERS_TABLE = "tiktok_orders"
+TIKTOK_WEBHOOK_ENRICHMENT_JOBS_TABLE = "tiktok_webhook_enrichment_jobs"
 
 
 def normalize_database_url(raw_database_url: str) -> str:
@@ -285,6 +286,14 @@ SQLITE_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_tiktok_auth_app_key ON tiktok_auth (app_key)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_tiktok_orders_tiktok_order_id ON tiktok_orders (tiktok_order_id)",
     "CREATE INDEX IF NOT EXISTS ix_tiktok_orders_created_at ON tiktok_orders (created_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_tiktok_order_id ON tiktok_webhook_enrichment_jobs (tiktok_order_id)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_status ON tiktok_webhook_enrichment_jobs (status)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_attempts ON tiktok_webhook_enrichment_jobs (attempts)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_next_attempt_at ON tiktok_webhook_enrichment_jobs (next_attempt_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_last_attempt_at ON tiktok_webhook_enrichment_jobs (last_attempt_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_succeeded_at ON tiktok_webhook_enrichment_jobs (succeeded_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_created_at ON tiktok_webhook_enrichment_jobs (created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_updated_at ON tiktok_webhook_enrichment_jobs (updated_at)",
     # Indexed columns added via SQLITE_ADDITIVE_MIGRATIONS (create_all does not backfill indexes on ALTER-only DBs)
     "CREATE INDEX IF NOT EXISTS idx_discordmessage_guild_id ON discordmessage (guild_id)",
     "CREATE INDEX IF NOT EXISTS idx_discordmessage_last_seen_at ON discordmessage (last_seen_at)",
@@ -621,6 +630,14 @@ POSTGRES_INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_tiktok_auth_app_key ON tiktok_auth (app_key)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_tiktok_orders_tiktok_order_id ON tiktok_orders (tiktok_order_id)",
     "CREATE INDEX IF NOT EXISTS ix_tiktok_orders_created_at ON tiktok_orders (created_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_tiktok_order_id ON tiktok_webhook_enrichment_jobs (tiktok_order_id)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_status ON tiktok_webhook_enrichment_jobs (status)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_attempts ON tiktok_webhook_enrichment_jobs (attempts)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_next_attempt_at ON tiktok_webhook_enrichment_jobs (next_attempt_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_last_attempt_at ON tiktok_webhook_enrichment_jobs (last_attempt_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_succeeded_at ON tiktok_webhook_enrichment_jobs (succeeded_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_created_at ON tiktok_webhook_enrichment_jobs (created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_tiktok_webhook_enrichment_jobs_updated_at ON tiktok_webhook_enrichment_jobs (updated_at)",
     # Indexed columns added via POSTGRES_ADDITIVE_MIGRATIONS (create_all does not backfill indexes on ALTER-only DBs)
     "CREATE INDEX IF NOT EXISTS idx_discordmessage_guild_id ON discordmessage (guild_id)",
     "CREATE INDEX IF NOT EXISTS idx_discordmessage_last_seen_at ON discordmessage (last_seen_at)",
@@ -1060,6 +1077,26 @@ def ensure_sqlite_schema() -> None:
                     )
                 )
 
+        connection.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS {TIKTOK_WEBHOOK_ENRICHMENT_JOBS_TABLE} (
+                    id INTEGER PRIMARY KEY,
+                    tiktok_order_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 5,
+                    next_attempt_at TIMESTAMP,
+                    last_attempt_at TIMESTAMP,
+                    succeeded_at TIMESTAMP,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+                """
+            )
+        )
+
         for statement in SQLITE_INDEX_MIGRATIONS:
             connection.execute(text(statement))
         migrate_legacy_sqlite_shopify_orders(connection)
@@ -1114,6 +1151,25 @@ def _pg_migrate_statement(stmt: str, label: str) -> None:
 def ensure_postgres_schema() -> None:
     if not is_postgres_database_url(database_url):
         return
+
+    _pg_migrate_statement(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TIKTOK_WEBHOOK_ENRICHMENT_JOBS_TABLE} (
+            id SERIAL PRIMARY KEY,
+            tiktok_order_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 5,
+            next_attempt_at TIMESTAMP,
+            last_attempt_at TIMESTAMP,
+            succeeded_at TIMESTAMP,
+            last_error TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+        """,
+        f"{TIKTOK_WEBHOOK_ENRICHMENT_JOBS_TABLE}.create",
+    )
 
     for table_name, columns in POSTGRES_ADDITIVE_MIGRATIONS.items():
         pg_table = f'"{table_name}"' if table_name == "user" else table_name

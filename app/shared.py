@@ -152,6 +152,12 @@ from .tiktok_ingest import (
     upsert_tiktok_auth_from_callback,
     upsert_tiktok_order_from_payload,
 )
+from .tiktok_enrichment_queue import (
+    enqueue_tiktok_webhook_enrichment,
+    get_tiktok_webhook_enrichment_queue_counts,
+    process_due_tiktok_webhook_enrichment_jobs,
+    requeue_interrupted_tiktok_webhook_enrichment_jobs,
+)
 from .tiktok_live_chat import (
     get_chat_status,
     get_recent_messages as get_live_chat_messages,
@@ -2390,6 +2396,7 @@ def build_tiktok_status_snapshot(session: Session) -> dict[str, object]:
         "last_pull_finished_label": _format_tiktok_status_timestamp(last_pull_finished),
         "last_pull": last_pull,
         "last_error": integration_state.get("last_error") or "",
+        "webhook_enrichment_queue": get_tiktok_webhook_enrichment_queue_counts(session),
     }
 
 
@@ -2731,15 +2738,28 @@ def _tiktok_webhook_enrich_error_is_retryable_auth(exc: BaseException) -> bool:
     return False
 
 
-def _enrich_tiktok_order_from_api(order_id: str) -> None:
+def _safe_tiktok_webhook_enrich_error_text(exc: BaseException, *, limit: int = 500) -> str:
+    raw_error_text = str(exc).strip() or exc.__class__.__name__
+    safe_error_text = str(
+        redact_log_details({"error": raw_error_text}).get("error")
+        or exc.__class__.__name__
+    )
+    return safe_error_text[:limit]
+
+
+def _enrich_tiktok_order_from_api(order_id: str, *, raise_errors: bool = False) -> None:
     """Fetch full order details from TikTok API and update the DB record."""
     if _fetch_tiktok_order_details is None or _order_record_from_payload is None:
+        if raise_errors:
+            raise RuntimeError("TikTok order detail helper unavailable")
         return
     runtime_name = f"{settings.runtime_name}_tiktok_webhook_enrich"
     try:
         with managed_session() as session:
             auth_row = ensure_tiktok_auth_row(session)
             if auth_row is None and not ((settings.tiktok_shop_id or "").strip() and (settings.tiktok_access_token or "").strip()):
+                if raise_errors:
+                    raise RuntimeError("TikTok order enrichment credentials unavailable")
                 return
 
             refresh_result = _refresh_tiktok_auth_if_needed(session, runtime_name=runtime_name)
@@ -2748,6 +2768,8 @@ def _enrich_tiktok_order_from_api(order_id: str) -> None:
 
             shop_id, shop_cipher, access_token = _resolve_tiktok_pull_credentials(auth_row)
             if not access_token or (not shop_id and not shop_cipher):
+                if raise_errors:
+                    raise RuntimeError("TikTok order enrichment credentials incomplete")
                 return
 
             def _fetch_details_with_token(
@@ -2777,7 +2799,7 @@ def _enrich_tiktok_order_from_api(order_id: str) -> None:
                         success=False,
                         tiktok_order_id=order_id,
                         reason="http_401_refresh_and_retry",
-                        error=str(exc),
+                        error=_safe_tiktok_webhook_enrich_error_text(exc),
                     )
                 )
                 refresh_result = _refresh_tiktok_auth_if_needed(
@@ -2802,7 +2824,7 @@ def _enrich_tiktok_order_from_api(order_id: str) -> None:
                         success=False,
                         tiktok_order_id=order_id,
                         reason="tiktok_auth_error_refresh_and_retry",
-                        error=str(exc),
+                        error=_safe_tiktok_webhook_enrich_error_text(exc),
                     )
                 )
                 refresh_result = _refresh_tiktok_auth_if_needed(
@@ -2819,6 +2841,8 @@ def _enrich_tiktok_order_from_api(order_id: str) -> None:
                 details = _fetch_details_with_token(shop_id, shop_cipher, access_token)
 
             if not details:
+                if raise_errors:
+                    raise RuntimeError("TikTok order details unavailable")
                 return
             record = _order_record_from_payload(
                 details[0],
@@ -2853,21 +2877,100 @@ def _enrich_tiktok_order_from_api(order_id: str) -> None:
                 runtime=runtime_name,
                 action="tiktok.webhook.order_enrich_failed",
                 success=False,
-                error=str(exc),
+                error=_safe_tiktok_webhook_enrich_error_text(exc),
                 tiktok_order_id=order_id,
             )
             )
+        if raise_errors:
+            raise
+
+
+def _process_tiktok_webhook_enrichment_queue_once(*, limit: int = 10) -> int:
+    """Attempt due webhook enrichment jobs and persist retry state."""
+    if _fetch_tiktok_order_details is None or _order_record_from_payload is None:
+        return 0
+    runtime_name = f"{settings.runtime_name}_tiktok_webhook_enrich"
+    try:
+        with managed_session() as session:
+            requeued = requeue_interrupted_tiktok_webhook_enrichment_jobs(session)
+            if requeued:
+                session.commit()
+            attempted = process_due_tiktok_webhook_enrichment_jobs(
+                session,
+                enrich_fn=lambda order_id: _enrich_tiktok_order_from_api(order_id, raise_errors=True),
+                limit=limit,
+            )
+            session.commit()
+            if attempted:
+                counts = get_tiktok_webhook_enrichment_queue_counts(session)
+                print(
+                    structured_log_line(
+                        runtime=runtime_name,
+                        action="tiktok.webhook.enrichment_queue_processed",
+                        success=True,
+                        attempted=attempted,
+                        requeued_stale=requeued,
+                        pending=counts.get("pending"),
+                        failed=counts.get("failed"),
+                    )
+                )
+            return attempted
+    except Exception as exc:
+        print(
+            structured_log_line(
+                runtime=runtime_name,
+                action="tiktok.webhook.enrichment_queue_failed",
+                success=False,
+                error=_safe_tiktok_webhook_enrich_error_text(exc),
+            )
+        )
+        return 0
+
+
+def _enqueue_tiktok_webhook_enrichment_job(order_id: str) -> bool:
+    if not order_id or _fetch_tiktok_order_details is None:
+        return False
+
+    def _enqueue(session: Session):
+        job = enqueue_tiktok_webhook_enrichment(session, order_id)
+        return job.id
+
+    run_write_with_retry(_enqueue)
+    return True
 
 
 def _start_tiktok_webhook_enrichment(order_id: str) -> None:
     if not order_id or _fetch_tiktok_order_details is None:
         return
+    try:
+        _enqueue_tiktok_webhook_enrichment_job(order_id)
+    except Exception as exc:
+        print(
+            structured_log_line(
+                runtime=f"{settings.runtime_name}_tiktok_webhook_enrich",
+                action="tiktok.webhook.enrichment_enqueue_failed",
+                success=False,
+                tiktok_order_id=order_id,
+                error=_safe_tiktok_webhook_enrich_error_text(exc),
+            )
+        )
+        return
     threading.Thread(
-        target=_enrich_tiktok_order_from_api,
-        args=(order_id,),
+        target=_process_tiktok_webhook_enrichment_queue_once,
         daemon=True,
         name=f"tiktok-enrich-{order_id[:12]}",
     ).start()
+
+
+async def tiktok_webhook_enrichment_queue_loop(stop_event: asyncio.Event) -> None:
+    """Retry durable webhook enrichment jobs after failures or restarts."""
+    interval_seconds = 60
+    while not stop_event.is_set():
+        await asyncio.to_thread(_process_tiktok_webhook_enrichment_queue_once, limit=10)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except asyncio.TimeoutError:
+            continue
 
 
 def run_tiktok_pull_in_background(*, since: Optional[str], limit: Optional[int], trigger: str = "manual") -> None:
