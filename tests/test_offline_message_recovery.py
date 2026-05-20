@@ -6,9 +6,9 @@ from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.discord_ingest import mark_message_deleted_row, recent_message_needs_refresh
+from app.discord.discord_ingest import mark_message_deleted_row, recent_message_needs_refresh
 from app.models import DiscordMessage, Transaction, PARSE_PARSED, utcnow
-from app.transactions import sync_transaction_from_message
+from app.discord.transactions import sync_transaction_from_message
 
 
 class _FakeAttachment:

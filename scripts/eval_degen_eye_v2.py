@@ -36,7 +36,7 @@ sys.path.insert(0, str(_ROOT))
 os.environ.setdefault("SESSION_SECRET", "eval")
 os.environ.setdefault("DATABASE_URL", "sqlite:///data/v2_eval.db")
 
-from app.degen_eye_v2 import run_v2_pipeline  # noqa: E402
+from app.inventory.degen_eye_v2 import run_v2_pipeline  # noqa: E402
 
 
 def _norm_text(value: Any) -> str:

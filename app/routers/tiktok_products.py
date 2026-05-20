@@ -24,7 +24,7 @@ from ..shared import (  # noqa: F401 - explicit imports for underscore-prefixed 
 from ..db import get_session, managed_session
 from ..config import get_settings
 from ..models import TikTokProduct, utcnow
-from ..ops_log import redact_log_details
+from ..discord.ops_log import redact_log_details
 from ..runtime_logging import structured_log_line
 
 try:

@@ -41,7 +41,7 @@ from ..auth import (
     _token_hmac_key,
     validate_password_strength,
 )
-from ..clockify import (
+from ..team.clockify import (
     ClockifyApiError,
     ClockifyConfigError,
     build_week_summary,
@@ -71,12 +71,12 @@ from ..models import (
     User,
     utcnow,
 )
-from ..pii import PIIDecryptError, decrypt_pii, encrypt_pii
+from ..team.pii import PIIDecryptError, decrypt_pii, encrypt_pii
 from ..rate_limit import rate_limited_or_429
 from ..shared import app_home_for_role, templates
-from ..sms import mask_sms_phone, normalize_sms_phone, send_sms, sms_phone_fingerprint
-from ..team_notifications import EMPLOYEE_NOTIFICATION_ACTION
-from ..tiktok_alerts import alert_supply_request
+from ..team.sms import mask_sms_phone, normalize_sms_phone, send_sms, sms_phone_fingerprint
+from ..team.team_notifications import EMPLOYEE_NOTIFICATION_ACTION
+from ..tiktok.tiktok_alerts import alert_supply_request
 
 router = APIRouter()
 
@@ -220,7 +220,7 @@ def _find_password_reset_user(session: Session, identifier: str) -> Optional[Use
     if user is not None and user.is_active:
         return user
     if "@" in normalized:
-        from ..pii import email_lookup_hash
+        from ..team.pii import email_lookup_hash
 
         digest = email_lookup_hash(normalized)
         profile = session.exec(
@@ -1871,7 +1871,7 @@ async def team_profile_post(
     )
 
     # Email needs both the ciphertext AND the lookup hash kept in sync.
-    from ..pii import email_lookup_hash as _email_hash
+    from ..team.pii import email_lookup_hash as _email_hash
     new_email = (email or "").strip().lower()
     try:
         current_email = decrypt_pii(profile.email_ciphertext) or ""

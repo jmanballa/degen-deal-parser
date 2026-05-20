@@ -68,7 +68,7 @@ class TeamManagerToolingTests(unittest.TestCase):
         encrypted_blob: bytes | None = None,
     ):
         from app.models import EmployeeProfile, ScheduleRosterMember, User
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         u = User(
             id=user_id,

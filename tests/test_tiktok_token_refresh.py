@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.tiktok_auth_refresh import refresh_tiktok_auth_if_needed
+from app.tiktok.tiktok_auth_refresh import refresh_tiktok_auth_if_needed
 from app.models import TikTokAuth
 
 
@@ -59,7 +59,7 @@ class RefreshTiktokAuthTests(unittest.TestCase):
         """Token not close to expiry — no refresh needed."""
         with Session(self.engine) as session:
             self._seed_auth(session, access_token_expires_at=_future(60))
-            with patch("app.tiktok_auth_refresh.settings") as mock_settings:
+            with patch("app.tiktok.tiktok_auth_refresh.settings") as mock_settings:
                 mock_settings.tiktok_app_key = "key"
                 mock_settings.tiktok_app_secret = "secret"
                 mock_settings.tiktok_refresh_token = ""
@@ -75,7 +75,7 @@ class RefreshTiktokAuthTests(unittest.TestCase):
     def test_missing_app_secret_returns_none(self):
         with Session(self.engine) as session:
             self._seed_auth(session)
-            with patch("app.tiktok_auth_refresh.settings") as mock_settings:
+            with patch("app.tiktok.tiktok_auth_refresh.settings") as mock_settings:
                 mock_settings.tiktok_app_key = "key"
                 mock_settings.tiktok_app_secret = ""  # missing
                 mock_settings.tiktok_refresh_token = "rtok"
@@ -102,9 +102,9 @@ class RefreshTiktokAuthTests(unittest.TestCase):
 
         with Session(self.engine) as session:
             self._seed_auth(session, access_token_expires_at=_past(5))
-            with patch("app.tiktok_auth_refresh._refresh_fn", fake_refresh_fn), \
-                 patch("app.tiktok_auth_refresh.settings") as mock_settings, \
-                 patch("app.tiktok_auth_refresh.upsert_tiktok_auth_from_callback",
+            with patch("app.tiktok.tiktok_auth_refresh._refresh_fn", fake_refresh_fn), \
+                 patch("app.tiktok.tiktok_auth_refresh.settings") as mock_settings, \
+                 patch("app.tiktok.tiktok_auth_refresh.upsert_tiktok_auth_from_callback",
                        return_value=("inserted", {"tiktok_shop_id": "shop-1"})) as mock_upsert:
                 mock_settings.tiktok_app_key = "key"
                 mock_settings.tiktok_app_secret = "secret"
@@ -133,9 +133,9 @@ class RefreshTiktokAuthTests(unittest.TestCase):
 
         with Session(self.engine) as session:
             self._seed_auth(session, access_token_expires_at=_past(5))
-            with patch("app.tiktok_auth_refresh._refresh_fn", fake_refresh_fn), \
-                 patch("app.tiktok_auth_refresh.settings") as mock_settings, \
-                 patch("app.tiktok_auth_refresh.upsert_tiktok_auth_from_callback",
+            with patch("app.tiktok.tiktok_auth_refresh._refresh_fn", fake_refresh_fn), \
+                 patch("app.tiktok.tiktok_auth_refresh.settings") as mock_settings, \
+                 patch("app.tiktok.tiktok_auth_refresh.upsert_tiktok_auth_from_callback",
                        return_value=("inserted", {"tiktok_shop_id": "shop-1"})):
                 mock_settings.tiktok_app_key = "key"
                 mock_settings.tiktok_app_secret = "secret"
@@ -157,8 +157,8 @@ class RefreshTiktokAuthTests(unittest.TestCase):
 
         with Session(self.engine) as session:
             self._seed_auth(session, access_token_expires_at=_past(5))
-            with patch("app.tiktok_auth_refresh._refresh_fn", exploding_refresh), \
-                 patch("app.tiktok_auth_refresh.settings") as mock_settings:
+            with patch("app.tiktok.tiktok_auth_refresh._refresh_fn", exploding_refresh), \
+                 patch("app.tiktok.tiktok_auth_refresh.settings") as mock_settings:
                 mock_settings.tiktok_app_key = "key"
                 mock_settings.tiktok_app_secret = "secret"
                 mock_settings.tiktok_refresh_token = ""
@@ -174,12 +174,12 @@ class RefreshTiktokAuthTests(unittest.TestCase):
 
 class PeriodicLoopTests(unittest.TestCase):
     def test_loop_exits_when_stop_event_set(self):
-        from app.worker_service import periodic_tiktok_token_refresh_loop
+        from app.discord.worker_service import periodic_tiktok_token_refresh_loop
 
         async def run():
             stop = asyncio.Event()
             stop.set()  # pre-set so the loop exits without sleeping
-            with patch("app.worker_service.settings") as mock_settings:
+            with patch("app.discord.worker_service.settings") as mock_settings:
                 mock_settings.tiktok_token_refresh_interval_minutes = 0.001  # very short
                 # Loop should exit cleanly after stop_event is set
                 task = asyncio.create_task(periodic_tiktok_token_refresh_loop(stop))
@@ -189,7 +189,7 @@ class PeriodicLoopTests(unittest.TestCase):
 
     def test_loop_catches_exceptions_without_crashing(self):
         """The per-iteration try/except swallows errors so the loop can keep running."""
-        from app.worker_service import periodic_tiktok_token_refresh_loop
+        from app.discord.worker_service import periodic_tiktok_token_refresh_loop
 
         error_log = []
         sleep_calls = [0]
@@ -207,9 +207,9 @@ class PeriodicLoopTests(unittest.TestCase):
         async def run():
             nonlocal stop
             stop = asyncio.Event()
-            with patch("app.worker_service.settings") as mock_settings, \
+            with patch("app.discord.worker_service.settings") as mock_settings, \
                  patch("asyncio.to_thread", fake_to_thread), \
-                 patch("app.worker_service.managed_session"), \
+                 patch("app.discord.worker_service.managed_session"), \
                  patch("asyncio.sleep", fake_sleep), \
                  patch("builtins.print", lambda *a, **kw: error_log.append(str(a))):
                 mock_settings.tiktok_token_refresh_interval_minutes = 0.001

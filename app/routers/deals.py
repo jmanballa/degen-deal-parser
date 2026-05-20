@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session
 
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
-from ..corrections import get_correction_pattern_counts
+from ..discord.corrections import get_correction_pattern_counts
 from ..db import get_session
 
 _DEALS_DEFAULT_TZ = ZoneInfo("America/Los_Angeles")

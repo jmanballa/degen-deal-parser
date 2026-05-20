@@ -17,7 +17,7 @@ from app.reporting import (
     classify_tiktok_reporting_status,
     external_order_net_revenue,
 )
-from app.tiktok_ingest import upsert_tiktok_order_from_payload
+from app.tiktok.tiktok_ingest import upsert_tiktok_order_from_payload
 
 
 def _make_engine():
@@ -917,7 +917,7 @@ class StitchedChildTransactionCleanupTests(unittest.TestCase):
 
     def test_marking_row_as_stitched_child_deletes_existing_transaction(self):
         from app.models import DiscordMessage, TransactionItem
-        from app.transactions import sync_transaction_from_message
+        from app.discord.transactions import sync_transaction_from_message
 
         with Session(self.engine) as session:
             row_id = self._seed_parsed_row(session, discord_message_id="d-1")
@@ -951,7 +951,7 @@ class StitchedChildTransactionCleanupTests(unittest.TestCase):
             BookkeepingImport,
             DiscordMessage,
         )
-        from app.transactions import sync_transaction_from_message
+        from app.discord.transactions import sync_transaction_from_message
 
         with Session(self.engine) as session:
             row_id = self._seed_parsed_row(session, discord_message_id="d-2")
@@ -991,7 +991,7 @@ class StitchedChildTransactionCleanupTests(unittest.TestCase):
 
     def test_marking_row_as_ignored_also_deletes_transaction(self):
         from app.models import DiscordMessage, PARSE_IGNORED
-        from app.transactions import sync_transaction_from_message
+        from app.discord.transactions import sync_transaction_from_message
 
         with Session(self.engine) as session:
             row_id = self._seed_parsed_row(session, discord_message_id="d-3")

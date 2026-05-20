@@ -304,7 +304,7 @@ class EmployeeTokenRevocationTests(unittest.TestCase):
 
     def test_purge_creates_restorable_tombstone_before_wiping_pii(self):
         from app.models import AuditLog, EmployeeProfile, EmployeePurgeTombstone, User
-        from app.pii import decrypt_pii, email_lookup_hash, encrypt_pii
+        from app.team.pii import decrypt_pii, email_lookup_hash, encrypt_pii
         from app.routers.team_admin_employees import restore_employee_purge_tombstone
 
         profile = self.session.get(EmployeeProfile, self.employee.id)

@@ -3,7 +3,7 @@ import unittest
 
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.backfill_requests import apply_backfill_request_state, repair_backfill_request_state_rows
+from app.discord.backfill_requests import apply_backfill_request_state, repair_backfill_request_state_rows
 from app.models import (
     BACKFILL_CANCELLED,
     BACKFILL_COMPLETED,

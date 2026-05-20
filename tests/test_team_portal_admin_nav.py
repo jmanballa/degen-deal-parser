@@ -128,7 +128,7 @@ class AdminSidebarVisibilityTests(unittest.TestCase):
         )
 
     def test_clockify_today_uses_configured_business_timezone(self):
-        from app.clockify import clockify_today
+        from app.team.clockify import clockify_today
 
         settings = SimpleNamespace(clockify_timezone="America/Los_Angeles")
 

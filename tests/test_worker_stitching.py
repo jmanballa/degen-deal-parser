@@ -2,7 +2,7 @@ import unittest
 from datetime import timedelta
 
 from app.models import DiscordMessage, utcnow
-from app.worker import is_short_fragment, should_stitch_rows
+from app.discord.worker import is_short_fragment, should_stitch_rows
 
 
 class WorkerStitchingTests(unittest.TestCase):

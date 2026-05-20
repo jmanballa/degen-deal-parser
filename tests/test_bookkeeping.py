@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.bookkeeping import fetch_google_sheet_export, read_tabular_rows, reconcile_bookkeeping_import
+from app.discord.bookkeeping import fetch_google_sheet_export, read_tabular_rows, reconcile_bookkeeping_import
 from app.models import (
     BookkeepingEntry,
     BookkeepingImport,
@@ -100,7 +100,7 @@ class GoogleSheetExportFetchTests(unittest.TestCase):
 
         export_url = "https://docs.google.com/spreadsheets/d/abc/export?format=xlsx"
         client = FakeAsyncClient()
-        with patch("app.bookkeeping.httpx.AsyncClient", return_value=client):
+        with patch("app.discord.bookkeeping.httpx.AsyncClient", return_value=client):
             content = asyncio.run(fetch_google_sheet_export(export_url))
 
         self.assertEqual(content, b"date,amount\n2026-05-15,50\n")
@@ -128,7 +128,7 @@ class GoogleSheetExportFetchTests(unittest.TestCase):
                 return FakeResponse()
 
         export_url = "https://docs.google.com/spreadsheets/d/abc/export?format=xlsx"
-        with patch("app.bookkeeping.httpx.AsyncClient", return_value=FakeAsyncClient()):
+        with patch("app.discord.bookkeeping.httpx.AsyncClient", return_value=FakeAsyncClient()):
             with self.assertRaises(ValueError):
                 asyncio.run(fetch_google_sheet_export(export_url))
 

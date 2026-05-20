@@ -17,7 +17,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import pokemon_scanner as ps  # noqa: E402
+from app.inventory import pokemon_scanner as ps  # noqa: E402
 
 
 # (label, query, category_id, expectations)

@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
 
 from ..auth import has_permission
-from ..clockify import (
+from ..team.clockify import (
     ClockifyApiError,
     ClockifyConfigError,
     ClockifyEntryView,
@@ -49,7 +49,7 @@ from ..models import (
     User,
     utcnow,
 )
-from ..pii import decrypt_pii
+from ..team.pii import decrypt_pii
 from ..shared import templates
 from .team_admin import _permission_gate
 from .team_admin_employees import (

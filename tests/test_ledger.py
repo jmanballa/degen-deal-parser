@@ -8,7 +8,7 @@ from unittest.mock import patch
 from sqlmodel import Session, SQLModel, create_engine, select
 from starlette.requests import Request
 
-from app.bank_reconciliation import rerun_bank_reconciliation
+from app.discord.bank_reconciliation import rerun_bank_reconciliation
 from app.ledger import (
     LedgerFilters,
     apply_ledger_automation,

@@ -115,7 +115,7 @@ class EmployeeTimecardsTests(unittest.TestCase):
         monthly_salary_cents=None,
     ):
         from app.models import EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         profile = self.session.get(EmployeeProfile, self.employee.id) or EmployeeProfile(
             user_id=self.employee.id
@@ -220,7 +220,7 @@ class EmployeeTimecardsTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
     def test_timecards_page_handles_api_error(self):
-        from app.clockify import ClockifyApiError
+        from app.team.clockify import ClockifyApiError
 
         self._seed_profile(clockify_user_id="ck-1")
         response, _client = self._render(api_exc=ClockifyApiError("boom: 503"))

@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, patch
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.attachment_repair import AttachmentRepairCandidate
-import app.discord_ingest as discord_ingest
-from app.discord_ingest import (
+import app.discord.discord_ingest as discord_ingest
+from app.discord.discord_ingest import (
     audit_recent_channel_history,
     run_periodic_attachment_repair_once,
     run_periodic_recent_audit_once,

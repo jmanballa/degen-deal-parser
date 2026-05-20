@@ -48,7 +48,7 @@ def test_legacy_data_prefix_strips_under_data_root(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("DEGEN_EYE_V2_INDEX_PATH", "data/phash_index.sqlite")
     cfg.get_settings.cache_clear()
 
-    from app.phash_scanner import _configured_index_path
+    from app.inventory.phash_scanner import _configured_index_path
 
     assert _configured_index_path() == tmp_path / "phash_index.sqlite"
 

@@ -25,9 +25,9 @@ from ..config import get_settings
 from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import AppSetting, AuditLog, BuylistSubmission, User, utcnow
-from ..pokemon_scanner import text_search_cards
+from ..inventory.pokemon_scanner import text_search_cards
 from ..shared import templates
-from ..tcgplayer_sales import fetch_tcgplayer_public_sales, tcgplayer_product_id_from_url
+from ..inventory.tcgplayer_sales import fetch_tcgplayer_public_sales, tcgplayer_product_id_from_url
 from .team import _nav_context
 from .team_admin import _permission_gate
 
@@ -706,7 +706,7 @@ async def _search_buylist_sealed_products(
     game: str,
     limit: int,
 ) -> tuple[list[dict[str, Any]], str]:
-    from ..inventory import _cached_add_stock_sealed_search
+    from ..inventory.routes import _cached_add_stock_sealed_search
 
     return await _cached_add_stock_sealed_search(query, game=game, limit=limit)
 
@@ -928,7 +928,7 @@ def _receive_submission_inventory(
     actor: User,
     location: str = "",
 ) -> dict[str, Any]:
-    from ..inventory import _receive_sealed_stock, _receive_single_stock
+    from ..inventory.routes import _receive_sealed_stock, _receive_single_stock
 
     payment_view = (submission.payment_view or "cash").strip().lower()
     if payment_view not in {"cash", "trade"}:

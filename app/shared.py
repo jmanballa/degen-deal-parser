@@ -31,21 +31,21 @@ from sqlmodel import Session, select
 
 from .auth import authenticate_user, has_legacy_role, has_role
 from .attachment_storage import attachment_cache_path, generate_thumbnail, warm_attachment_cache, write_attachment_cache_file
-from .bookkeeping import (
+from .discord.bookkeeping import (
     get_bookkeeping_status_by_message_ids,
 )
 from .cache import cache_get, cache_invalidate, cache_set
-from .backfill_requests import (
+from .discord.backfill_requests import (
     enqueue_backfill_request,
 )
-from .channels import (
+from .discord.channels import (
     get_channel_filter_choices,
     get_expense_category_filter_choices,
     get_watched_channels,
     update_backfill_window,
 )
 from .config import get_settings
-from .corrections import (
+from .discord.corrections import (
     get_learning_signal,
     get_learning_signals,
 )
@@ -59,11 +59,11 @@ from .db import (
     recent_db_failure,
     run_write_with_retry,
 )
-from .discord_ingest import (
+from .discord.discord_ingest import (
     discord_runtime_state,
     parse_iso_datetime,
 )
-from .financials import compute_financials
+from .discord.financials import compute_financials
 from .models import (
     AppSetting,
     AttachmentAsset,
@@ -103,10 +103,10 @@ from .models import (
     signed_money_delta,
     utcnow,
 )
-from .ops_log import count_recent_errors, list_operations_logs, list_operations_logs_for_backfill_request, parse_operations_log_details
-from .ops_log import redact_log_details
-from .reparse_runs import list_recent_reparse_runs, safe_create_reparse_run, safe_finalize_reparse_run_queue
-from .reparse import reparse_message_row, reparse_message_rows
+from .discord.ops_log import count_recent_errors, list_operations_logs, list_operations_logs_for_backfill_request, parse_operations_log_details
+from .discord.ops_log import redact_log_details
+from .discord.reparse_runs import list_recent_reparse_runs, safe_create_reparse_run, safe_finalize_reparse_run_queue
+from .discord.reparse import reparse_message_row, reparse_message_rows
 from .reporting import (
     build_financial_summary,
     build_reporting_periods,
@@ -126,7 +126,7 @@ from .reporting import (
 from .runtime_logging import resolve_runtime_log_path, setup_runtime_file_logging, structured_log_line
 from .runtime_monitor import get_runtime_heartbeat_status, runtime_heartbeat_loop
 from .schemas import HealthOut
-from .shopify_ingest import (
+from .inventory.shopify_ingest import (
     backfill_shopify_orders,
     mark_inventory_sold_from_shopify_order,
     read_shopify_backfill_state,
@@ -141,9 +141,9 @@ from .display_media import (
     normalize_attachment_urls_for_row,
     row_has_images,
 )
-from .transactions import build_transaction_summary, get_transactions, rebuild_transactions, sync_transaction_from_message
-from .tiktok_auth_refresh import refresh_tiktok_auth_if_needed as _refresh_tiktok_auth_fn
-from .tiktok_ingest import (
+from .discord.transactions import build_transaction_summary, get_transactions, rebuild_transactions, sync_transaction_from_message
+from .tiktok.tiktok_auth_refresh import refresh_tiktok_auth_if_needed as _refresh_tiktok_auth_fn
+from .tiktok.tiktok_ingest import (
     TikTokIngestError,
     _build_webhook_signature_candidates,
     exchange_tiktok_authorization_code,
@@ -158,7 +158,7 @@ from .tiktok_enrichment_queue import (
     process_due_tiktok_webhook_enrichment_jobs,
     requeue_interrupted_tiktok_webhook_enrichment_jobs,
 )
-from .tiktok_live_chat import (
+from .tiktok.tiktok_live_chat import (
     get_chat_status,
     get_recent_messages as get_live_chat_messages,
     get_room_id as get_live_room_id,
@@ -166,7 +166,7 @@ from .tiktok_live_chat import (
     start_live_chat,
     stop_live_chat,
 )
-from .worker import (
+from .discord.worker import (
     STALE_PROCESSING_AFTER,
     clear_parsed_fields,
     parser_loop,
@@ -2850,7 +2850,7 @@ def _enrich_tiktok_order_from_api(order_id: str, *, raise_errors: bool = False) 
                 shop_cipher=shop_cipher,
                 source="webhook_enriched",
             )
-            from .tiktok_ingest import upsert_tiktok_order
+            from .tiktok.tiktok_ingest import upsert_tiktok_order
             upsert_tiktok_order(session, TikTokOrder, record)
             _enrich_delay = 0.4
             for _enrich_attempt in range(4):

@@ -124,7 +124,7 @@ class BootTimeSaltValidationTests(unittest.TestCase):
         env["EMPLOYEE_PORTAL_ENABLED"] = "true"
         env["EMPLOYEE_PII_KEY"] = Fernet.generate_key().decode("ascii")
         env["EMPLOYEE_EMAIL_HASH_SALT"] = ""
-        code = "import app.pii"
+        code = "import app.team.pii"
         result = subprocess.run(
             [sys.executable, "-c", code],
             env=env, capture_output=True, text=True, timeout=30,
@@ -137,7 +137,7 @@ class BootTimeSaltValidationTests(unittest.TestCase):
         env["EMPLOYEE_PORTAL_ENABLED"] = "true"
         env["EMPLOYEE_PII_KEY"] = Fernet.generate_key().decode("ascii")
         env["EMPLOYEE_EMAIL_HASH_SALT"] = "boot-test-salt"
-        code = "import app.pii"
+        code = "import app.team.pii"
         result = subprocess.run(
             [sys.executable, "-c", code],
             env=env, capture_output=True, text=True, timeout=30,

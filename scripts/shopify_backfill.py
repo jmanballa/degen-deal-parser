@@ -14,7 +14,7 @@ if str(ROOT_DIR) not in sys.path:
 load_dotenv(ROOT_DIR / ".env")
 
 from app.db import init_db, managed_session
-from app.shopify_ingest import backfill_shopify_orders
+from app.inventory.shopify_ingest import backfill_shopify_orders
 
 
 def parse_args() -> argparse.Namespace:

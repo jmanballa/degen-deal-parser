@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import asyncio
 
-from app import pokemon_scanner as ps
+from app.inventory import pokemon_scanner as ps
 
 
 def _reset_caches():

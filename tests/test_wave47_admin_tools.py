@@ -195,7 +195,7 @@ class SimplifiedAddEmployeeTests(unittest.TestCase, _W47Harness):
         """Admin can also supply both at once for people they have full info on."""
         from app.auth import create_draft_employee
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         admin = self._login_as("admin")
         user = create_draft_employee(
@@ -422,7 +422,7 @@ class AdminPIIEditTests(unittest.TestCase, _W47Harness):
     def test_admin_can_write_legal_name(self):
         from app.auth import create_draft_employee
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii
+        from app.team.pii import decrypt_pii
 
         admin = self._login_as("admin")
         draft = create_draft_employee(
@@ -460,7 +460,7 @@ class AdminPIIEditTests(unittest.TestCase, _W47Harness):
         """
         from app.auth import create_draft_employee
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii, encrypt_pii
+        from app.team.pii import decrypt_pii, encrypt_pii
 
         admin = self._login_as("admin")
         draft = create_draft_employee(
@@ -783,7 +783,7 @@ class ManagerToolingGridContextTests(unittest.TestCase):
 
     def _profile_rate(self, user_id: int, cents: str) -> None:
         from app.models import EmployeeProfile
-        from app.pii import encrypt_pii
+        from app.team.pii import encrypt_pii
 
         self.session.add(
             EmployeeProfile(

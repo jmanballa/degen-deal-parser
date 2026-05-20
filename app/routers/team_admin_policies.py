@@ -15,7 +15,7 @@ from ..csrf import issue_token, require_csrf
 from ..db import get_session
 from ..models import AuditLog, TeamPolicy, User, utcnow
 from ..shared import templates
-from ..team_notifications import notify_active_employees
+from ..team.team_notifications import notify_active_employees
 from .team_admin import _permission_gate
 
 router = APIRouter()

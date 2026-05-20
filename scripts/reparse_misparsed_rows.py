@@ -51,7 +51,7 @@ from app.models import (
     DiscordMessage,
     utcnow,
 )
-from app.reparse import reparse_message_rows
+from app.discord.reparse import reparse_message_rows
 
 # -- heuristics used to find suspected-bad rows ---------------------------
 

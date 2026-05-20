@@ -13,4 +13,4 @@ Write-Host "Starting hosted worker process."
 Write-Host "This process runs Discord ingest, backfill execution, and parser worker."
 Write-Host "DATABASE_URL loaded from .env (not overridden)."
 
-& "$repoRoot\.venv\Scripts\python.exe" -m app.worker_service
+& "$repoRoot\.venv\Scripts\python.exe" -m app.discord.worker_service

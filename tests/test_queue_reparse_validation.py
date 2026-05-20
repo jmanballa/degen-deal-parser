@@ -33,17 +33,17 @@ from app.models import (
     Transaction,
     utcnow,
 )
-from app.parser import choose_image_urls
-from app.reparse_runs import (
+from app.discord.parser import choose_image_urls
+from app.discord.reparse_runs import (
     create_reparse_run_record,
     finalize_reparse_run_queue_record,
     list_recent_reparse_runs,
     record_reparse_run_outcome,
 )
 from app.reporting import get_financial_rows
-from app.transactions import get_transactions, sync_transaction_from_message
-from app.worker import MAX_ATTEMPTS_ERROR, close_or_recover_unfinished_attempts, queue_reparse_range
-from app.worker import process_once, process_row
+from app.discord.transactions import get_transactions, sync_transaction_from_message
+from app.discord.worker import MAX_ATTEMPTS_ERROR, close_or_recover_unfinished_attempts, queue_reparse_range
+from app.discord.worker import process_once, process_row
 
 
 def make_request(path: str) -> Request:
@@ -115,7 +115,7 @@ class QueueReparseValidationTests(unittest.TestCase):
             def fake_managed_session():
                 yield session
 
-            with patch("app.worker.managed_session", new=fake_managed_session):
+            with patch("app.discord.worker.managed_session", new=fake_managed_session):
                 asyncio.run(process_once())
 
             session.refresh(row)
@@ -139,7 +139,7 @@ class QueueReparseValidationTests(unittest.TestCase):
             def fake_managed_session():
                 yield session
 
-            with patch("app.worker.managed_session", new=fake_managed_session):
+            with patch("app.discord.worker.managed_session", new=fake_managed_session):
                 asyncio.run(process_once())
                 asyncio.run(process_once())
 
@@ -172,8 +172,8 @@ class QueueReparseValidationTests(unittest.TestCase):
         )
         expected_data_url = "data:image/jpeg;base64,Y2FjaGVkLWltYWdlLWJ5dGVz"
 
-        with self.session() as session, patch("app.worker.parse_message") as parse_message_mock, patch(
-            "app.worker.recover_attachment_assets_for_message",
+        with self.session() as session, patch("app.discord.worker.parse_message") as parse_message_mock, patch(
+            "app.discord.worker.recover_attachment_assets_for_message",
             new_callable=AsyncMock,
         ) as recover_mock:
             row = self.make_message(
@@ -219,7 +219,7 @@ class QueueReparseValidationTests(unittest.TestCase):
             def fake_managed_session():
                 yield session
 
-            with patch("app.worker.managed_session", new=fake_managed_session):
+            with patch("app.discord.worker.managed_session", new=fake_managed_session):
                 asyncio.run(process_row(row.id))
 
             recover_mock.assert_not_awaited()
@@ -497,7 +497,7 @@ class QueueReparseValidationTests(unittest.TestCase):
             self.assertIsNone(transaction)
 
     def test_ignored_primary_row_clears_stale_parsed_and_financial_fields(self) -> None:
-        with self.session() as session, patch("app.worker.parse_message") as parse_message_mock:
+        with self.session() as session, patch("app.discord.worker.parse_message") as parse_message_mock:
             row = self.make_message(
                 discord_message_id="ignored-primary",
                 parse_status=PARSE_PENDING,
@@ -528,7 +528,7 @@ class QueueReparseValidationTests(unittest.TestCase):
             def fake_managed_session():
                 yield session
 
-            with patch("app.worker.managed_session", new=fake_managed_session):
+            with patch("app.discord.worker.managed_session", new=fake_managed_session):
                 asyncio.run(process_row(row.id))
 
             session.refresh(row)

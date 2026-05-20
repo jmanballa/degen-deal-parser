@@ -13,7 +13,7 @@ from dataclasses import asdict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import pokemon_scanner as ps
+from app.inventory import pokemon_scanner as ps
 
 
 def _sync(coro):

@@ -13,9 +13,9 @@ from sqlmodel import Session, select
 
 from ..csrf import CSRFProtectedRoute
 from ..shared import *  # noqa: F401,F403 -- shared helpers, constants, state
-from ..backfill_requests import list_recent_backfill_requests
-from ..channels import get_available_channel_choices
-from ..corrections import save_review_correction, snapshot_message_parse
+from ..discord.backfill_requests import list_recent_backfill_requests
+from ..discord.channels import get_available_channel_choices
+from ..discord.corrections import save_review_correction, snapshot_message_parse
 from ..db import get_session
 
 router = APIRouter(route_class=CSRFProtectedRoute)

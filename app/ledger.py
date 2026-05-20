@@ -9,7 +9,7 @@ from typing import Any, Iterable, Optional
 from sqlmodel import Session, select
 
 from .ai_client import get_ai_client, get_fast_model, has_ai_key
-from .bank_reconciliation import (
+from .discord.bank_reconciliation import (
     ATTENTION_CLASSIFICATIONS,
     HIGH_CONFIDENCE_CLASSIFICATIONS,
     all_expense_category_choices,

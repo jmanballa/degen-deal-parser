@@ -4,9 +4,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app import parser as parser_module
 from app.models import ParseAttempt
-from app.parser import extract_usage_metrics, parse_deal_with_ai, parse_deal_with_ai_async
+from app.discord import parser as parser_module
+from app.discord.parser import extract_usage_metrics, parse_deal_with_ai, parse_deal_with_ai_async
 
 
 class AiUsageCostTests(unittest.TestCase):
@@ -116,8 +116,8 @@ class AiUsageCostTests(unittest.TestCase):
             def with_options(self, **_kwargs):
                 return self
 
-        with patch("app.parser.get_ai_client", return_value=FakeClient()), patch(
-            "app.parser.get_relevant_correction_hints", return_value=[]
+        with patch("app.discord.parser.get_ai_client", return_value=FakeClient()), patch(
+            "app.discord.parser.get_relevant_correction_hints", return_value=[]
         ):
             parsed = parse_deal_with_ai(
                 author_name="cashier",
@@ -140,7 +140,7 @@ class AiUsageCostTests(unittest.TestCase):
             captured["args"] = args
             return {"ok": True}
 
-        with patch("app.parser.asyncio.to_thread", side_effect=fake_to_thread):
+        with patch("app.discord.parser.asyncio.to_thread", side_effect=fake_to_thread):
             result = asyncio.run(
                 parse_deal_with_ai_async(
                     author_name="cashier",

@@ -31,7 +31,8 @@ from app.reporting import (
     get_tiktok_reporting_rows,
 )
 from scripts.tiktok_backfill import build_tiktok_request, upsert_tiktok_order
-from app.tiktok_ingest import (
+from app.tiktok.tiktok_ingest import (
+    TIKTOK_DEFAULT_API_BASE_URL,
     TIKTOK_SHOP_AUTH_BASE_URL,
     TIKTOK_SHOP_TOKEN_GET_PATH,
     TikTokIngestError,

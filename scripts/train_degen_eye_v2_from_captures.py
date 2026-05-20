@@ -22,7 +22,7 @@ _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent
 sys.path.insert(0, str(_ROOT))
 
-from app.degen_eye_v2_training import train_confirmed_captures  # noqa: E402
+from app.inventory.degen_eye_v2_training import train_confirmed_captures  # noqa: E402
 
 _RAW_INDEX_PATH = os.getenv("DEGEN_EYE_V2_INDEX_PATH") or str(_ROOT / "data" / "phash_index.sqlite")
 DEFAULT_INDEX_PATH = Path(_RAW_INDEX_PATH)

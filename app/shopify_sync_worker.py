@@ -8,8 +8,8 @@ from sqlmodel import Session, select
 
 from .config import get_settings
 from .db import managed_session
-from .inventory_pricing import effective_price
-from .inventory_shopify import (
+from .inventory.pricing import effective_price
+from .inventory.shopify import (
     apply_shopify_variant_ref,
     find_shopify_variant_by_sku,
     get_shopify_inventory_item_location_id,

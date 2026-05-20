@@ -67,7 +67,7 @@ def main() -> int:
     from app.routers.deals import deals_page, login_page
     from app.routers.messages import reviewer_queue_page
     from app.routers.tiktok_streamer import tiktok_streamer_page
-    from app import inventory as inventory_module
+    from app.inventory import routes as inventory_module
 
     temp_dir = Path.cwd() / "tests" / ".tmp_verify_chrome" / str(uuid.uuid4())
     temp_dir.mkdir(parents=True, exist_ok=True)

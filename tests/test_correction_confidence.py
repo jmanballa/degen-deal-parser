@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from app.corrections import compute_correction_confidence
+from app.discord.corrections import compute_correction_confidence
 from app.models import ReviewCorrection
 
 

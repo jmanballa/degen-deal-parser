@@ -660,7 +660,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
         self.assertIn("Refresh market", page.text)
 
         with patch(
-            "app.inventory.fetch_price_for_item",
+            "app.inventory.routes.fetch_price_for_item",
             new=AsyncMock(
                 return_value={
                     "source": "tcgtracking",
@@ -725,7 +725,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
                 return {"source": "tcgtracking", "market_price": 144.0, "low_price": 130.0}
             return None
 
-        with patch("app.inventory.fetch_price_for_item", side_effect=fake_fetch) as mocked_fetch:
+        with patch("app.inventory.routes.fetch_price_for_item", side_effect=fake_fetch) as mocked_fetch:
             response = self.client.post(
                 "/inventory/bulk-action",
                 headers={"X-CSRF-Token": csrf},
@@ -898,7 +898,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
 
     def test_manager_catalog_scan_links_dgn_sku_and_queues_unlinked_shopify_product(self):
         self._login_as("manager", user_id=248, username="mgr48")
-        from app.inventory_shopify import ShopifyVariantRef
+        from app.inventory.shopify import ShopifyVariantRef
         from app.models import InventoryItem, ShopifySyncIssue
 
         item = InventoryItem(
@@ -930,8 +930,8 @@ class EmployeeOpsAccessTests(unittest.TestCase):
                 product_title="Shopify Only Product",
             ),
         ]
-        with patch("app.inventory.settings") as mocked_settings, patch(
-            "app.inventory.list_shopify_product_variants",
+        with patch("app.inventory.routes.settings") as mocked_settings, patch(
+            "app.inventory.routes.list_shopify_product_variants",
             new=AsyncMock(return_value=variants),
         ):
             mocked_settings.shopify_store_domain = "degen-test.myshopify.com"
@@ -1021,7 +1021,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
         self.session.add(item)
         self.session.commit()
 
-        with patch("app.inventory._cached_add_stock_sealed_search", new=AsyncMock(return_value=([], ""))):
+        with patch("app.inventory.routes._cached_add_stock_sealed_search", new=AsyncMock(return_value=([], ""))):
             page = self.client.get(
                 "/inventory/add-stock?game=Pokemon&search_type=sealed&q=Existing+Market+Box",
                 follow_redirects=False,

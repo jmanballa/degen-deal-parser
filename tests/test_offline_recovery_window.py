@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, patch
 import discord
 from sqlmodel import Session, SQLModel, create_engine, select
 
-import app.discord_ingest as discord_ingest_module
-from app.discord_ingest import DealIngestBot, mark_message_deleted
+import app.discord.discord_ingest as discord_ingest_module
+from app.discord.discord_ingest import DealIngestBot, mark_message_deleted
 from app.models import DiscordMessage, ParseAttempt, PARSE_PARSED, PARSE_PENDING, PARSE_IGNORED, utcnow
-from app.worker import OFFLINE_EDIT_REPARSE_ERROR, reconcile_offline_audit_rows
+from app.discord.worker import OFFLINE_EDIT_REPARSE_ERROR, reconcile_offline_audit_rows
 
 
 class FakeAuthor:

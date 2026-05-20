@@ -1,7 +1,7 @@
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import BankFeedConnection, BankTransaction
-from app.plaid_bank_feed import sync_plaid_connection
+from app.discord.plaid_bank_feed import sync_plaid_connection
 
 
 def make_engine():
@@ -49,8 +49,8 @@ def test_plaid_sync_runs_ledger_agent_after_successful_sync(monkeypatch):
             "has_more": False,
         }
 
-    monkeypatch.setattr("app.plaid_bank_feed.decrypt_access_token", lambda _blob: "access-token")
-    monkeypatch.setattr("app.plaid_bank_feed._plaid_post", fake_plaid_post)
+    monkeypatch.setattr("app.discord.plaid_bank_feed.decrypt_access_token", lambda _blob: "access-token")
+    monkeypatch.setattr("app.discord.plaid_bank_feed._plaid_post", fake_plaid_post)
 
     with Session(engine) as session:
         connection = BankFeedConnection(

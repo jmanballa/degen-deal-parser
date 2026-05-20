@@ -6,15 +6,15 @@ from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app import inventory_pricing
-from app.inventory import (
+from app.inventory import pricing as inventory_pricing
+from app.inventory.routes import (
     _receive_slab_stock,
     _slab_comps_lookup_payload,
     _slab_grade_options,
     _slab_search_fallback_suggestion,
 )
-from app.inventory_price_updates import record_inventory_price_result
-from app.inventory_pricing import (
+from app.inventory.price_updates import record_inventory_price_result
+from app.inventory.pricing import (
     _alt_result_from_records,
     _card_ladder_result_from_payload,
     _fetch_card_ladder_cli_cache,
@@ -163,7 +163,7 @@ def test_fetch_price_for_item_prices_single_from_tcgtracking(monkeypatch):
             "candidates": [],
         }
 
-    monkeypatch.setattr("app.pokemon_scanner.text_search_cards", fake_text_search_cards)
+    monkeypatch.setattr("app.inventory.pokemon_scanner.text_search_cards", fake_text_search_cards)
     item = InventoryItem(
         barcode="DGN-SINGLE",
         item_type=ITEM_TYPE_SINGLE,

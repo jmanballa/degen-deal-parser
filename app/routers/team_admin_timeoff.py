@@ -27,7 +27,7 @@ from ..models import (
     utcnow,
 )
 from ..shared import templates
-from ..team_notifications import notify_employee
+from ..team.team_notifications import notify_employee
 from .team_admin import _permission_gate
 
 router = APIRouter()

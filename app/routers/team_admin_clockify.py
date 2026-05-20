@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
-from ..clockify import (
+from ..team.clockify import (
     ClockifyClient,
     ClockifyApiError,
     ClockifyConfigError,
@@ -51,7 +51,7 @@ from ..models import (
     User,
     utcnow,
 )
-from ..pii import decrypt_pii
+from ..team.pii import decrypt_pii
 from ..shared import templates
 from .team_admin import _admin_gate, _permission_gate
 from .team_admin_employees import (

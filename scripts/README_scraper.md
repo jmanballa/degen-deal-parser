@@ -71,7 +71,7 @@ curl -X POST http://OPENCLAW_HOST:8787/resolve \
 
 ### From Machine B (main app)
 
-The main app ships a thin client at `app/username_scraper_client.py` that's
+The main app ships a thin client at `app/tiktok/username_scraper_client.py` that's
 feature-flagged off by default. To enable, add to Machine B's `.env`:
 
 ```
@@ -83,7 +83,7 @@ USERNAME_SCRAPER_TIMEOUT_SECONDS=8
 Then from anywhere in the app:
 
 ```python
-from app import username_scraper_client as scraper
+from app.tiktok import username_scraper_client as scraper
 
 if scraper.is_enabled():
     try:

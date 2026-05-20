@@ -19,7 +19,7 @@ os.environ.setdefault("EMPLOYEE_EMAIL_HASH_SALT", "unit-test-salt")
 def _reload_settings_and_pii():
     from app import config as cfg
     cfg.get_settings.cache_clear()
-    import app.pii as pii
+    import app.team.pii as pii
     importlib.reload(pii)
     return pii
 
@@ -275,7 +275,7 @@ class AppBootTests(unittest.TestCase):
         env["EMPLOYEE_PII_KEY"] = ""
         env["EMPLOYEE_EMAIL_HASH_SALT"] = "x"
         # Prevent real DB / network side-effects — just import the module.
-        code = "import app.pii"
+        code = "import app.team.pii"
         result = subprocess.run(
             [sys.executable, "-c", code],
             env=env,

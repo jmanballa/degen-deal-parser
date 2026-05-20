@@ -172,7 +172,7 @@ class InvitePIICaptureTests(unittest.TestCase, _PIIHarness):
         encrypted (ciphertext ≠ plaintext), and email must populate the
         lookup hash."""
         from app.models import EmployeeProfile, User
-        from app.pii import decrypt_pii, email_lookup_hash
+        from app.team.pii import decrypt_pii, email_lookup_hash
 
         raw = self._issue_invite()
         csrf = self._csrf()
@@ -280,7 +280,7 @@ class InvitePIICaptureTests(unittest.TestCase, _PIIHarness):
 
     def test_invite_accept_drops_duplicate_email_but_still_onboards(self):
         from app.models import EmployeeProfile, User
-        from app.pii import decrypt_pii, email_lookup_hash, encrypt_pii
+        from app.team.pii import decrypt_pii, email_lookup_hash, encrypt_pii
 
         existing = User(
             id=9100,
@@ -338,7 +338,7 @@ class AdminEmailRevealTests(unittest.TestCase, _PIIHarness):
 
     def _seed_employee_with_email(self, *, user_id: int = 777, email: str = "reveal@example.com"):
         from app.models import EmployeeProfile, User
-        from app.pii import encrypt_pii, email_lookup_hash
+        from app.team.pii import encrypt_pii, email_lookup_hash
 
         u = User(
             id=user_id,
@@ -409,7 +409,7 @@ class ProfileSelfEditEmailTests(unittest.TestCase, _PIIHarness):
 
     def _seed_employee(self, *, user_id: int, username: str, email: str):
         from app.models import EmployeeProfile, User
-        from app.pii import encrypt_pii, email_lookup_hash
+        from app.team.pii import encrypt_pii, email_lookup_hash
 
         u = User(
             id=user_id,
@@ -432,7 +432,7 @@ class ProfileSelfEditEmailTests(unittest.TestCase, _PIIHarness):
 
     def test_employee_can_update_own_email(self):
         from app.models import EmployeeProfile
-        from app.pii import decrypt_pii, email_lookup_hash
+        from app.team.pii import decrypt_pii, email_lookup_hash
 
         emp = self._seed_employee(
             user_id=900, username="self_edit", email="old@example.com"
