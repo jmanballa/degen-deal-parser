@@ -4,8 +4,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app import parser as parser_module
 from app.models import ParseAttempt
+from app.discord import parser as parser_module
 from app.discord.parser import extract_usage_metrics, parse_deal_with_ai, parse_deal_with_ai_async
 
 

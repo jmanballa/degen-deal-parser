@@ -29,7 +29,7 @@ from ..shared import (  # noqa: F401 - explicit imports for underscore-prefixed 
 from ..db import get_session, run_write_with_retry
 from ..config import get_settings
 from ..models import TikTokAuth, TikTokOrder, utcnow
-from ..ops_log import redact_log_details
+from ..discord.ops_log import redact_log_details
 from ..reporting import build_tiktok_orders_page_data as build_tiktok_orders_page_reporting_data, parse_report_datetime
 from ..runtime_logging import structured_log_line
 from ..tiktok.tiktok_ingest import (

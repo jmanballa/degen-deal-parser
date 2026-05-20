@@ -660,7 +660,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
         self.assertIn("Refresh market", page.text)
 
         with patch(
-            "app.inventory.fetch_price_for_item",
+            "app.inventory.routes.fetch_price_for_item",
             new=AsyncMock(
                 return_value={
                     "source": "tcgtracking",
@@ -725,7 +725,7 @@ class EmployeeOpsAccessTests(unittest.TestCase):
                 return {"source": "tcgtracking", "market_price": 144.0, "low_price": 130.0}
             return None
 
-        with patch("app.inventory.fetch_price_for_item", side_effect=fake_fetch) as mocked_fetch:
+        with patch("app.inventory.routes.fetch_price_for_item", side_effect=fake_fetch) as mocked_fetch:
             response = self.client.post(
                 "/inventory/bulk-action",
                 headers={"X-CSRF-Token": csrf},
@@ -930,8 +930,8 @@ class EmployeeOpsAccessTests(unittest.TestCase):
                 product_title="Shopify Only Product",
             ),
         ]
-        with patch("app.inventory.settings") as mocked_settings, patch(
-            "app.inventory.list_shopify_product_variants",
+        with patch("app.inventory.routes.settings") as mocked_settings, patch(
+            "app.inventory.routes.list_shopify_product_variants",
             new=AsyncMock(return_value=variants),
         ):
             mocked_settings.shopify_store_domain = "degen-test.myshopify.com"

@@ -7,7 +7,7 @@ from typing import TextIO
 
 from .config import BASE_DIR, get_settings
 from .models import utcnow
-from .ops_log import redact_log_details
+from .discord.ops_log import redact_log_details
 
 LOG_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 LOG_BACKUP_COUNT = 5

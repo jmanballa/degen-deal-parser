@@ -17,7 +17,7 @@ from app.reporting import (
     classify_tiktok_reporting_status,
     external_order_net_revenue,
 )
-from app.tiktok_ingest import upsert_tiktok_order_from_payload
+from app.tiktok.tiktok_ingest import upsert_tiktok_order_from_payload
 
 
 def _make_engine():

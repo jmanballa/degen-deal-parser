@@ -821,6 +821,7 @@ class SealedInventoryTests(unittest.TestCase):
 
     def test_shopify_sale_decrements_sealed_quantity_and_logs_movement(self) -> None:
         from app.inventory.shopify_ingest import mark_inventory_sold_from_shopify_order
+        from app.models import ShopifySyncJob
 
         with Session(self.engine) as session:
             item = InventoryItem(
